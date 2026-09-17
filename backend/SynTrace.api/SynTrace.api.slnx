@@ -1,3 +1,6 @@
 <Solution>
+  <Project Path="SynTrace.application/SynTrace.Application.csproj" Id="74850279-fdb5-4fdf-b5c4-758175d0efb1" />
+  <Project Path="SynTrace.Domain/SynTrace.Domain.csproj" Id="86d07c04-2235-4a85-bdf1-000d9cb7a66d" />
+  <Project Path="SynTrace.infrastructure/SynTrace.Infrastructure.csproj" Id="19052356-544c-49df-8e6d-6c468f4875e5" />
   <Project Path="SynTrace_api/SynTrace_api.csproj" />
 </Solution>

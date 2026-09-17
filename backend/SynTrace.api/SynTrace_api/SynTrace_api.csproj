@@ -10,4 +10,9 @@
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\SynTrace.application\SynTrace.Application.csproj" />
+    <ProjectReference Include="..\SynTrace.infrastructure\SynTrace.Infrastructure.csproj" />
+  </ItemGroup>
+
 </Project>
