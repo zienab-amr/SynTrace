@@ -2,7 +2,10 @@ import 'package:go_router/go_router.dart';
 import 'package:syntrace/features/screens/chat/chat_screen.dart';
 import 'package:syntrace/features/screens/dashboard/dashboard_screen.dart';
 import 'package:syntrace/features/screens/graph_screen/graph_screen.dart';
+import 'package:syntrace/features/screens/notifications/notifications_screen.dart';
 import 'package:syntrace/features/screens/profile/profile_screen.dart';
+import 'package:syntrace/features/screens/reports/reports_screen.dart';
+import 'package:syntrace/features/screens/settings/settings_screen.dart';
 import 'package:syntrace/features/screens/splash/splash_screen.dart';
 import 'package:syntrace/shared/widgets/app_shell.dart';
 import 'routes.dart';
@@ -33,10 +36,22 @@ final appRouter = GoRouter(
         ),
         
         GoRoute(
-          path: AppRoutes.graph,
+          path: AppRoutes.profile,
           builder: (context, state) => const ProfileScreen(),
         ),
-        
+        GoRoute(
+          path: AppRoutes.settings,
+          builder: (context, state) => const  SettingsScreen(),
+        ),
+        GoRoute(
+          path: AppRoutes.reports,
+          builder: (context, state) => const  ReportsScreen(),
+        ),
+
+        GoRoute(
+          path: AppRoutes.notifications,
+          builder: (context, state) => const  NotificationsScreen(),
+        ),
       ],
     ),
   ],

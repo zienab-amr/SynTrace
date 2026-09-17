@@ -1,30 +1,33 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:syntrace/core/network/api_client.dart';
 import 'package:syntrace/core/router/routes.dart';
 import 'package:syntrace/features/screens/splash/splash_logo.dart';
 import 'package:syntrace/features/screens/splash/network_background.dart';
 import 'package:syntrace/features/screens/splash/splash_title.dart';
 
-class SplashScreen extends StatefulWidget {
+class SplashScreen extends StatefulWidget 
+{
   const SplashScreen({super.key});
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen> 
+{
   Timer? _navigationTimer;
 
-  @override
-  void initState() {
-    super.initState();
-    _navigationTimer = Timer(const Duration(milliseconds: 3500), () {
-      if (mounted) {
-        context.go(AppRoutes.dashboard);
-      }
-    });
-  }
+ @override
+void initState() {
+  super.initState();
+  
+  
+  _navigationTimer = Timer(const Duration(milliseconds: 2500), () {
+    if (mounted) context.go(AppRoutes.dashboard);
+  });
+}
 
   @override
   void dispose() {

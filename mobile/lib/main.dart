@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:syntrace/core/network/api_client.dart';
 import 'package:syntrace/core/router/app_router.dart';
+import 'package:syntrace/core/services/current_user_service.dart';
 import 'package:syntrace/core/theme/app_theme.dart';
 import 'package:syntrace/core/theme/theme_controller.dart';
 
-void main()
-{
+Future<void> main()
+async {
+  WidgetsFlutterBinding.ensureInitialized();
+  ApiClient.instance.init();
+    await CurrentUserService.instance.loadFromStorage();
+
+
   runApp(const SynTraceApp());
 }
 

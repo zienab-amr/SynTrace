@@ -11,5 +11,8 @@ class AppRoutes
   static const String security = '/security';
   static const String settings = '/settings';
   static const String profile = '/profile';
+  static const String notifications = '/notifications';
+  static const String reports = '/reports';
+
 
 }
