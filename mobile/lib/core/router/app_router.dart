@@ -1,3 +1,4 @@
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:syntrace/features/auth/presentation/screens/login_screen.dart';
 import 'package:syntrace/features/auth/presentation/screens/signup_screen.dart';
@@ -6,11 +7,16 @@ import 'package:syntrace/features/dashboard/presentation/screens/dashboard_scree
 import 'package:syntrace/features/graph/presentation/screens/graph_screen.dart';
 import 'package:syntrace/features/notifications/presentation/screens/notifications_screen.dart';
 import 'package:syntrace/features/profile/presentation/screens/profile_screen.dart';
+import 'package:syntrace/features/projects/presentation/cubit/projects_cubit.dart';
+import 'package:syntrace/features/projects/presentation/screens/project_details_screen.dart';
+import 'package:syntrace/features/projects/presentation/screens/projects_screen.dart';
 import 'package:syntrace/features/reports/presentation/screens/reports_screen.dart';
 import 'package:syntrace/features/settings/presentation/screens/settings_screen.dart';
 import 'package:syntrace/features/splash/presentation/screens/splash_screen.dart';
 import 'package:syntrace/shared/widgets/app_shell.dart';
 import 'routes.dart';
+import 'package:syntrace/features/tasks/presentation/cubit/tasks_cubit.dart';
+import 'package:syntrace/features/tasks/presentation/screens/tasks_screen.dart';
 
 final appRouter = GoRouter(
   initialLocation: AppRoutes.splash,
@@ -62,6 +68,29 @@ final appRouter = GoRouter(
            path: AppRoutes.signup,
            builder: (context, state) => const SignupScreen(),
            ),
+           GoRoute(
+                path: AppRoutes.projects,
+                builder: (context, state) => BlocProvider(
+                 create: (_) => ProjectsCubit(),
+                 child: const ProjectsScreen(),
+                 ),
+                 routes: [
+                     GoRoute(
+                        path: ':id',
+                        builder: (context, state) {
+                        final projectId = state.pathParameters['id'] ?? '';
+                        return ProjectDetailsScreen(projectId: projectId);
+                      },
+                     ),
+                   ],
+                ),
+                GoRoute(
+                     path: AppRoutes.tasks,
+                     builder: (context, state) => BlocProvider(
+                     create: (_) => TasksCubit(),
+                     child: const TasksScreen(),
+                   ),
+                  ),
       ],
     ),
   ],
