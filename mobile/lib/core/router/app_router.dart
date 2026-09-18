@@ -1,12 +1,14 @@
 import 'package:go_router/go_router.dart';
-import 'package:syntrace/features/screens/chat/chat_screen.dart';
-import 'package:syntrace/features/screens/dashboard/dashboard_screen.dart';
-import 'package:syntrace/features/screens/graph_screen/graph_screen.dart';
-import 'package:syntrace/features/screens/notifications/notifications_screen.dart';
-import 'package:syntrace/features/screens/profile/profile_screen.dart';
-import 'package:syntrace/features/screens/reports/reports_screen.dart';
-import 'package:syntrace/features/screens/settings/settings_screen.dart';
-import 'package:syntrace/features/screens/splash/splash_screen.dart';
+import 'package:syntrace/features/auth/presentation/screens/login_screen.dart';
+import 'package:syntrace/features/auth/presentation/screens/signup_screen.dart';
+import 'package:syntrace/features/chat/presentation/screens/chat_screen.dart';
+import 'package:syntrace/features/dashboard/presentation/screens/dashboard_screen.dart';
+import 'package:syntrace/features/graph/presentation/screens/graph_screen.dart';
+import 'package:syntrace/features/notifications/presentation/screens/notifications_screen.dart';
+import 'package:syntrace/features/profile/presentation/screens/profile_screen.dart';
+import 'package:syntrace/features/reports/presentation/screens/reports_screen.dart';
+import 'package:syntrace/features/settings/presentation/screens/settings_screen.dart';
+import 'package:syntrace/features/splash/presentation/screens/splash_screen.dart';
 import 'package:syntrace/shared/widgets/app_shell.dart';
 import 'routes.dart';
 
@@ -52,6 +54,14 @@ final appRouter = GoRouter(
           path: AppRoutes.notifications,
           builder: (context, state) => const  NotificationsScreen(),
         ),
+        GoRoute(
+           path: AppRoutes.login,
+           builder: (context, state) => const LoginScreen(),
+           ),
+           GoRoute(
+           path: AppRoutes.signup,
+           builder: (context, state) => const SignupScreen(),
+           ),
       ],
     ),
   ],

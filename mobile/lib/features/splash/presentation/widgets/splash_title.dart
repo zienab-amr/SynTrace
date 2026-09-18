@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:syntrace/features/screens/splash/loading_dots.dart';
+import 'package:syntrace/features/splash/presentation/widgets/loading_dots.dart';
 
 class SplashTitle extends StatelessWidget {
   const SplashTitle({super.key});

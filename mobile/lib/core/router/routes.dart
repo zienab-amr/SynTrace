@@ -13,6 +13,8 @@ class AppRoutes
   static const String profile = '/profile';
   static const String notifications = '/notifications';
   static const String reports = '/reports';
+  static const String login = '/login';
+  static const String signup = '/signup';
 
 
 }

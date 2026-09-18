@@ -1,11 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:syntrace/core/network/api_client.dart';
 import 'package:syntrace/core/router/routes.dart';
-import 'package:syntrace/features/screens/splash/splash_logo.dart';
-import 'package:syntrace/features/screens/splash/network_background.dart';
-import 'package:syntrace/features/screens/splash/splash_title.dart';
+import 'package:syntrace/features/splash/presentation/widgets/splash_logo.dart';
+import 'package:syntrace/features/splash/presentation/widgets/network_background.dart';
+import 'package:syntrace/features/splash/presentation/widgets/splash_title.dart';
 
 class SplashScreen extends StatefulWidget 
 {
