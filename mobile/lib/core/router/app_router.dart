@@ -6,6 +6,8 @@ import 'package:syntrace/features/chat/presentation/screens/chat_screen.dart';
 import 'package:syntrace/features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'package:syntrace/features/graph/presentation/screens/graph_screen.dart';
 import 'package:syntrace/features/notifications/presentation/screens/notifications_screen.dart';
+import 'package:syntrace/features/onboarding/presentation/cubit/onboarding_cubit.dart';
+import 'package:syntrace/features/onboarding/presentation/screens/onboarding_wizard_screen.dart';
 import 'package:syntrace/features/profile/presentation/screens/profile_screen.dart';
 import 'package:syntrace/features/projects/presentation/cubit/projects_cubit.dart';
 import 'package:syntrace/features/projects/presentation/screens/project_details_screen.dart';
@@ -93,6 +95,13 @@ final appRouter = GoRouter(
                   ),
       ],
     ),
+     GoRoute(
+                      path: AppRoutes.onboarding,
+                      builder: (context, state) => BlocProvider(
+                      create: (_) => OnboardingCubit(),
+                      child: const OnboardingWizardScreen(),
+                    ),
+                 ),
   ],
 );
 

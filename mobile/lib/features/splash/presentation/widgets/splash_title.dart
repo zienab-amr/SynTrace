@@ -7,6 +7,8 @@ class SplashTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context)
   {
+    final theme = Theme.of(context);
+
     return Column(
       children: [
         TweenAnimationBuilder<double>(
@@ -22,10 +24,10 @@ class SplashTitle extends StatelessWidget {
               ),
             );
           },
-          child: const Text(
+          child: Text(
             'SynTrace',
             style: TextStyle(
-              color: Colors.white,
+              color: theme.colorScheme.onSurface,
               fontSize: 36,
               fontWeight: FontWeight.bold,
               letterSpacing: 1.2,

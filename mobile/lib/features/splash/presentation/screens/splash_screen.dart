@@ -24,7 +24,7 @@ void initState() {
   
   
   _navigationTimer = Timer(const Duration(milliseconds: 2500), () {
-    if (mounted) context.go(AppRoutes.dashboard);
+    if (mounted) context.go(AppRoutes.onboarding);
   });
 }
 
