@@ -12,6 +12,14 @@
 
   <ItemGroup>
     <Folder Include="Behaviors\" />
+<<<<<<< HEAD
+    <Folder Include="Features\Auth\Queries\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MediatR" Version="14.2.0" />
+=======
+>>>>>>> b223cd8d0e2508b9ae3eec5f0b7dc6378c833a26
   </ItemGroup>
 
 </Project>
