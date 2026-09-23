@@ -7,7 +7,7 @@ using SynTrace.Domain.Interfaces;
 
 namespace SynTrace.Infrastructure.Identity
 {
-    public class OTPService
+    public class OTPService : IOTPService
     {
         private readonly IMemoryCache _cache;
         private readonly UserManager<Employee> _userManager;
@@ -32,12 +32,6 @@ namespace SynTrace.Infrastructure.Identity
 
         public async Task SendOTP(OTPRequestDTO request)
         {
-            var existingEmail =
-                await _userManager.FindByEmailAsync(request.Email);
-
-            if (existingEmail != null)
-                throw new InvalidOperationException("Email already exists.");
-
             var otp = GenerateOTP();
 
             _cache.Set(
