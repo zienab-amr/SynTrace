@@ -2,24 +2,26 @@
 using System.Collections.Generic;
 using System.Text;
 using Microsoft.AspNetCore.Identity;
-using SynTrace.Application.DTOs;
+using SynTrace.Application.DTOs.Requests;
+using SynTrace.Application.DTOs.Responses;
 using SynTrace.Domain.Entities;
+using SynTrace.Domain.Interfaces;
 using SynTrace.Infrastructure.Persistence.Context;
 
 namespace SynTrace.Infrastructure.Identity
 {
-    public class RegisterService
+    public class RegisterService : IRegisterService
     {
         private readonly SynTraceDbContext _context;
         private readonly UserManager<Employee> _userManager;
-        private readonly OTPService _otpService;
-        public RegisterService(SynTraceDbContext context, UserManager<Employee> userManager, OTPService otpService)
+        private readonly IOTPService _otpService;
+        public RegisterService(SynTraceDbContext context, UserManager<Employee> userManager, IOTPService otpService)
         {
             _context = context;
             _userManager = userManager;
             _otpService = otpService;
         }
-        public async Task<Employee> CreateFirstEmployeeAsync(RegisterRequestDTO requestDto)
+        public async Task<RegisterResponseDTO> CreateFirstEmployeeAsync(RegisterRequestDTO requestDto)
         {
             if (requestDto == null)
                 throw new ArgumentNullException(nameof(requestDto));
@@ -29,15 +31,11 @@ namespace SynTrace.Infrastructure.Identity
             if(existingEmail != null)
                 throw new InvalidOperationException("Email already exists.");
 
-
-            var valid = _otpService.ValidateOTP(new VerifyOTPRequestDTO
+            if (!_otpService.IsEmailVerified(requestDto.Email))
             {
-                Email = requestDto.Email,
-                OTP = requestDto.OTP
-            });
-
-            if(!valid)
-                throw new InvalidOperationException("Invalid OTP.");
+                throw new InvalidOperationException(
+                    "Email must be verified before registration.");
+            }
 
             var company = new Company
             {
@@ -64,13 +62,25 @@ namespace SynTrace.Infrastructure.Identity
                     string.Join(", ", result.Errors.Select(e => e.Description)));
             }
 
-            await _userManager.AddToRoleAsync(employee, "Admin");
+            var roleResult = await _userManager.AddToRoleAsync(employee, "Admin");
 
-            return employee;
+            if (!roleResult.Succeeded)
+            {
+                throw new InvalidOperationException(
+                    string.Join(", ", roleResult.Errors.Select(e => e.Description)));
+            }
+
+            _otpService.RemoveEmailVerification(requestDto.Email);
+
+            var responseDto = new RegisterResponseDTO
+            {
+                EmployeeId = employee.Id,
+                CompanyId = company.CompanyId,
+                Email = employee.Email
+            };
+            return responseDto;
 
         }
-
-
 
     }
 }

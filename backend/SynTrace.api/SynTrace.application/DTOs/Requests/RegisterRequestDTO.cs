@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace SynTrace.Application.DTOs
+namespace SynTrace.Application.DTOs.Requests
 {
     public class RegisterRequestDTO
     {
@@ -16,8 +16,5 @@ namespace SynTrace.Application.DTOs
         public string? PhoneNumber { get; set; }
 
         public string Password { get; set; } = string.Empty;
-
-        public string OTP { get; set; } = string.Empty;
-
     }
 }
