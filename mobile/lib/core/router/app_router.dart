@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:syntrace/features/auth/presentation/cubit/login_cubit.dart';
 import 'package:syntrace/features/auth/presentation/screens/login_screen.dart';
 import 'package:syntrace/features/auth/presentation/screens/signup_screen.dart';
 import 'package:syntrace/features/chat/presentation/screens/chat_screen.dart';
@@ -62,14 +63,6 @@ final appRouter = GoRouter(
           path: AppRoutes.notifications,
           builder: (context, state) => const  NotificationsScreen(),
         ),
-        GoRoute(
-           path: AppRoutes.login,
-           builder: (context, state) => const LoginScreen(),
-           ),
-           GoRoute(
-           path: AppRoutes.signup,
-           builder: (context, state) => const SignupScreen(),
-           ),
            GoRoute(
                 path: AppRoutes.projects,
                 builder: (context, state) => BlocProvider(
@@ -93,18 +86,28 @@ final appRouter = GoRouter(
                      child: const TasksScreen(),
                    ),
                   ),
-      ],
-    ),
-     GoRoute(
+                  ],
+                 ),
+                  GoRoute(
                       path: AppRoutes.onboarding,
                       builder: (context, state) => BlocProvider(
                       create: (_) => OnboardingCubit(),
                       child: const OnboardingWizardScreen(),
                     ),
                  ),
+                 GoRoute(
+                         path: AppRoutes.login,
+                         builder: (context, state) => BlocProvider(
+                         create: (_) => LoginCubit(),
+                         child: const LoginScreen(),
+                      ),
+                    ),
+                  GoRoute(
+                     path: AppRoutes.signup,
+                     builder: (context, state) => BlocProvider(
+                     create: (_) => LoginCubit(),
+                     child: const SignupScreen(),
+                 ),
+          ),
   ],
 );
-
-class Profile {
-  const Profile();
-}
