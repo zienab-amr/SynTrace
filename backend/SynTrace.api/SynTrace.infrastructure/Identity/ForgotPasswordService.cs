@@ -1,15 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.Identity.Client.NativeInterop;
+﻿using Microsoft.AspNetCore.Identity;
+using SynTrace.Application.Contracts.Auth;
 using SynTrace.Application.DTOs;
+using SynTrace.Application.DTOs.Requests;
 using SynTrace.Domain.Entities;
 using SynTrace.Domain.Interfaces;
 
 namespace SynTrace.Infrastructure.Identity
 {
-    public class ForgotPasswordService
+    public class ForgotPasswordService : IForgotPasswordService
     {
         private readonly UserManager<Employee> _userManager;
         private readonly IOTPService _oTPService;
@@ -26,18 +24,13 @@ namespace SynTrace.Infrastructure.Identity
             if (employee == null)
                 throw new Exception("If the account exists, a verification code has been sent.");
 
-            var valid = _oTPService.ValidateOTP(new VerifyOTPRequestDTO
-            {
-                Email = forgotPassword.Email,
-                OTP = forgotPassword.OTP
-            });
-
-            if(!valid)
-                throw new Exception("Invalid OTP");
-
             if (forgotPassword.NewPassword != forgotPassword.ConfirmPassword)
                 throw new InvalidOperationException(
                     "Password confirmation does not match.");
+
+            if(!_oTPService.IsEmailVerified(forgotPassword.Email))
+                throw new InvalidOperationException(
+                    "Email is not verified.");
 
             var token = await _userManager.GeneratePasswordResetTokenAsync(employee);
             var reset = await _userManager.ResetPasswordAsync(employee, token, forgotPassword.NewPassword);
@@ -47,6 +40,8 @@ namespace SynTrace.Infrastructure.Identity
                 throw new InvalidOperationException(
                     string.Join(", ", reset.Errors.Select(e => e.Description)));
             }
+
+            _oTPService.RemoveEmailVerification(forgotPassword.Email);
 
             return;
         }
