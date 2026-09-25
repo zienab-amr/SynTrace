@@ -23,8 +23,9 @@ void initState() {
   super.initState();
   
   
-  _navigationTimer = Timer(const Duration(milliseconds: 2500), () {
-    if (mounted) context.go(AppRoutes.onboarding);
+  _navigationTimer = Timer(const Duration(milliseconds: 2500), ()
+  {
+    if (mounted) context.go(AppRoutes.login);
   });
 }
 
