@@ -13,5 +13,7 @@ namespace SynTrace.Infrastructure.Persistence.Context
         public DbSet<Company> Companies { get; set; }
         public DbSet<Employee> Employees { get; set; }
 
+        public DbSet<RefreshToken> RefreshTokens { get; set; }
+
     }
 }
