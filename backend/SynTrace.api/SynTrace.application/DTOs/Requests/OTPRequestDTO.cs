@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace SynTrace.Application.DTOs
+namespace SynTrace.Application.DTOs.Requests
 {
     public class OTPRequestDTO
     {
