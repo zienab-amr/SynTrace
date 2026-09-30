@@ -2,12 +2,14 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using SynTrace.Application.Contracts;
 using SynTrace.Application.Contracts.Auth;
 using SynTrace.Domain.Entities;
 using SynTrace.Domain.Interfaces;
 using SynTrace.Infrastructure.ExternalServices;
 using SynTrace.Infrastructure.Identity;
 using SynTrace.Infrastructure.Persistence.Context;
+using SynTrace.Infrastructure.Repositories;
 
 namespace SynTrace.Infrastructure
 {
@@ -30,6 +32,9 @@ namespace SynTrace.Infrastructure
             // Cache
             services.AddMemoryCache();
 
+            //Services
+            services.AddHttpContextAccessor();
+
             // Identity Services
             services.AddScoped<IRegisterService, RegisterService>();
             services.AddScoped<ILoginService, LoginService>();
@@ -37,6 +42,10 @@ namespace SynTrace.Infrastructure
             services.AddScoped<IEmailService, EmailService>();
             services.AddScoped<ITokenService, TokenService>();
             services.AddScoped<IForgotPasswordService, ForgotPasswordService>();
+            services.AddScoped<ICurrentTenant, CurrentTenant>();
+            services.AddScoped<IRoleService, RoleService>();
+            services.AddScoped<IEmployeeRepository, EmployeeRepository>();
+
 
             return services;
         }
