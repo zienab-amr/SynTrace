@@ -1,13 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:syntrace/core/models/user_model.dart';
-import 'package:syntrace/core/theme/app_colors.dart';
 import 'package:syntrace/shared/widgets/user_avatar.dart';
 
 /// ═══════════════════════════════════════════════════════════
 /// TeamAvatars
-/// 
-/// مجموعة Avatars متراكبة (Overlapping)
-/// كل Avatar له Tooltip بالاسم الكامل
 /// ═══════════════════════════════════════════════════════════
 class TeamAvatars extends StatelessWidget {
   final List<UserModel> users;
