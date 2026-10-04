@@ -1,70 +1,46 @@
-class ApiEndpoints {
-  ApiEndpoints._(); // عشان مينفعش يتعمل منه instance
+class ApiEndpoints 
+{
+  ApiEndpoints._();
 
-  // ═══════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
   // Base URL
-  // ═══════════════════════════════════════════
-  // غيّريها حسب الـ Backend بتاعك
-  static const String baseUrl = 'https://localhost:5001/api';
-
-  // ═══════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
+   static const String baseUrl = 'http://localhost:5221';
+  // ═══════════════════════════════════════════════════════════
   // Auth
-  // ═══════════════════════════════════════════
-  static const String login = '/auth/login';
-  static const String register = '/auth/register';
-  static const String refreshToken = '/auth/refresh';
-  static const String logout = '/auth/logout';
-  static const String me = '/auth/me';
+  // ═══════════════════════════════════════════════════════════
+  static const String login = '/api/Auth/login';
+  static const String register = '/api/Auth/register';
+  static const String logout = '/api/Auth/logout';
+  static const String refreshToken = '/api/Auth/refresh-token';
+  static const String sendOtp = '/api/Auth/send-otp';
+  static const String verifyOtp = '/api/Auth/verify-otp';
+  static const String resetPassword = '/api/Auth/reset-password';
 
-  // ═══════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
   // Projects
-  // ═══════════════════════════════════════════
-  static const String projects = '/projects';
-  static String projectById(String id) => '/projects/$id';
+  // ═══════════════════════════════════════════════════════════
+  static const String projects = '/api/Projects';
+  static String projectById(String id) => '/api/Projects/$id';
 
-  // ═══════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
   // Tasks
-  // ═══════════════════════════════════════════
-  static const String tasks = '/tasks';
-  static String taskById(String id) => '/tasks/$id';
+  // ═══════════════════════════════════════════════════════════
+  static const String tasks = '/api/Tasks';
+  static String taskById(String id) => '/api/Tasks/$id';
 
-  // ═══════════════════════════════════════════
-  // Meetings
-  // ═══════════════════════════════════════════
-  static const String meetings = '/meetings';
-  static String meetingById(String id) => '/meetings/$id';
+  // ═══════════════════════════════════════════════════════════
+  // Chat
+  // ═══════════════════════════════════════════════════════════
+  static const String chat = '/api/Chat';
 
-  // ═══════════════════════════════════════════
-  // Commits
-  // ═══════════════════════════════════════════
-  static const String commits = '/commits';
+  // ═══════════════════════════════════════════════════════════
+  // Graph
+  // ═══════════════════════════════════════════════════════════
+  static const String graph = '/api/Graph';
 
-  // ═══════════════════════════════════════════
-  // Bugs
-  // ═══════════════════════════════════════════
-  static const String bugs = '/bugs';
-  static String bugById(String id) => '/bugs/$id';
-
-  // ═══════════════════════════════════════════
-  // Requirements
-  // ═══════════════════════════════════════════
-  static const String requirements = '/requirements';
-
-  // ═══════════════════════════════════════════
-  // AI Chat
-  // ═══════════════════════════════════════════
-  static const String chat = '/chat';
-  static const String chatHistory = '/chat/history';
-
-  // ═══════════════════════════════════════════
-  // Knowledge Graph
-  // ═══════════════════════════════════════════
-  static const String graph = '/graph';
-  static const String graphSearch = '/graph/search';
-
-  // ═══════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
   // Dashboard
-  // ═══════════════════════════════════════════
-  static const String dashboardStats = '/dashboard/stats';
-  static const String dashboardRecent = '/dashboard/recent';
+  // ═══════════════════════════════════════════════════════════
+  static const String dashboardStats = '/api/Dashboard/stats';
 }
