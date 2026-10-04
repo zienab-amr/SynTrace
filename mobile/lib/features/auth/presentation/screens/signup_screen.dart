@@ -17,52 +17,69 @@ class SignupScreen extends StatefulWidget {
   State<SignupScreen> createState() => _SignupScreenState();
 }
 
-class _SignupScreenState extends State<SignupScreen> {
+class _SignupScreenState extends State<SignupScreen> 
+{
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
+  final _companyController = TextEditingController();
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmController = TextEditingController();
   bool _agreedToTerms = false;
 
   @override
-  void dispose() {
-    _nameController.dispose();
+  void dispose() 
+  {
+    _companyController.dispose();
+    _firstNameController.dispose();
+    _lastNameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmController.dispose();
     super.dispose();
   }
 
-  void _onSignup() {
-    if (!_formKey.currentState!.validate()) return;
-
-    if (!_agreedToTerms) {
-      _showError('Please accept the Terms & Conditions');
-      return;
-    }
-
-    context.read<LoginCubit>().signup(
-          fullName: _nameController.text.trim(),
-          email: _emailController.text.trim(),
-          password: _passwordController.text,
-        );
+  // ═══════════════════════════════════════════════════════
+  // Signup Action
+  // ═══════════════════════════════════════════════════════
+  void _onSignup() 
+  {
+  if (!_formKey.currentState!.validate()) return;
+  if (!_agreedToTerms) {
+    _showError('Please accept the Terms & Conditions');
+    return;
   }
 
+  context.read<LoginCubit>().sendOtp(
+        companyName: _companyController.text.trim(),
+        firstName: _firstNameController.text.trim(),
+        lastName: _lastNameController.text.trim(),
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
+}
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) 
+  {
     return BlocListener<LoginCubit, LoginState>(
       listener: (context, state) {
-        if (state is LoginSuccess) {
-          _showSuccess('Account created! Welcome, ${state.authResponse.user.name}');
-          Future.delayed(const Duration(milliseconds: 600), () {
-            if (mounted) context.go(AppRoutes.onboarding);
-          });
-        }
-        if (state is LoginError) {
-          _showError(state.message);
-        }
-      },
+  if (state is OtpSent) {
+    _showSuccess('OTP sent to ${state.email}');
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (mounted) {
+        context.go(
+          AppRoutes.verifyOtp,
+          extra: state.email,  
+        );
+      }
+    });
+  }
+  if (state is LoginError) {
+    _showError(state.message);
+  }
+},
       child: AuthScreenLayout(
         title: 'Create account',
         subtitle: 'Sign up to get started with SynTrace',
@@ -72,19 +89,52 @@ class _SignupScreenState extends State<SignupScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // ─── Company Name ───
                 AuthTextField(
-                  label: 'Full Name',
-                  hint: 'John Doe',
-                  icon: Icons.person_outline,
-                  controller: _nameController,
+                  label: 'Company Name',
+                  hint: 'Acme Corp',
+                  icon: Icons.business_outlined,
+                  controller: _companyController,
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
-                      return 'Full name is required';
+                      return 'Company name is required';
                     }
                     return null;
                   },
                 ),
                 const SizedBox(height: 16),
+
+                // ─── First Name ───
+                AuthTextField(
+                  label: 'First Name',
+                  hint: 'John',
+                  icon: Icons.person_outline,
+                  controller: _firstNameController,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'First name is required';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // ─── Last Name ───
+                AuthTextField(
+                  label: 'Last Name',
+                  hint: 'Doe',
+                  icon: Icons.person_outline,
+                  controller: _lastNameController,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Last name is required';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // ─── Email ───
                 AuthTextField(
                   label: 'Work Email',
                   hint: 'you@company.com',
@@ -102,23 +152,39 @@ class _SignupScreenState extends State<SignupScreen> {
                   },
                 ),
                 const SizedBox(height: 16),
-                AuthTextField(
-                  label: 'Password',
-                  hint: 'At least 6 characters',
-                  icon: Icons.lock_outline,
-                  controller: _passwordController,
-                  isPassword: true,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Password is required';
-                    }
-                    if (value.length < 6) {
-                      return 'Password must be at least 6 characters';
-                    }
-                    return null;
-                  },
-                ),
+
+                // ─── Password ───
+               AuthTextField(
+  label: 'Password',
+  hint: 'Password123!',
+  icon: Icons.lock_outline,
+  controller: _passwordController,
+  isPassword: true,
+  validator: (value) {
+    if (value == null || value.isEmpty) {
+      return 'Password is required';
+    }
+    if (value.length < 8) {
+      return 'Password must be at least 8 characters';
+    }
+    if (!RegExp(r'[A-Z]').hasMatch(value)) {
+      return 'Password must contain an uppercase letter';
+    }
+    if (!RegExp(r'[a-z]').hasMatch(value)) {
+      return 'Password must contain a lowercase letter';
+    }
+    if (!RegExp(r'[0-9]').hasMatch(value)) {
+      return 'Password must contain a number';
+    }
+    if (!RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-]').hasMatch(value)) {
+      return 'Password must contain a special character';
+    }
+    return null;
+  },
+),
                 const SizedBox(height: 16),
+
+                // ─── Confirm Password ───
                 AuthTextField(
                   label: 'Confirm Password',
                   hint: '••••••••',
@@ -128,7 +194,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   textInputAction: TextInputAction.done,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'Please confirm your password';
+                      return 'Confirm your password';
                     }
                     if (value != _passwordController.text) {
                       return 'Passwords do not match';
@@ -174,7 +240,8 @@ class _SignupScreenState extends State<SignupScreen> {
           height: 22,
           child: Checkbox(
             value: _agreedToTerms,
-            onChanged: (value) => setState(() => _agreedToTerms = value ?? false),
+            onChanged: (value) =>
+                setState(() => _agreedToTerms = value ?? false),
             activeColor: AppColors.primary,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(6),

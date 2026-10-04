@@ -41,17 +41,17 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return BlocListener<LoginCubit, LoginState>(
-      listener: (context, state) {
-        if (state is LoginSuccess) {
-          _showSuccessMessage(context, state);
-          Future.delayed(const Duration(milliseconds: 600), () {
-            if (mounted) context.go(AppRoutes.dashboard);
-          });
-        }
-        if (state is LoginError) {
-          _showErrorMessage(context, state.message);
-        }
-      },
+ listener: (context, state) {
+  if (state is LoginSuccess) {
+    _showSuccessMessage(context, state);
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (mounted) context.go(AppRoutes.onboarding);
+    });
+  }
+  if (state is LoginError) {
+    _showErrorMessage(context, state.message);
+  }
+},
       child: AuthScreenLayout(
         title: 'Welcome back',
         subtitle: 'Sign in to your engineering intelligence workspace',
@@ -133,27 +133,25 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  void _showSuccessMessage(BuildContext context, LoginSuccess state) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle, color: Colors.white),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text('Welcome back, ${state.authResponse.user.name}!'),
-            ),
-          ],
-        ),
-        backgroundColor: AppColors.secondary,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+void _showSuccessMessage(BuildContext context, LoginSuccess state) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: const Row(
+        children: [
+          Icon(Icons.check_circle, color: Colors.white),
+          SizedBox(width: 12),
+          Expanded(child: Text('Welcome back!')),
+        ],
       ),
-    );
-  }
+      backgroundColor: AppColors.secondary,
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 2),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+      ),
+    ),
+  );
+}
 
   void _showErrorMessage(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(
