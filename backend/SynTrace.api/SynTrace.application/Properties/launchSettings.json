@@ -1,0 +1,7 @@
+{
+  "profiles": {
+    "SynTrace.Application": {
+      "commandName": "Project"
+    }
+  }
+}

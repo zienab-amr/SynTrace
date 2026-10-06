@@ -84,13 +84,25 @@ class _AppSidebarState extends State<AppSidebar>
                   route: AppRoutes.graph,
                   isCollapsed: _isCollapsed,
                 ),
+                 SidebarItem(
+                  icon: Icons.folder_outlined,
+                  label: 'Projects',
+                  route: AppRoutes.projects,
+                   isCollapsed: _isCollapsed,
+                  ),
+                SidebarItem(
+                      icon: Icons.task_alt,
+                      label: 'Tasks',
+                      route: AppRoutes.tasks,
+                      isCollapsed: _isCollapsed,
+                  ),
                 SidebarItem(
                   icon: CupertinoIcons.settings,
                   label: 'Settings',
                   route: AppRoutes.settings, 
                   isCollapsed: _isCollapsed,
                 ),
-              ],
+        ],
             ),
           ),
 

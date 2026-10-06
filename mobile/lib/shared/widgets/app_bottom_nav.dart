@@ -13,11 +13,12 @@ class AppBottomNav extends StatelessWidget
     final theme = Theme.of(context);
     final currentPath = GoRouterState.of(context).uri.path;
 
-    final items = [
-      (CupertinoIcons.house, 'Home', AppRoutes.dashboard),
-      (CupertinoIcons.chat_bubble, 'Ask', AppRoutes.chat),
-      (CupertinoIcons.arrow_branch, 'Graph', AppRoutes.graph),
-      (CupertinoIcons.person, 'Profile', AppRoutes.profile),
+   final items = [
+  (Icons.dashboard, 'Dashboard', AppRoutes.dashboard),
+  (CupertinoIcons.folder, 'Projects', AppRoutes.projects),
+  (CupertinoIcons.chat_bubble_2, 'Chat', AppRoutes.chat),   // ← جديد
+  (Icons.hub_outlined, 'Graph', AppRoutes.graph),
+  (CupertinoIcons.settings, 'Sittings', AppRoutes.settings),
     ];
 
     final currentIndex = items

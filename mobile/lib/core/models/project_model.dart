@@ -10,6 +10,9 @@ class ProjectModel extends Equatable {
   final String? tenantId;
   final String? ownerId;
   final List<String> memberIds;
+  final int currentSprint;
+  final int totalSprints;
+  final DateTime? sprintEnd;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -23,10 +26,16 @@ class ProjectModel extends Equatable {
     this.tenantId,
     this.ownerId,
     this.memberIds = const [],
+    this.currentSprint = 1,
+    this.totalSprints = 1,
+    this.sprintEnd,
     this.createdAt,
     this.updatedAt,
   });
 
+  // ═══════════════════════════════════════════════════════
+  // fromJson
+  // ═══════════════════════════════════════════════════════
   factory ProjectModel.fromJson(Map<String, dynamic> json) {
     return ProjectModel(
       id: json['id'] as String? ?? '',
@@ -44,6 +53,11 @@ class ProjectModel extends Equatable {
       memberIds: json['memberIds'] != null
           ? List<String>.from(json['memberIds'] as List)
           : const [],
+      currentSprint: json['currentSprint'] as int? ?? 1,
+      totalSprints: json['totalSprints'] as int? ?? 1,
+      sprintEnd: json['sprintEnd'] != null
+          ? DateTime.tryParse(json['sprintEnd'] as String)
+          : null,
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'] as String)
           : null,
@@ -53,6 +67,9 @@ class ProjectModel extends Equatable {
     );
   }
 
+  // ═══════════════════════════════════════════════════════
+  // toJson
+  // ═══════════════════════════════════════════════════════
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -64,11 +81,17 @@ class ProjectModel extends Equatable {
       'tenantId': tenantId,
       'ownerId': ownerId,
       'memberIds': memberIds,
+      'currentSprint': currentSprint,
+      'totalSprints': totalSprints,
+      'sprintEnd': sprintEnd?.toIso8601String(),
       'createdAt': createdAt?.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
     };
   }
 
+  // ═══════════════════════════════════════════════════════
+  // copyWith
+  // ═══════════════════════════════════════════════════════
   ProjectModel copyWith({
     String? id,
     String? name,
@@ -79,6 +102,9 @@ class ProjectModel extends Equatable {
     String? tenantId,
     String? ownerId,
     List<String>? memberIds,
+    int? currentSprint,
+    int? totalSprints,
+    DateTime? sprintEnd,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -92,22 +118,49 @@ class ProjectModel extends Equatable {
       tenantId: tenantId ?? this.tenantId,
       ownerId: ownerId ?? this.ownerId,
       memberIds: memberIds ?? this.memberIds,
+      currentSprint: currentSprint ?? this.currentSprint,
+      totalSprints: totalSprints ?? this.totalSprints,
+      sprintEnd: sprintEnd ?? this.sprintEnd,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
+  // ═══════════════════════════════════════════════════════
+  // Getters
+  // ═══════════════════════════════════════════════════════
   bool get isActive => status == ProjectStatus.active;
   bool get isCompleted => status == ProjectStatus.completed;
   bool get isArchived => status == ProjectStatus.archived;
 
+  /// ─── Sprint info ───
+  String get sprintLabel => 'Sprint $currentSprint of $totalSprints';
+
+  // ═══════════════════════════════════════════════════════
+  // Equatable
+  // ═══════════════════════════════════════════════════════
   @override
   List<Object?> get props => [
-        id, name, description, status, startDate, endDate,
-        tenantId, ownerId, memberIds, createdAt, updatedAt,
+        id,
+        name,
+        description,
+        status,
+        startDate,
+        endDate,
+        tenantId,
+        ownerId,
+        memberIds,
+        currentSprint,
+        totalSprints,
+        sprintEnd,
+        createdAt,
+        updatedAt,
       ];
 }
 
+// ═══════════════════════════════════════════════════════════
+// ProjectStatus
+// ═══════════════════════════════════════════════════════════
 enum ProjectStatus {
   active('active'),
   completed('completed'),

@@ -15,6 +15,6 @@ class AppShell extends StatelessWidget {
     if (isDesktop) {
       return WebLayout(child: child);
     }
-    return MobileLayout(child: child);
+    return AppMobileLayout(child: child);
   }
 }

@@ -30,7 +30,8 @@ class _SplashBackgroundState extends State<SplashBackground>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     final glowColor = isDark
         ? AppColors.primary
