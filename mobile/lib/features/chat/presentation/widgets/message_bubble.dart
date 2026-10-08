@@ -4,10 +4,18 @@ import 'package:syntrace/core/theme/app_colors.dart';
 import 'package:syntrace/features/chat/data/models/chat_message.dart';
 import 'package:syntrace/features/chat/presentation/widgets/ai_progress_steps.dart';
 
-class MessageBubble extends StatelessWidget {
+class MessageBubble extends StatelessWidget
+{
   final ChatMessage message;
+  final VoidCallback? onRetry;
+  final VoidCallback? onDelete;
 
-  const MessageBubble({super.key, required this.message});
+  const MessageBubble({
+    super.key,
+    required this.message,
+    this.onRetry,
+    this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +27,7 @@ class MessageBubble extends StatelessWidget {
         crossAxisAlignment:
             isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
-          // ─── Steps (لو فيه) ───
+          // ─── Steps ───
           if (!isUser && message.steps.isNotEmpty) ...[
             ConstrainedBox(
               constraints: BoxConstraints(
@@ -36,6 +44,12 @@ class MessageBubble extends StatelessWidget {
             mainAxisAlignment:
                 isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
             children: [
+              // ─── Failed Icon (User message) ───
+              if (isUser && message.hasError && onRetry != null) ...[
+                _buildFailedIcon(context),
+                const SizedBox(width: 8),
+              ],
+
               Flexible(
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
@@ -54,13 +68,65 @@ class MessageBubble extends StatelessWidget {
   }
 
   // ═══════════════════════════════════════════════════════
+  // Failed Icon
+  // ═══════════════════════════════════════════════════════
+  Widget _buildFailedIcon(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: 'Options',
+      onSelected: (value) {
+        if (value == 'retry') onRetry?.call();
+        if (value == 'delete') onDelete?.call();
+      },
+      itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: 'retry',
+          child: Row(
+            children: [
+              Icon(Icons.refresh, size: 18),
+              SizedBox(width: 8),
+              Text('Retry'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(Icons.delete_outline, size: 18, color: AppColors.error),
+              SizedBox(width: 8),
+              Text('Delete', style: TextStyle(color: AppColors.error)),
+            ],
+          ),
+        ),
+      ],
+      child: Container(
+        width: 20,
+        height: 20,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: AppColors.error,
+        ),
+        child: const Icon(
+          Icons.priority_high,
+          color: Colors.white,
+          size: 14,
+        ),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════
   // User Bubble
   // ═══════════════════════════════════════════════════════
   Widget _buildUserBubble(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.primary,
+        color: message.hasError
+            ? AppColors.error.withOpacity(0.7)
+            : AppColors.primary,
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(18),
           topRight: Radius.circular(18),
@@ -80,11 +146,46 @@ class MessageBubble extends StatelessWidget {
   }
 
   // ═══════════════════════════════════════════════════════
-  // AI Bubble (Markdown)
+  // AI Bubble
   // ═══════════════════════════════════════════════════════
   Widget _buildAiBubble(BuildContext context) {
     final theme = Theme.of(context);
 
+    // ─── Error Message ───
+    if (message.hasError) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.error.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: AppColors.error.withOpacity(0.3),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.error_outline,
+              color: AppColors.error,
+              size: 18,
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                message.content,
+                style: const TextStyle(
+                  color: AppColors.error,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // ─── Normal Message ───
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -191,7 +292,8 @@ class _BlinkingCursorState extends State<_BlinkingCursor>
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context)
+  {
     return FadeTransition(
       opacity: _controller,
       child: Container(
