@@ -1,5 +1,6 @@
 import 'package:syntrace/features/chat/data/models/chat_message.dart';
 import 'package:syntrace/features/chat/data/models/chat_session.dart';
+import 'package:syntrace/features/chat/data/models/jira_card_model.dart';
 
 class MockChats {
   MockChats._();
@@ -42,6 +43,11 @@ class MockChats {
           id: '2',
           role: ChatRole.ai,
           timestamp: DateTime.now().subtract(const Duration(minutes: 4)),
+          jiraCards: const [                          // ← ضيفي ده
+                     MockJiraCards.synt45,
+                     MockJiraCards.bug12,
+                     MockJiraCards.synt47,
+                     ],
           steps: const [
             ProgressStep(label: 'Checking permissions', isDone: true),
             ProgressStep(label: 'Searching engineering knowledge', isDone: true),
@@ -74,4 +80,43 @@ Two senior engineers were reassigned to the Auth module during this sprint.
 3. Re-estimate the sprint scope''',
         ),
       ];
+
+
+}
+
+class MockJiraCards {
+  MockJiraCards._();
+
+  static const synt45 = JiraCardModel(
+    issueKey: 'SYNT-45',
+    summary: 'Fix Customer Table schema',
+    status: 'In Progress',
+    statusCategory: 'in_progress',
+    priority: 'High',
+    issueType: 'Task',
+    assigneeName: 'Ahmed Kamal',
+    url: 'https://syntrace.atlassian.net/browse/SYNT-45',
+  );
+
+  static const bug12 = JiraCardModel(
+    issueKey: 'BUG-12',
+    summary: 'Customer data corrupted',
+    status: 'Blocked',
+    statusCategory: 'blocked',
+    priority: 'Highest',
+    issueType: 'Bug',
+    assigneeName: 'Nour Hassan',
+    url: 'https://syntrace.atlassian.net/browse/BUG-12',
+  );
+
+  static const synt47 = JiraCardModel(
+    issueKey: 'SYNT-47',
+    summary: 'Add validation rules',
+    status: 'Done',
+    statusCategory: 'done',
+    priority: 'Medium',
+    issueType: 'Story',
+    assigneeName: 'Mohamed Ali',
+    url: 'https://syntrace.atlassian.net/browse/SYNT-47',
+  );
 }

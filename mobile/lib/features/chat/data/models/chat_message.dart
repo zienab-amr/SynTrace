@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:syntrace/features/chat/data/models/jira_card_model.dart';
 
 enum ChatRole { user, ai }
 
@@ -29,6 +30,7 @@ class ChatMessage extends Equatable {
   final bool isStreaming;
   final bool hasError;
   final List<ProgressStep> steps;
+  final List<JiraCardModel> jiraCards;
 
   const ChatMessage({
     required this.id,
@@ -38,6 +40,7 @@ class ChatMessage extends Equatable {
     this.isStreaming = false,
     this.hasError = false,
     this.steps = const [],
+    this.jiraCards = const [],
   });
 
   ChatMessage copyWith({

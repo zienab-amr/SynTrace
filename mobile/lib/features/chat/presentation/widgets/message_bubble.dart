@@ -3,6 +3,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
 import 'package:syntrace/features/chat/data/models/chat_message.dart';
 import 'package:syntrace/features/chat/presentation/widgets/ai_progress_steps.dart';
+import 'package:syntrace/features/chat/presentation/widgets/jira_card_widget.dart';
 
 class MessageBubble extends StatelessWidget {
   final ChatMessage message;
@@ -26,6 +27,7 @@ class MessageBubble extends StatelessWidget {
         crossAxisAlignment:
             isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
+          // ─── Progress Steps (AI Only) ───
           if (!isUser && message.steps.isNotEmpty) ...[
             ConstrainedBox(
               constraints: BoxConstraints(
@@ -35,15 +37,20 @@ class MessageBubble extends StatelessWidget {
             ),
             const SizedBox(height: 10),
           ],
+
+          // ─── Message Row ───
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment:
                 isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
             children: [
+              // ─── Failed Icon (User Message) ───
               if (isUser && message.hasError && onRetry != null) ...[
                 _buildFailedIcon(context),
                 const SizedBox(width: 8),
               ],
+
+              // ─── Bubble ───
               Flexible(
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
@@ -61,6 +68,9 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
+  // ═══════════════════════════════════════════════════════
+  // Failed Icon (Retry / Delete Menu)
+  // ═══════════════════════════════════════════════════════
   Widget _buildFailedIcon(BuildContext context) {
     return PopupMenuButton<String>(
       tooltip: 'Options',
@@ -106,6 +116,9 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
+  // ═══════════════════════════════════════════════════════
+  // User Bubble
+  // ═══════════════════════════════════════════════════════
   Widget _buildUserBubble(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -131,9 +144,13 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
+  // ═══════════════════════════════════════════════════════
+  // AI Bubble
+  // ═══════════════════════════════════════════════════════
   Widget _buildAiBubble(BuildContext context) {
     final theme = Theme.of(context);
 
+    // ─── Error Message ───
     if (message.hasError) {
       return Container(
         padding: const EdgeInsets.all(14),
@@ -164,6 +181,7 @@ class MessageBubble extends StatelessWidget {
       );
     }
 
+    // ─── Normal Message ───
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -173,27 +191,47 @@ class MessageBubble extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ─── Empty + Streaming: Blinking Cursor Only ───
           if (message.content.isEmpty && message.isStreaming)
             Row(
               children: [
                 _BlinkingCursor(color: theme.colorScheme.onSurface),
               ],
             )
-          else
+          // ─── Content ───
+          else if (message.content.isNotEmpty)
             MarkdownBody(
               data: message.content,
               styleSheet: _markdownStyle(theme),
               selectable: true,
             ),
+
+          // ─── Blinking Cursor during Streaming ───
           if (message.isStreaming && message.content.isNotEmpty) ...[
             const SizedBox(height: 4),
             _BlinkingCursor(color: theme.colorScheme.onSurface),
+          ],
+
+          // ─── Jira Cards ───
+          if (message.jiraCards.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            ...message.jiraCards.map((card) {
+              return JiraCardWidget(
+                card: card,
+                onTap: () {
+                  // TODO: open URL in browser
+                },
+              );
+            }),
           ],
         ],
       ),
     );
   }
 
+  // ═══════════════════════════════════════════════════════
+  // Markdown Style
+  // ═══════════════════════════════════════════════════════
   MarkdownStyleSheet _markdownStyle(ThemeData theme) {
     return MarkdownStyleSheet(
       h2: TextStyle(
@@ -243,6 +281,9 @@ class MessageBubble extends StatelessWidget {
   }
 }
 
+// ═══════════════════════════════════════════════════════════
+// Blinking Cursor
+// ═══════════════════════════════════════════════════════════
 class _BlinkingCursor extends StatefulWidget {
   final Color color;
   const _BlinkingCursor({required this.color});
