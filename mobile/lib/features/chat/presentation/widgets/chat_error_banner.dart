@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
 import 'package:syntrace/features/chat/data/models/chat_error.dart';
 
-class ChatErrorBanner extends StatelessWidget 
-{
+class ChatErrorBanner extends StatelessWidget {
   final ChatError error;
   final VoidCallback? onRetry;
   final VoidCallback? onDismiss;
@@ -16,31 +15,24 @@ class ChatErrorBanner extends StatelessWidget
   });
 
   @override
-  Widget build(BuildContext context)
-  {
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.error.withOpacity(0.1),
-        border: Border(
-          bottom: BorderSide(
-            color: AppColors.error.withOpacity(0.3),
-          ),
-        ),
+        color: AppColors.error.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
-          // ─── Icon ───
           Icon(
             _getIcon(),
             color: AppColors.error,
             size: 18,
           ),
           const SizedBox(width: 12),
-
-          // ─── Message ───
           Expanded(
             child: Text(
               error.message,
@@ -51,8 +43,6 @@ class ChatErrorBanner extends StatelessWidget
               ),
             ),
           ),
-
-          // ─── Retry ───
           if (error.canRetry && onRetry != null)
             TextButton(
               onPressed: onRetry,
@@ -70,8 +60,6 @@ class ChatErrorBanner extends StatelessWidget
                 ),
               ),
             ),
-
-          // ─── Dismiss ───
           if (onDismiss != null)
             IconButton(
               onPressed: onDismiss,
@@ -89,10 +77,8 @@ class ChatErrorBanner extends StatelessWidget
     );
   }
 
-  IconData _getIcon()
-  {
-    switch (error.type)
-    {
+  IconData _getIcon() {
+    switch (error.type) {
       case ChatErrorType.network:
         return Icons.wifi_off;
       case ChatErrorType.server:

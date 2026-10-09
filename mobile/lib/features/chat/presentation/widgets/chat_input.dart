@@ -63,14 +63,10 @@ class _ChatInputState extends State<ChatInput> {
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: theme.dividerColor.withOpacity(0.3),
-            ),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // ─── Text Field ───
               Expanded(
                 child: TextField(
                   controller: _controller,
@@ -86,7 +82,7 @@ class _ChatInputState extends State<ChatInput> {
                   ),
                   decoration: InputDecoration(
                     hintText: widget.enabled
-                        ? 'Ask SynTrace AI...'
+                        ? 'Ask about your engineering data, risks, developers, PRs...'
                         : 'Connecting...',
                     hintStyle: TextStyle(
                       color: theme.colorScheme.onSurface.withOpacity(0.4),
@@ -101,10 +97,7 @@ class _ChatInputState extends State<ChatInput> {
                   ),
                 ),
               ),
-
               const SizedBox(width: 4),
-
-              // ─── Send Button ───
               _buildSendButton(canSend, theme),
             ],
           ),
@@ -125,7 +118,9 @@ class _ChatInputState extends State<ChatInput> {
           height: 40,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: canSend ? null : theme.colorScheme.onSurface.withOpacity(0.05),
+            color: canSend
+                ? null
+                : theme.colorScheme.onSurface.withOpacity(0.05),
           ),
           child: widget.isLoading
               ? const Center(

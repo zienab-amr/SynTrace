@@ -16,11 +16,8 @@ class AiProgressSteps extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withOpacity(0.5),
+        color: theme.colorScheme.surface.withOpacity(0.3),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.dividerColor.withOpacity(0.3),
-        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -29,11 +26,8 @@ class AiProgressSteps extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Row(
               children: [
-                // ─── Icon ───
                 _buildIcon(step),
                 const SizedBox(width: 10),
-
-                // ─── Label ───
                 Flexible(
                   child: Text(
                     step.label,

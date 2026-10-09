@@ -1,11 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
 
-/// ═══════════════════════════════════════════════════════════
-/// TypingIndicator
-/// 
-/// 3 نقط بتتحرك — بتظهر لما الـ AI بيفكر
-/// ═══════════════════════════════════════════════════════════
 class TypingIndicator extends StatefulWidget {
   const TypingIndicator({super.key});
 
@@ -41,7 +36,6 @@ class _TypingIndicatorState extends State<TypingIndicator>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ─── AI Avatar ───
           Container(
             width: 32,
             height: 32,
@@ -60,24 +54,18 @@ class _TypingIndicatorState extends State<TypingIndicator>
             ),
           ),
           const SizedBox(width: 10),
-
-          // ─── Bubble with Dots ───
           Container(
             padding: const EdgeInsets.symmetric(
               horizontal: 16,
               vertical: 14,
             ),
             decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
+              color: theme.colorScheme.surface.withOpacity(0.5),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: theme.dividerColor.withOpacity(0.3),
-              ),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // ─── 3 Dots ───
                 AnimatedBuilder(
                   animation: _controller,
                   builder: (context, child) {
@@ -87,7 +75,6 @@ class _TypingIndicatorState extends State<TypingIndicator>
                         final progress =
                             (_controller.value - delay).clamp(0.0, 1.0);
 
-                        // كل نقطة بترتفع وتنزل
                         final bounce = progress < 0.5
                             ? progress * 2
                             : (1 - progress) * 2;

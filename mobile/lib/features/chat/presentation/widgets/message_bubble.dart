@@ -4,8 +4,7 @@ import 'package:syntrace/core/theme/app_colors.dart';
 import 'package:syntrace/features/chat/data/models/chat_message.dart';
 import 'package:syntrace/features/chat/presentation/widgets/ai_progress_steps.dart';
 
-class MessageBubble extends StatelessWidget
-{
+class MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final VoidCallback? onRetry;
   final VoidCallback? onDelete;
@@ -27,7 +26,6 @@ class MessageBubble extends StatelessWidget
         crossAxisAlignment:
             isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
-          // ─── Steps ───
           if (!isUser && message.steps.isNotEmpty) ...[
             ConstrainedBox(
               constraints: BoxConstraints(
@@ -37,19 +35,15 @@ class MessageBubble extends StatelessWidget
             ),
             const SizedBox(height: 10),
           ],
-
-          // ─── Bubble ───
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment:
                 isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
             children: [
-              // ─── Failed Icon (User message) ───
               if (isUser && message.hasError && onRetry != null) ...[
                 _buildFailedIcon(context),
                 const SizedBox(width: 8),
               ],
-
               Flexible(
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
@@ -67,9 +61,6 @@ class MessageBubble extends StatelessWidget
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Failed Icon
-  // ═══════════════════════════════════════════════════════
   Widget _buildFailedIcon(BuildContext context) {
     return PopupMenuButton<String>(
       tooltip: 'Options',
@@ -115,12 +106,7 @@ class MessageBubble extends StatelessWidget
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // User Bubble
-  // ═══════════════════════════════════════════════════════
   Widget _buildUserBubble(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -145,22 +131,15 @@ class MessageBubble extends StatelessWidget
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // AI Bubble
-  // ═══════════════════════════════════════════════════════
   Widget _buildAiBubble(BuildContext context) {
     final theme = Theme.of(context);
 
-    // ─── Error Message ───
     if (message.hasError) {
       return Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: AppColors.error.withOpacity(0.08),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: AppColors.error.withOpacity(0.3),
-          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -185,26 +164,29 @@ class MessageBubble extends StatelessWidget
       );
     }
 
-    // ─── Normal Message ───
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
+        color: theme.colorScheme.surface.withOpacity(0.5),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.dividerColor.withOpacity(0.3),
-        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          MarkdownBody(
-            data: message.content,
-            styleSheet: _markdownStyle(theme),
-            selectable: true,
-          ),
-          if (message.isStreaming) ...[
-            const SizedBox(height: 8),
+          if (message.content.isEmpty && message.isStreaming)
+            Row(
+              children: [
+                _BlinkingCursor(color: theme.colorScheme.onSurface),
+              ],
+            )
+          else
+            MarkdownBody(
+              data: message.content,
+              styleSheet: _markdownStyle(theme),
+              selectable: true,
+            ),
+          if (message.isStreaming && message.content.isNotEmpty) ...[
+            const SizedBox(height: 4),
             _BlinkingCursor(color: theme.colorScheme.onSurface),
           ],
         ],
@@ -261,9 +243,6 @@ class MessageBubble extends StatelessWidget
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// Blinking Cursor
-// ═══════════════════════════════════════════════════════════
 class _BlinkingCursor extends StatefulWidget {
   final Color color;
   const _BlinkingCursor({required this.color});
@@ -292,8 +271,7 @@ class _BlinkingCursorState extends State<_BlinkingCursor>
   }
 
   @override
-  Widget build(BuildContext context)
-  {
+  Widget build(BuildContext context) {
     return FadeTransition(
       opacity: _controller,
       child: Container(

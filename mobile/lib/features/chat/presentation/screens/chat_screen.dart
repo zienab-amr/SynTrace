@@ -21,6 +21,9 @@ class _ChatScreenState extends State<ChatScreen> {
   final _scrollController = ScrollController();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
+  // ─── للتحكم في فتح/قفل الـ Sidebar على الويب ───
+  bool _isSidebarOpen = true;
+
   @override
   void initState() {
     super.initState();
@@ -33,9 +36,15 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  void _scrollToBottom() {
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (_scrollController.hasClients) {
+  void _scrollToBottom({bool instant = false}) {
+    Future.delayed(const Duration(milliseconds: 50), () {
+      if (!_scrollController.hasClients) return;
+
+      if (instant) {
+        _scrollController.jumpTo(
+          _scrollController.position.maxScrollExtent,
+        );
+      } else {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 300),
@@ -50,7 +59,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return BlocConsumer<ChatCubit, ChatState>(
       listener: (context, state) {
         if (state is ChatLoaded) {
-          _scrollToBottom();
+          _scrollToBottom(instant: state.isStreaming);
         }
         if (state is ChatErrorState) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -77,6 +86,9 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  // ═══════════════════════════════════════════════════════
+  // Web Layout: Sidebar (قابل للطي) + Content
+  // ═══════════════════════════════════════════════════════
   Widget _buildWebLayout(BuildContext context, ChatState state) {
     final sessions = state is ChatLoaded ? state.sessions : <ChatSession>[];
     final selectedId = state is ChatLoaded ? state.currentSessionId : null;
@@ -85,19 +97,49 @@ class _ChatScreenState extends State<ChatScreen> {
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Row(
         children: [
-          ChatHistoryPanel(
-            sessions: sessions,
-            selectedId: selectedId,
-            onNewChat: () => context.read<ChatCubit>().newChat(),
-            onSessionTap: (session) =>
-                context.read<ChatCubit>().openSession(session),
+          // ═══ Sidebar (قابل للطي) ═══
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeInOut,
+            width: _isSidebarOpen ? 280 : 0,
+            child: ClipRect(
+              child: OverflowBox(
+                alignment: Alignment.centerLeft,
+                minWidth: 280,
+                maxWidth: 280,
+                child: _isSidebarOpen
+                    ? ChatHistoryPanel(
+                        sessions: sessions,
+                        selectedId: selectedId,
+                        onNewChat: () {
+                          context.read<ChatCubit>().newChat();
+                        },
+                        onSessionTap: (session) {
+                          context.read<ChatCubit>().openSession(session);
+                        },
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ),
           ),
-          Expanded(child: _buildChatArea(context, state, isMobile: false)),
+
+          // ═══ Chat Area ═══
+          Expanded(
+            child: _buildChatArea(
+              context,
+              state,
+              isMobile: false,
+              showSidebarToggle: true,
+            ),
+          ),
         ],
       ),
     );
   }
 
+  // ═══════════════════════════════════════════════════════
+  // Mobile Layout: Full + Drawer
+  // ═══════════════════════════════════════════════════════
   Widget _buildMobileLayout(BuildContext context, ChatState state) {
     final sessions = state is ChatLoaded ? state.sessions : <ChatSession>[];
     final selectedId = state is ChatLoaded ? state.currentSessionId : null;
@@ -110,19 +152,33 @@ class _ChatScreenState extends State<ChatScreen> {
         child: ChatHistoryPanel(
           sessions: sessions,
           selectedId: selectedId,
-          onNewChat: () => context.read<ChatCubit>().newChat(),
-          onSessionTap: (session) =>
-              context.read<ChatCubit>().openSession(session),
+          onNewChat: () {
+            context.read<ChatCubit>().newChat();
+            Navigator.of(context).pop();
+          },
+          onSessionTap: (session) {
+            context.read<ChatCubit>().openSession(session);
+            Navigator.of(context).pop();
+          },
         ),
       ),
-      body: _buildChatArea(context, state, isMobile: true),
+      body: _buildChatArea(
+        context,
+        state,
+        isMobile: true,
+        showSidebarToggle: false,
+      ),
     );
   }
 
+  // ═══════════════════════════════════════════════════════
+  // Chat Area
+  // ═══════════════════════════════════════════════════════
   Widget _buildChatArea(
     BuildContext context,
     ChatState state, {
     required bool isMobile,
+    required bool showSidebarToggle,
   }) {
     if (state is ChatLoading) {
       return const Center(
@@ -140,7 +196,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     return Column(
       children: [
-        _buildChatHeader(context, state, isMobile),
+        _buildChatHeader(context, state, isMobile, showSidebarToggle),
 
         if (state.hasError)
           ChatErrorBanner(
@@ -165,6 +221,9 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  // ═══════════════════════════════════════════════════════
+  // Messages List
+  // ═══════════════════════════════════════════════════════
   Widget _buildMessages(BuildContext context, ChatLoaded state) {
     if (state.isEmpty && !state.isSending) {
       return _buildEmptyState(context);
@@ -198,17 +257,22 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  // ═══════════════════════════════════════════════════════
+  // Chat Header
+  // ═══════════════════════════════════════════════════════
   Widget _buildChatHeader(
     BuildContext context,
     ChatLoaded state,
     bool isMobile,
+    bool showSidebarToggle,
   ) {
     final theme = Theme.of(context);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Row(
         children: [
+          // ─── Menu Button (Mobile) ───
           if (isMobile)
             IconButton(
               onPressed: () => _scaffoldKey.currentState?.openDrawer(),
@@ -222,8 +286,25 @@ class _ChatScreenState extends State<ChatScreen> {
               tooltip: 'Chat history',
             ),
 
-          if (isMobile) const SizedBox(width: 12),
+          // ─── Sidebar Toggle (Web) ───
+          if (showSidebarToggle)
+            IconButton(
+              onPressed: () {
+                setState(() => _isSidebarOpen = !_isSidebarOpen);
+              },
+              icon: Icon(
+                _isSidebarOpen ? Icons.menu_open : Icons.menu,
+                color: theme.colorScheme.onSurface.withOpacity(0.7),
+                size: 22,
+              ),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              tooltip: _isSidebarOpen ? 'Hide chat history' : 'Show chat history',
+            ),
 
+          if (isMobile || showSidebarToggle) const SizedBox(width: 12),
+
+          // ─── Title ───
           Text(
             'AI Assistant',
             style: TextStyle(
@@ -235,6 +316,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
           const Spacer(),
 
+          // ─── Clear Chat ───
           if (state.messages.isNotEmpty)
             IconButton(
               onPressed: () => context.read<ChatCubit>().clearChat(),
@@ -252,6 +334,9 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  // ═══════════════════════════════════════════════════════
+  // Empty State
+  // ═══════════════════════════════════════════════════════
   Widget _buildEmptyState(BuildContext context) {
     final theme = Theme.of(context);
 
@@ -323,6 +408,9 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  // ═══════════════════════════════════════════════════════
+  // Error State
+  // ═══════════════════════════════════════════════════════
   Widget _buildErrorState(BuildContext context, String message) {
     final theme = Theme.of(context);
 
@@ -360,6 +448,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
+// ═══════════════════════════════════════════════════════════
+// Suggestion Chip
+// ═══════════════════════════════════════════════════════════
 class _Suggestion extends StatelessWidget {
   final String text;
   final VoidCallback onTap;

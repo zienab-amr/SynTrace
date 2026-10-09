@@ -22,17 +22,9 @@ class ChatHistoryPanel extends StatelessWidget {
 
     return Container(
       width: 280,
-      decoration: BoxDecoration(
-        color: theme.scaffoldBackgroundColor,
-        border: Border(
-          right: BorderSide(
-            color: theme.dividerColor.withOpacity(0.3),
-          ),
-        ),
-      ),
+      color: theme.scaffoldBackgroundColor,
       child: Column(
         children: [
-          // ─── New Chat Button ───
           Padding(
             padding: const EdgeInsets.all(16),
             child: SizedBox(
@@ -53,12 +45,6 @@ class ChatHistoryPanel extends StatelessWidget {
             ),
           ),
 
-          Divider(
-            height: 1,
-            color: theme.dividerColor.withOpacity(0.3),
-          ),
-
-          // ─── History Label ───
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Row(
@@ -76,7 +62,6 @@ class ChatHistoryPanel extends StatelessWidget {
             ),
           ),
 
-          // ─── Sessions List ───
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 8),
