@@ -1,4 +1,3 @@
-import 'package:equatable/equatable.dart';
 import 'package:syntrace/core/state/base_state.dart';
 import 'package:syntrace/features/chat/data/models/chat_error.dart';
 import 'package:syntrace/features/chat/data/models/chat_message.dart';

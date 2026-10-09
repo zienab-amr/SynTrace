@@ -91,25 +91,103 @@ class ChatCubit extends Cubit<ChatState> {
     }
 
     try {
-      await Future.delayed(const Duration(milliseconds: 1500));
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      final aiMessageId = 'ai-${DateTime.now().millisecondsSinceEpoch}';
+      final fullResponse =
+          'This is a mock response.\n\nYou asked: **"$text"**\n\nThe real AI will be connected soon.';
 
       final aiMessage = ChatMessage(
-        id: 'ai-${DateTime.now().millisecondsSinceEpoch}',
+        id: aiMessageId,
         role: ChatRole.ai,
-        content:
-            'This is a mock response.\n\nYou asked: **"$text"**\n\nThe real AI will be connected soon.',
+        content: '',
         timestamp: DateTime.now(),
+        isStreaming: true,
       );
 
-      final updated = state as ChatLoaded;
+      final currentState = state as ChatLoaded;
 
-      emit(updated.copyWith(
-        messages: [...updated.messages, aiMessage],
+      emit(currentState.copyWith(
+        messages: [...currentState.messages, aiMessage],
         isSending: false,
+        isStreaming: true,
       ));
+
+      await _streamResponse(
+        messageId: aiMessageId,
+        fullText: fullResponse,
+      );
     } catch (e) {
       _emitError(ChatErrorType.unknown);
     }
+  }
+
+  Future<void> _streamResponse({
+    required String messageId,
+    required String fullText,
+  }) async {
+    final chunks = _splitIntoChunks(fullText);
+    String accumulated = '';
+
+    for (final chunk in chunks) {
+      await Future.delayed(const Duration(milliseconds: 30));
+
+      accumulated += chunk;
+
+      if (state is! ChatLoaded) return;
+      final current = state as ChatLoaded;
+
+      final updatedMessages = current.messages.map((m) {
+        if (m.id == messageId) {
+          return m.copyWith(content: accumulated);
+        }
+        return m;
+      }).toList();
+
+      emit(current.copyWith(messages: updatedMessages));
+    }
+
+    if (state is! ChatLoaded) return;
+    final finalState = state as ChatLoaded;
+
+    final completedMessages = finalState.messages.map((m) {
+      if (m.id == messageId) {
+        return m.copyWith(
+          content: fullText,
+          isStreaming: false,
+        );
+      }
+      return m;
+    }).toList();
+
+    emit(finalState.copyWith(
+      messages: completedMessages,
+      isStreaming: false,
+    ));
+  }
+
+  List<String> _splitIntoChunks(String text) {
+    final chunks = <String>[];
+    final buffer = StringBuffer();
+
+    for (int i = 0; i < text.length; i++) {
+      final char = text[i];
+      buffer.write(char);
+
+      final isBreakChar = char == ' ' || char == '\n';
+      final isChunkFull = buffer.length >= 3;
+
+      if (isBreakChar || isChunkFull) {
+        chunks.add(buffer.toString());
+        buffer.clear();
+      }
+    }
+
+    if (buffer.isNotEmpty) {
+      chunks.add(buffer.toString());
+    }
+
+    return chunks;
   }
 
   Future<void> retryLastMessage() async {
@@ -173,6 +251,7 @@ class ChatCubit extends Cubit<ChatState> {
         failedText: _lastFailedMessage,
       ),
       isSending: false,
+      isStreaming: false,
     ));
   }
 }
