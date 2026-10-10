@@ -49,3 +49,11 @@ class LoginError extends LoginState {
   @override
   List<Object?> get props => [message];
 }
+
+class EmailAlreadyExists extends LoginState {
+  final String email;
+  const EmailAlreadyExists(this.email);
+
+  @override
+  List<Object?> get props => [email];
+}

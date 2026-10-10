@@ -2,9 +2,6 @@ import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'package:syntrace/core/models/user_model.dart';
 
-// ═══════════════════════════════════════════════════════════
-// Login Request
-// ═══════════════════════════════════════════════════════════
 class LoginRequest extends Equatable {
   final String email;
   final String password;
@@ -22,9 +19,6 @@ class LoginRequest extends Equatable {
   List<Object?> get props => [email, password];
 }
 
-// ═══════════════════════════════════════════════════════════
-// Signup Request
-// ═══════════════════════════════════════════════════════════
 class SignupRequest extends Equatable {
   final String companyName;
   final String firstName;
@@ -64,9 +58,6 @@ class SignupRequest extends Equatable {
       ];
 }
 
-// ═══════════════════════════════════════════════════════════
-// Auth Response
-// ═══════════════════════════════════════════════════════════
 class AuthResponse extends Equatable {
   final String accessToken;
   final DateTime? accessTokenExpiration;
@@ -93,8 +84,11 @@ class AuthResponse extends Equatable {
     );
   }
 
-  /// ─── استخراج بيانات المستخدم من الـ JWT ───
-  UserModel? extractUser() {
+  UserModel? extractUser({
+    String? fallbackEmail,
+    String? fallbackName,
+    String? fallbackCompanyName,
+  }) {
     try {
       final parts = accessToken.split('.');
       if (parts.length != 3) return null;
@@ -110,21 +104,36 @@ class AuthResponse extends Equatable {
       final companyId = claims['CompanyId'] as String? ?? '';
       final role = claims[
               'http://schemas.microsoft.com/ws/2008/06/identity/claims/role']
-          as String? ?? claims['role'] as String? ?? 'Admin';
+          as String? ?? claims['role'] as String? ?? 'Employee';
       final email = claims[
               'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress']
-          as String? ?? claims['email'] as String? ?? '';
+          as String? ?? claims['email'] as String? ?? fallbackEmail ?? '';
+
+      final name = claims['name'] as String? ??
+          fallbackName ??
+          _nameFromEmail(email);
 
       return UserModel(
         id: userId,
-        name: email.isNotEmpty ? email.split('@').first : 'User',
+        name: name,
         email: email,
         role: UserRole.fromString(role),
         tenantId: companyId,
+        companyName: fallbackCompanyName,
       );
     } catch (_) {
       return null;
     }
+  }
+
+  String _nameFromEmail(String email) {
+    if (email.isEmpty) return 'User';
+    final prefix = email.split('@').first;
+    return prefix
+        .split(RegExp(r'[._-]'))
+        .where((part) => part.isNotEmpty)
+        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+        .join(' ');
   }
 
   @override
@@ -136,9 +145,6 @@ class AuthResponse extends Equatable {
       ];
 }
 
-// ═══════════════════════════════════════════════════════════
-// Register Response
-// ═══════════════════════════════════════════════════════════
 class RegisterResponse extends Equatable {
   final String employeeId;
   final String companyId;

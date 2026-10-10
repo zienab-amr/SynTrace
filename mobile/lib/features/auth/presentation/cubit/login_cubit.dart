@@ -13,9 +13,6 @@ class LoginCubit extends Cubit<LoginState> {
       : _repository = repository ?? AuthRepository(),
         super(const LoginInitial());
 
-  // ═══════════════════════════════════════════════════════
-  // 1. Send OTP
-  // ═══════════════════════════════════════════════════════
   Future<void> sendOtp({
     required String companyName,
     required String firstName,
@@ -23,6 +20,8 @@ class LoginCubit extends Cubit<LoginState> {
     required String email,
     required String password,
   }) async {
+    if (state is LoginLoading) return;
+
     emit(const LoginLoading());
 
     PendingSignupService.instance.save(
@@ -45,16 +44,14 @@ class LoginCubit extends Cubit<LoginState> {
     }
   }
 
-  // ═══════════════════════════════════════════════════════
-  // 2. Verify OTP + Register + Auto-Login
-  // ═══════════════════════════════════════════════════════
   Future<void> verifyOtp({
     required String email,
     required String otp,
   }) async {
+    if (state is LoginLoading) return;
+
     emit(const LoginLoading());
 
-    // ─── 1. Verify OTP ───
     final verifyResult = await _repository.verifyOtp(
       email: email,
       otp: otp,
@@ -67,7 +64,6 @@ class LoginCubit extends Cubit<LoginState> {
 
     emit(const OtpVerified());
 
-    // ─── 2. اقرأي بيانات الـ Signup ───
     final pending = PendingSignupService.instance.pendingRequest;
 
     if (pending == null) {
@@ -75,7 +71,6 @@ class LoginCubit extends Cubit<LoginState> {
       return;
     }
 
-    // ─── 3. Register ───
     final registerResult = await _repository.signup(pending);
 
     if (!registerResult.success || registerResult.data == null) {
@@ -83,9 +78,6 @@ class LoginCubit extends Cubit<LoginState> {
       return;
     }
 
-    PendingSignupService.instance.clear();
-
-    // ─── 4. Auto-Login عشان نجيب الـ Token + User ───
     final loginResult = await _repository.login(
       LoginRequest(
         email: pending.email,
@@ -96,22 +88,32 @@ class LoginCubit extends Cubit<LoginState> {
     if (loginResult.success && loginResult.data != null) {
       await _saveTokens(loginResult.data!);
 
-      final user = loginResult.data!.extractUser();
+      final fullName = '${pending.firstName} ${pending.lastName}'.trim();
+
+      await SecureStorageService.instance.saveUserName(fullName);
+      await SecureStorageService.instance.saveCompanyName(pending.companyName);
+
+      final user = loginResult.data!.extractUser(
+        fallbackEmail: pending.email,
+        fallbackName: fullName,
+        fallbackCompanyName: pending.companyName,
+      );
       if (user != null) {
         CurrentUserService.instance.setUser(user);
       }
     }
 
+    PendingSignupService.instance.clear();
+
     emit(RegisterSuccess(registerResult.data!));
   }
 
-  // ═══════════════════════════════════════════════════════
-  // 3. Login
-  // ═══════════════════════════════════════════════════════
   Future<void> login({
     required String email,
     required String password,
   }) async {
+    if (state is LoginLoading) return;
+
     emit(const LoginLoading());
 
     final result = await _repository.login(
@@ -121,7 +123,15 @@ class LoginCubit extends Cubit<LoginState> {
     if (result.success && result.data != null) {
       await _saveTokens(result.data!);
 
-      final user = result.data!.extractUser();
+      final storedName = await SecureStorageService.instance.getUserName();
+      final storedCompany =
+          await SecureStorageService.instance.getCompanyName();
+
+      final user = result.data!.extractUser(
+        fallbackEmail: email,
+        fallbackName: storedName,
+        fallbackCompanyName: storedCompany,
+      );
       if (user != null) {
         CurrentUserService.instance.setUser(user);
       }
@@ -132,9 +142,6 @@ class LoginCubit extends Cubit<LoginState> {
     }
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Helpers
-  // ═══════════════════════════════════════════════════════
   Future<void> _saveTokens(AuthResponse response) async {
     await SecureStorageService.instance.saveToken(response.accessToken);
     await SecureStorageService.instance.saveRefreshToken(response.refreshToken);
