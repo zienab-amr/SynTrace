@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:syntrace/core/router/routes.dart';
+import 'package:syntrace/core/services/secure_storage_service.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
 import 'package:syntrace/features/auth/presentation/cubit/login_cubit.dart';
 import 'package:syntrace/features/auth/presentation/cubit/login_state.dart';
@@ -32,26 +33,44 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _onLogin() {
     if (!_formKey.currentState!.validate()) return;
+
+    final currentState = context.read<LoginCubit>().state;
+    if (currentState is LoginLoading) return;
+
     context.read<LoginCubit>().login(
           email: _emailController.text.trim(),
           password: _passwordController.text,
         );
   }
 
+  Future<void> _handleLoginSuccess() async {
+    final completed =
+        await SecureStorageService.instance.isOnboardingCompleted();
+
+    if (!mounted) return;
+
+    if (completed) {
+      context.go(AppRoutes.dashboard);
+    } else {
+      context.go(AppRoutes.onboarding);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocListener<LoginCubit, LoginState>(
- listener: (context, state) {
-  if (state is LoginSuccess) {
-    _showSuccessMessage(context, state);
-    Future.delayed(const Duration(milliseconds: 600), () {
-      if (mounted) context.go(AppRoutes.onboarding);
-    });
-  }
-  if (state is LoginError) {
-    _showErrorMessage(context, state.message);
-  }
-},
+      listener: (context, state) {
+        if (state is LoginSuccess) {
+          _showSuccessMessage(context, state);
+          Future.delayed(
+            const Duration(milliseconds: 600),
+            _handleLoginSuccess,
+          );
+        }
+        if (state is LoginError) {
+          _showErrorMessage(context, state.message);
+        }
+      },
       child: AuthScreenLayout(
         title: 'Welcome back',
         subtitle: 'Sign in to your engineering intelligence workspace',
@@ -114,10 +133,11 @@ class _LoginScreenState extends State<LoginScreen> {
         ],
         submitButton: BlocBuilder<LoginCubit, LoginState>(
           builder: (context, state) {
+            final isLoading = state is LoginLoading;
             return AuthButton(
               label: 'Sign in to SynTrace',
-              isLoading: state is LoginLoading,
-              onPressed: _onLogin,
+              isLoading: isLoading,
+              onPressed: isLoading ? null : _onLogin,
             );
           },
         ),
@@ -133,25 +153,25 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-void _showSuccessMessage(BuildContext context, LoginSuccess state) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: const Row(
-        children: [
-          Icon(Icons.check_circle, color: Colors.white),
-          SizedBox(width: 12),
-          Expanded(child: Text('Welcome back!')),
-        ],
+  void _showSuccessMessage(BuildContext context, LoginSuccess state) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.white),
+            SizedBox(width: 12),
+            Expanded(child: Text('Welcome back!')),
+          ],
+        ),
+        backgroundColor: AppColors.secondary,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
       ),
-      backgroundColor: AppColors.secondary,
-      behavior: SnackBarBehavior.floating,
-      duration: const Duration(seconds: 2),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-      ),
-    ),
-  );
-}
+    );
+  }
 
   void _showErrorMessage(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(
