@@ -11,7 +11,8 @@ class UserModel extends Equatable {
   final String email;
   final String? avatarUrl;
   final UserRole role;
-  final String? tenantId;         // ← للـ Multi-Tenancy
+  final String? tenantId;   
+  final String? companyName;      // ← للـ Multi-Tenancy
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -22,6 +23,7 @@ class UserModel extends Equatable {
     this.avatarUrl,
     required this.role,
     this.tenantId,
+    this.companyName,
     this.createdAt,
     this.updatedAt,
   });
@@ -37,6 +39,7 @@ class UserModel extends Equatable {
       avatarUrl: json['avatarUrl'] as String?,
       role: UserRole.fromString(json['role'] as String?),
       tenantId: json['tenantId'] as String?,
+      companyName: json['companyName'] as String?,
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'] as String)
           : null,
@@ -57,6 +60,7 @@ class UserModel extends Equatable {
       'avatarUrl': avatarUrl,
       'role': role.value,
       'tenantId': tenantId,
+      'companyName': companyName,
       'createdAt': createdAt?.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
     };
@@ -72,6 +76,7 @@ class UserModel extends Equatable {
     String? avatarUrl,
     UserRole? role,
     String? tenantId,
+    String? companyName,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -82,6 +87,7 @@ class UserModel extends Equatable {
       avatarUrl: avatarUrl ?? this.avatarUrl,
       role: role ?? this.role,
       tenantId: tenantId ?? this.tenantId,
+      companyName: companyName ?? this.companyName,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -113,6 +119,7 @@ class UserModel extends Equatable {
         avatarUrl,
         role,
         tenantId,
+        companyName,
         createdAt,
         updatedAt,
       ];

@@ -47,7 +47,7 @@ class UserProfileModel extends Equatable
       fullName: user.name,
       email: user.email,
       role: user.role.value,
-      organizationName: companyName ?? 'Organization',
+      organizationName: companyName ?? user.companyName ?? 'Organization',
       organizationId: user.tenantId ?? '',
       avatarUrl: user.avatarUrl,
       permissions: const [

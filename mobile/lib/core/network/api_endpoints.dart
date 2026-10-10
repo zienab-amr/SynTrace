@@ -16,6 +16,7 @@ class ApiEndpoints
   static const String sendOtp = '/api/Auth/send-otp';
   static const String verifyOtp = '/api/Auth/verify-otp';
   static const String resetPassword = '/api/Auth/reset-password';
+  static const String checkEmail = '/api/Auth/check-email';
 
   // ═══════════════════════════════════════════════════════════
   // Projects
@@ -43,4 +44,7 @@ class ApiEndpoints
   // Dashboard
   // ═══════════════════════════════════════════════════════════
   static const String dashboardStats = '/api/Dashboard/stats';
+  
+  // ═══════════════════════════════════════════════════════════
+  static const String me = '/api/Employee/me';
 }
