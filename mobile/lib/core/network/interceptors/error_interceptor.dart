@@ -1,95 +1,67 @@
 import 'package:dio/dio.dart';
 import 'package:syntrace/core/network/api_exceptions.dart';
 
-/// ═══════════════════════════════════════════════════════════
-/// Error Interceptor
-/// 
-/// بيحوّل DioException لـ ApiException مفهوم
-/// ═══════════════════════════════════════════════════════════
 class ErrorInterceptor extends Interceptor {
-  
   @override
   void onError(
     DioException err,
     ErrorInterceptorHandler handler,
   ) {
-    // ─── نحوّل الـ DioException لـ ApiException ───
     final apiException = _mapDioException(err);
 
-    // ─── نرمي الـ ApiException بدل الـ DioException ───
     handler.reject(
       DioException(
         requestOptions: err.requestOptions,
         response: err.response,
         type: err.type,
-        error: apiException,  // ← هنا Exception بتاعنا
+        error: apiException,
       ),
     );
   }
 
-  /// ═══════════════════════════════════════════════════════
-  /// التحويل
-  /// ═══════════════════════════════════════════════════════
   ApiException _mapDioException(DioException err) {
     switch (err.type) {
-      // ─── 1. مشاكل الاتصال ───
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
-      case DioExceptionType.transformTimeout:  
-
+      case DioExceptionType.transformTimeout:
         return TimeoutException();
 
-      // ─── 2. مشكلة في الشبكة ───
       case DioExceptionType.connectionError:
         return NetworkException();
 
-      // ─── 3. الطلب اتلغى ───
       case DioExceptionType.cancel:
         return UnknownException(message: 'Request Cancelled');
 
-      // ─── 4. السيرفر رجّع خطأ ───
       case DioExceptionType.badResponse:
         return _handleBadResponse(err);
 
-      // ─── 5. مشكلة تانية ───
       case DioExceptionType.unknown:
         return _handleUnknown(err);
 
-      // ─── 6. badCertificate (مش بنستخدمه حالياً) ───
       case DioExceptionType.badCertificate:
         return UnknownException(message: 'Bad Certificate');
     }
   }
 
-  /// ═══════════════════════════════════════════════════════
-  /// الرد اللي فيه خطأ (4xx, 5xx)
-  /// ═══════════════════════════════════════════════════════
   ApiException _handleBadResponse(DioException err) {
     final statusCode = err.response?.statusCode ?? 0;
     final data = err.response?.data;
-
-    // ─── نستخرج رسالة الخطأ من الـ Response ───
     final serverMessage = _extractMessage(data);
 
     switch (statusCode) {
       case 400:
         return BadRequestException(message: serverMessage);
-
       case 401:
         return UnauthorizedException(message: serverMessage);
-
       case 403:
         return ForbiddenException(message: serverMessage);
-
       case 404:
         return NotFoundException(message: serverMessage);
-
       case 422:
         return BadRequestException(
           message: serverMessage ?? 'Validation Error',
         );
-
       case 500:
       case 502:
       case 503:
@@ -98,7 +70,6 @@ class ErrorInterceptor extends Interceptor {
           statusCode: statusCode,
           message: serverMessage ?? 'Server Error',
         );
-
       default:
         return ServerException(
           statusCode: statusCode,
@@ -107,11 +78,7 @@ class ErrorInterceptor extends Interceptor {
     }
   }
 
-  /// ═══════════════════════════════════════════════════════
-  /// مشكلة مش معروفة
-  /// ═══════════════════════════════════════════════════════
   ApiException _handleUnknown(DioException err) {
-    // ممكن تكون مشكلة في الـ SSL، أو الـ Socket، إلخ
     final errorString = err.error?.toString() ?? '';
 
     if (errorString.contains('SocketException')) {
@@ -122,44 +89,136 @@ class ErrorInterceptor extends Interceptor {
       return UnknownException(message: 'SSL Error');
     }
 
-    return UnknownException(message: err.message);
+    return UnknownException(message: 'Connection failed');
   }
 
-  /// ═══════════════════════════════════════════════════════
-  /// استخراج رسالة الخطأ من الـ Response
-  /// ═══════════════════════════════════════════════════════
   String? _extractMessage(dynamic data) {
     if (data == null) return null;
 
     if (data is Map<String, dynamic>) {
-      // ─── الأنماط الشائعة ───
-      if (data['message'] != null) return data['message'].toString();
-      if (data['error'] != null) return data['error'].toString();
-      if (data['detail'] != null) return data['detail'].toString();
-      if (data['title'] != null) return data['title'].toString();
+      if (data['message'] != null) {
+        return _clean(data['message'].toString());
+      }
+      if (data['error'] != null) {
+        return _clean(data['error'].toString());
+      }
+      if (data['detail'] != null) {
+        return _clean(data['detail'].toString());
+      }
+      if (data['title'] != null) {
+        return _clean(data['title'].toString());
+      }
 
-      // ─── ASP.NET Validation Errors ───
       if (data['errors'] != null) {
         final errors = data['errors'];
         if (errors is Map) {
-          // ناخد أول رسالة من أول حقل
           for (final value in errors.values) {
             if (value is List && value.isNotEmpty) {
-              return value.first.toString();
+              return _clean(value.first.toString());
             }
             if (value is String) {
-              return value;
+              return _clean(value);
             }
           }
         }
         if (errors is List && errors.isNotEmpty) {
-          return errors.first.toString();
+          return _clean(errors.first.toString());
         }
       }
     }
 
     if (data is String && data.isNotEmpty) {
-      return data;
+      return _clean(data);
+    }
+
+    return null;
+  }
+
+  String? _clean(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+
+    if (trimmed.length < 150 &&
+        !_looksLikeStackTrace(trimmed) &&
+        !_looksLikeFilePath(trimmed)) {
+      return _cleanPrefix(trimmed);
+    }
+
+    final meaningful = _findMeaningfulMessage(trimmed);
+    if (meaningful != null) return meaningful;
+
+    return null;
+  }
+
+  String _cleanPrefix(String message) {
+    final cleaned = message
+        .replaceFirst(RegExp(r'^System\.\w+Exception:\s*'), '')
+        .replaceFirst(RegExp(r'^\w+Exception:\s*'), '')
+        .trim();
+
+    if (cleaned.isEmpty) return message;
+    return cleaned;
+  }
+
+  bool _looksLikeStackTrace(String text) {
+    return text.contains(' at ') &&
+        (text.contains(' in ') || text.contains('line '));
+  }
+
+  bool _looksLikeFilePath(String text) {
+    return text.contains('.cs:line') ||
+        text.contains('.dart:') ||
+        RegExp(r'[A-Za-z]:\\').hasMatch(text);
+  }
+
+  String? _findMeaningfulMessage(String text) {
+    final lower = text.toLowerCase();
+
+    if (lower.contains('already exists') ||
+        lower.contains('already registered')) {
+      return 'This email is already registered';
+    }
+
+    if (lower.contains('employee not found') ||
+        lower.contains('user not found') ||
+        lower.contains('account not found')) {
+      return 'Account not found';
+    }
+
+    if (lower.contains('invalid password') ||
+        lower.contains('wrong password')) {
+      return 'Invalid email or password';
+    }
+
+    if (lower.contains('invalid otp') ||
+        lower.contains('otp is invalid')) {
+      return 'Invalid or expired OTP';
+    }
+
+    if (lower.contains('unauthorized')) {
+      return 'Session expired. Please log in again.';
+    }
+
+    if (lower.contains('email must be verified')) {
+      return 'Please verify your email first';
+    }
+
+    final lines = text.split('\n');
+    for (final line in lines) {
+      final trimmedLine = line.trim();
+      if (trimmedLine.isEmpty) continue;
+      if (_looksLikeStackTrace(trimmedLine)) continue;
+      if (_looksLikeFilePath(trimmedLine)) continue;
+
+      if (trimmedLine.contains('Exception:')) {
+        return _cleanPrefix(trimmedLine);
+      }
+
+      if (trimmedLine.length > 3 &&
+          trimmedLine.length < 200 &&
+          !trimmedLine.startsWith('at ')) {
+        return _cleanPrefix(trimmedLine);
+      }
     }
 
     return null;
