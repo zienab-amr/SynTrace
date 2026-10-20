@@ -5,18 +5,15 @@ abstract class IntegrationsState extends BaseState {
   const IntegrationsState();
 }
 
-class IntegrationsInitial extends IntegrationsState
-{
+class IntegrationsInitial extends IntegrationsState {
   const IntegrationsInitial();
 }
 
-class IntegrationsLoading extends IntegrationsState
-{
+class IntegrationsLoading extends IntegrationsState {
   const IntegrationsLoading();
 }
 
-class IntegrationsLoaded extends IntegrationsState
-{
+class IntegrationsLoaded extends IntegrationsState {
   final List<IntegrationModel> integrations;
   const IntegrationsLoaded(this.integrations);
 
@@ -24,8 +21,7 @@ class IntegrationsLoaded extends IntegrationsState
   List<Object?> get props => [integrations];
 }
 
-class IntegrationsError extends IntegrationsState 
-{
+class IntegrationsError extends IntegrationsState {
   final String message;
   const IntegrationsError(this.message);
 
