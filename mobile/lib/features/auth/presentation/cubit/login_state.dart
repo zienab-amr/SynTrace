@@ -1,4 +1,3 @@
-import 'package:equatable/equatable.dart';
 import 'package:syntrace/core/state/base_state.dart';
 import 'package:syntrace/features/auth/data/models/auth_models.dart';
 

@@ -47,4 +47,10 @@ class ApiEndpoints
   
   // ═══════════════════════════════════════════════════════════
   static const String me = '/api/Employee/me';
+
+  // ═══════════════════════════════════════════════════════════
+  // Integrations (Jira)
+  // ═══════════════════════════════════════════════════════════
+  static const String jiraConnect = '/api/integrations/Jira/connect-jira';
+  static const String jiraStatus = '/api/integrations/Jira/status';
 }
