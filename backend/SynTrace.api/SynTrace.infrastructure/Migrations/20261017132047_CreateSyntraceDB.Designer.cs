@@ -12,15 +12,15 @@ using SynTrace.Infrastructure.Persistence.Context;
 namespace SynTrace.Infrastructure.Migrations
 {
     [DbContext(typeof(SynTraceDbContext))]
-    [Migration("20260919222454_AddNameEmployee")]
-    partial class AddNameEmployee
+    [Migration("20261017132047_CreateSyntraceDB")]
+    partial class CreateSyntraceDB
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.12")
+                .HasAnnotation("ProductVersion", "10.0.13")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -234,9 +234,8 @@ namespace SynTrace.Infrastructure.Migrations
 
             modelBuilder.Entity("SynTrace.Domain.Entities.Company", b =>
                 {
-                    b.Property<Guid>("CompanyId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
+                    b.Property<string>("CompanyId")
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("CompanyName")
                         .IsRequired()
@@ -247,12 +246,127 @@ namespace SynTrace.Infrastructure.Migrations
                     b.ToTable("Companies");
                 });
 
+            modelBuilder.Entity("SynTrace.Domain.Entities.JiraConnection", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("CloudId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CompanyId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ConnectedByEmployeeId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EncryptedAccessToken")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EncryptedRefreshToken")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("JiraAccountId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SiteUrl")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("status")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("ConnectedByEmployeeId");
+
+                    b.ToTable("JiraConnections");
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.JiraOAuthState", b =>
+                {
+                    b.Property<string>("JiraOAuthStateId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("CompanyId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime?>("ConsumedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EmployeeId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("StateHash")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("JiraOAuthStateId");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.ToTable("JiraOAuthStates");
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.RefreshToken", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("CreatedOn")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EmployeeId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("ExpiredDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("RevokedOn")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("UpdatedOn")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.ToTable("RefreshTokens");
+                });
+
             modelBuilder.Entity("SynTrace.Domain.Entities.Employee", b =>
                 {
                     b.HasBaseType("Microsoft.AspNetCore.Identity.IdentityUser");
 
-                    b.Property<Guid>("CompanyId")
-                        .HasColumnType("uniqueidentifier");
+                    b.Property<string>("CompanyId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
@@ -316,6 +430,55 @@ namespace SynTrace.Infrastructure.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.JiraConnection", b =>
+                {
+                    b.HasOne("SynTrace.Domain.Entities.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("SynTrace.Domain.Entities.Employee", "ConnectedByEmployee")
+                        .WithMany()
+                        .HasForeignKey("ConnectedByEmployeeId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Company");
+
+                    b.Navigation("ConnectedByEmployee");
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.JiraOAuthState", b =>
+                {
+                    b.HasOne("SynTrace.Domain.Entities.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("SynTrace.Domain.Entities.Employee", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Company");
+
+                    b.Navigation("Employee");
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.RefreshToken", b =>
+                {
+                    b.HasOne("SynTrace.Domain.Entities.Employee", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Employee");
                 });
 
             modelBuilder.Entity("SynTrace.Domain.Entities.Employee", b =>

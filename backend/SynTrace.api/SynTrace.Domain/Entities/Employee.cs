@@ -9,7 +9,7 @@ namespace SynTrace.Domain.Entities
     {
         public string FirstName { get; set; }
         public string LastName { get; set; }
-        public Guid CompanyId { get; set; }
+        public string CompanyId { get; set; }
         public Company Company { get; set; }
     }
 }

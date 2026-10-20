@@ -39,6 +39,7 @@ namespace SynTrace.Infrastructure.Identity
 
             var company = new Company
             {
+                CompanyId = Guid.NewGuid().ToString(),
                 CompanyName = requestDto.CompanyName
             };
 

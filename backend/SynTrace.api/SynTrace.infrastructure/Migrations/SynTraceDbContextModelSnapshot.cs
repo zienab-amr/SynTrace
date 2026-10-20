@@ -17,7 +17,7 @@ namespace SynTrace.Infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.12")
+                .HasAnnotation("ProductVersion", "10.0.13")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -231,9 +231,8 @@ namespace SynTrace.Infrastructure.Migrations
 
             modelBuilder.Entity("SynTrace.Domain.Entities.Company", b =>
                 {
-                    b.Property<Guid>("CompanyId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
+                    b.Property<string>("CompanyId")
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("CompanyName")
                         .IsRequired()
@@ -242,6 +241,88 @@ namespace SynTrace.Infrastructure.Migrations
                     b.HasKey("CompanyId");
 
                     b.ToTable("Companies");
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.JiraConnection", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("CloudId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CompanyId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ConnectedByEmployeeId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EncryptedAccessToken")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EncryptedRefreshToken")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("JiraAccountId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SiteUrl")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("status")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("ConnectedByEmployeeId");
+
+                    b.ToTable("JiraConnections");
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.JiraOAuthState", b =>
+                {
+                    b.Property<string>("JiraOAuthStateId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("CompanyId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime?>("ConsumedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EmployeeId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("StateHash")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("JiraOAuthStateId");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.ToTable("JiraOAuthStates");
                 });
 
             modelBuilder.Entity("SynTrace.Domain.Entities.RefreshToken", b =>
@@ -280,8 +361,9 @@ namespace SynTrace.Infrastructure.Migrations
                 {
                     b.HasBaseType("Microsoft.AspNetCore.Identity.IdentityUser");
 
-                    b.Property<Guid>("CompanyId")
-                        .HasColumnType("uniqueidentifier");
+                    b.Property<string>("CompanyId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
@@ -345,6 +427,44 @@ namespace SynTrace.Infrastructure.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.JiraConnection", b =>
+                {
+                    b.HasOne("SynTrace.Domain.Entities.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("SynTrace.Domain.Entities.Employee", "ConnectedByEmployee")
+                        .WithMany()
+                        .HasForeignKey("ConnectedByEmployeeId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Company");
+
+                    b.Navigation("ConnectedByEmployee");
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.JiraOAuthState", b =>
+                {
+                    b.HasOne("SynTrace.Domain.Entities.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("SynTrace.Domain.Entities.Employee", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Company");
+
+                    b.Navigation("Employee");
                 });
 
             modelBuilder.Entity("SynTrace.Domain.Entities.RefreshToken", b =>
