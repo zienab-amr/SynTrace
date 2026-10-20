@@ -1,6 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:syntrace/core/theme/theme_controller.dart';
+import 'package:syntrace/core/services/secure_storage_service.dart';
 import 'package:syntrace/features/onboarding/data/onboarding_data.dart';
 import 'package:syntrace/features/onboarding/data/onboarding_service.dart';
 import 'onboarding_state.dart';
@@ -16,9 +15,6 @@ class OnboardingCubit extends Cubit<OnboardingState> {
     ));
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Navigation
-  // ═══════════════════════════════════════════════════════
   void nextStep() {
     final state = _currentState;
     if (state.isLastStep) {
@@ -41,28 +37,26 @@ class OnboardingCubit extends Cubit<OnboardingState> {
       canGoNext: true,
     ));
   }
+
   void goToStep(int step) {
-  final state = _currentState;
-  if (step < 0 || step >= OnboardingInProgress.totalSteps) return;
+    final state = _currentState;
+    if (step < 0 || step >= OnboardingInProgress.totalSteps) return;
 
-  emit(state.copyWith(
-    currentStep: step,
-    canGoNext: _validateStep(step, state.data),
-  ));
-}
+    emit(state.copyWith(
+      currentStep: step,
+      canGoNext: _validateStep(step, state.data),
+    ));
+  }
 
-  // ═══════════════════════════════════════════════════════
-  // Data Updates
-  // ═══════════════════════════════════════════════════════
   void updateOrganizationName(String name) {
     _updateData(_currentState.data.copyWith(organizationName: name));
   }
 
   void updateIndustry(String industry) {
-    // لو اختار حاجة غير Other، امسحي الـ custom
     final data = _currentState.data.copyWith(
       industry: industry,
-      customIndustry: industry == 'Other' ? _currentState.data.customIndustry : '',
+      customIndustry:
+          industry == 'Other' ? _currentState.data.customIndustry : '',
     );
     _updateData(data);
   }
@@ -93,23 +87,19 @@ class OnboardingCubit extends Cubit<OnboardingState> {
   }
 
   void removeTeamEmail(String email) {
-    final emails = List<String>.from(_currentState.data.teamEmails)..remove(email);
+    final emails = List<String>.from(_currentState.data.teamEmails)
+      ..remove(email);
     _updateData(_currentState.data.copyWith(teamEmails: emails));
   }
 
   void updateDarkMode(bool value) {
     _updateData(_currentState.data.copyWith(isDarkMode: value));
-    ThemeController.setTheme(value ? ThemeMode.dark : ThemeMode.light);
-
   }
 
   void updateNotifications(bool value) {
     _updateData(_currentState.data.copyWith(notificationsEnabled: value));
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Helpers
-  // ═══════════════════════════════════════════════════════
   OnboardingInProgress get _currentState {
     final state = this.state;
     if (state is OnboardingInProgress) return state;
@@ -132,7 +122,7 @@ class OnboardingCubit extends Cubit<OnboardingState> {
     switch (step) {
       case 0:
         return true;
-      case 1: // Organization Info
+      case 1:
         final hasIndustry = data.industry.isNotEmpty &&
             (data.industry != 'Other' || data.customIndustry.isNotEmpty);
         return data.organizationName.isNotEmpty &&
@@ -151,8 +141,11 @@ class OnboardingCubit extends Cubit<OnboardingState> {
 
   Future<void> _complete() async {
     final state = _currentState;
-    // ─── حفظ الداتا ───
+
     await OnboardingService.instance.saveData(state.data);
+
+    await SecureStorageService.instance.saveOnboardingCompleted(true);
+
     emit(OnboardingCompleted(state.data));
   }
 }

@@ -4,6 +4,7 @@ import 'package:syntrace/features/auth/presentation/cubit/login_cubit.dart';
 import 'package:syntrace/features/auth/presentation/screens/login_screen.dart';
 import 'package:syntrace/features/auth/presentation/screens/otp_screen.dart';
 import 'package:syntrace/features/auth/presentation/screens/signup_screen.dart';
+import 'package:syntrace/features/chat/presentation/cubit/chat_cubit.dart';
 import 'package:syntrace/features/chat/presentation/screens/chat_screen.dart';
 import 'package:syntrace/features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'package:syntrace/features/graph/presentation/screens/graph_screen.dart';
@@ -15,6 +16,8 @@ import 'package:syntrace/features/projects/presentation/cubit/projects_cubit.dar
 import 'package:syntrace/features/projects/presentation/screens/project_details_screen.dart';
 import 'package:syntrace/features/projects/presentation/screens/projects_screen.dart';
 import 'package:syntrace/features/reports/presentation/screens/reports_screen.dart';
+import 'package:syntrace/features/settings/presentation/cubit/integrations_cubit.dart';
+import 'package:syntrace/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:syntrace/features/settings/presentation/screens/settings_screen.dart';
 import 'package:syntrace/features/splash/presentation/screens/splash_screen.dart';
 import 'package:syntrace/features/tasks/presentation/cubit/tasks_cubit.dart';
@@ -80,8 +83,11 @@ final appRouter = GoRouter(
         ),
         GoRoute(
           path: AppRoutes.chat,
-          builder: (context, state) => const ChatScreen(),
-        ),
+          builder: (context, state) => BlocProvider(
+          create: (_) => ChatCubit(),
+          child: const ChatScreen(),
+         ),
+       ),
         GoRoute(
           path: AppRoutes.graph,
           builder: (context, state) => const GraphScreen(),
@@ -89,10 +95,6 @@ final appRouter = GoRouter(
         GoRoute(
           path: AppRoutes.profile,
           builder: (context, state) => const ProfileScreen(),
-        ),
-        GoRoute(
-          path: AppRoutes.settings,
-          builder: (context, state) => const SettingsScreen(),
         ),
         GoRoute(
           path: AppRoutes.reports,
@@ -125,6 +127,16 @@ final appRouter = GoRouter(
             child: const TasksScreen(),
           ),
         ),
+        GoRoute(
+          path: AppRoutes.settings,
+          builder: (context, state) => MultiBlocProvider(
+          providers: [
+          BlocProvider(create: (_) => SettingsCubit()),
+          BlocProvider(create: (_) => IntegrationsCubit()),
+         ],
+          child: const SettingsScreen(),
+         ),
+       ),
       ],
     ),
   ],

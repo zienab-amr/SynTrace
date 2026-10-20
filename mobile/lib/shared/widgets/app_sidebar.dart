@@ -12,28 +12,20 @@ class AppSidebar extends StatefulWidget {
   State<AppSidebar> createState() => _AppSidebarState();
 }
 
-class _AppSidebarState extends State<AppSidebar>
-{
+class _AppSidebarState extends State<AppSidebar> {
   bool _isCollapsed = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeInOut,
       width: _isCollapsed ? 72 : 200,
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        border: Border(
-          right: BorderSide(color: theme.dividerColor, width: 1),
-        ),
-      ),
+      color: theme.scaffoldBackgroundColor,
       child: Column(
         children: [
-          // Logo
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
             child: Row(
@@ -59,9 +51,7 @@ class _AppSidebarState extends State<AppSidebar>
               ],
             ),
           ),
-          Divider(color: theme.dividerColor, height: 1),
 
-          // Nav items
           Expanded(
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -84,29 +74,28 @@ class _AppSidebarState extends State<AppSidebar>
                   route: AppRoutes.graph,
                   isCollapsed: _isCollapsed,
                 ),
-                 SidebarItem(
+                SidebarItem(
                   icon: Icons.folder_outlined,
                   label: 'Projects',
                   route: AppRoutes.projects,
-                   isCollapsed: _isCollapsed,
-                  ),
+                  isCollapsed: _isCollapsed,
+                ),
                 SidebarItem(
-                      icon: Icons.task_alt,
-                      label: 'Tasks',
-                      route: AppRoutes.tasks,
-                      isCollapsed: _isCollapsed,
-                  ),
+                  icon: Icons.task_alt,
+                  label: 'Tasks',
+                  route: AppRoutes.tasks,
+                  isCollapsed: _isCollapsed,
+                ),
                 SidebarItem(
                   icon: CupertinoIcons.settings,
                   label: 'Settings',
-                  route: AppRoutes.settings, 
+                  route: AppRoutes.settings,
                   isCollapsed: _isCollapsed,
                 ),
-        ],
+              ],
             ),
           ),
 
-          // Toggle button
           Padding(
             padding: const EdgeInsets.all(12),
             child: IconButton(

@@ -31,6 +31,9 @@ class _OtpScreenState extends State<OtpScreen> {
   void _onVerify() {
     if (!_formKey.currentState!.validate()) return;
 
+    final currentState = context.read<LoginCubit>().state;
+    if (currentState is LoginLoading) return;
+
     context.read<LoginCubit>().verifyOtp(
           email: widget.email,
           otp: _otpController.text.trim(),
@@ -85,10 +88,11 @@ class _OtpScreenState extends State<OtpScreen> {
         ],
         submitButton: BlocBuilder<LoginCubit, LoginState>(
           builder: (context, state) {
+            final isLoading = state is LoginLoading;
             return AuthButton(
               label: 'Verify & Create Account',
-              isLoading: state is LoginLoading,
-              onPressed: _onVerify,
+              isLoading: isLoading,
+              onPressed: isLoading ? null : _onVerify,
             );
           },
         ),
@@ -97,9 +101,6 @@ class _OtpScreenState extends State<OtpScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Footer 
-  // ═══════════════════════════════════════════════════════
   Widget _buildFooter(BuildContext context) {
     final theme = Theme.of(context);
 
@@ -116,9 +117,6 @@ class _OtpScreenState extends State<OtpScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Success Message 
-  // ═══════════════════════════════════════════════════════
   void _showSuccess(String message) {
     final theme = Theme.of(context);
 
@@ -142,9 +140,6 @@ class _OtpScreenState extends State<OtpScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Error Message 
-  // ═══════════════════════════════════════════════════════
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

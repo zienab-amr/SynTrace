@@ -17,8 +17,7 @@ class SignupScreen extends StatefulWidget {
   State<SignupScreen> createState() => _SignupScreenState();
 }
 
-class _SignupScreenState extends State<SignupScreen> 
-{
+class _SignupScreenState extends State<SignupScreen> {
   final _formKey = GlobalKey<FormState>();
   final _companyController = TextEditingController();
   final _firstNameController = TextEditingController();
@@ -29,8 +28,7 @@ class _SignupScreenState extends State<SignupScreen>
   bool _agreedToTerms = false;
 
   @override
-  void dispose() 
-  {
+  void dispose() {
     _companyController.dispose();
     _firstNameController.dispose();
     _lastNameController.dispose();
@@ -40,46 +38,50 @@ class _SignupScreenState extends State<SignupScreen>
     super.dispose();
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Signup Action
-  // ═══════════════════════════════════════════════════════
-  void _onSignup() 
-  {
-  if (!_formKey.currentState!.validate()) return;
-  if (!_agreedToTerms) {
-    _showError('Please accept the Terms & Conditions');
-    return;
-  }
+  void _onSignup() {
+    if (!_formKey.currentState!.validate()) return;
 
-  context.read<LoginCubit>().sendOtp(
-        companyName: _companyController.text.trim(),
-        firstName: _firstNameController.text.trim(),
-        lastName: _lastNameController.text.trim(),
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-      );
-}
+    final currentState = context.read<LoginCubit>().state;
+    if (currentState is LoginLoading) return;
+
+    if (!_agreedToTerms) {
+      _showError('Please accept the Terms & Conditions');
+      return;
+    }
+
+    context.read<LoginCubit>().sendOtp(
+          companyName: _companyController.text.trim(),
+          firstName: _firstNameController.text.trim(),
+          lastName: _lastNameController.text.trim(),
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+        );
+  }
 
   @override
-  Widget build(BuildContext context) 
-  {
+  Widget build(BuildContext context) {
     return BlocListener<LoginCubit, LoginState>(
       listener: (context, state) {
-  if (state is OtpSent) {
-    _showSuccess('OTP sent to ${state.email}');
-    Future.delayed(const Duration(milliseconds: 600), () {
-      if (mounted) {
-        context.go(
-          AppRoutes.verifyOtp,
-          extra: state.email,  
-        );
-      }
-    });
-  }
-  if (state is LoginError) {
-    _showError(state.message);
-  }
-},
+        if (state is OtpSent) {
+          _showSuccess('OTP sent to ${state.email}');
+          Future.delayed(const Duration(milliseconds: 600), () {
+            if (mounted) {
+              context.go(
+                AppRoutes.verifyOtp,
+                extra: state.email,
+              );
+            }
+          });
+        }
+
+        if (state is EmailAlreadyExists) {
+          _showEmailExistsDialog(context, state.email);
+        }
+
+        if (state is LoginError) {
+          _showError(state.message);
+        }
+      },
       child: AuthScreenLayout(
         title: 'Create account',
         subtitle: 'Sign up to get started with SynTrace',
@@ -89,7 +91,6 @@ class _SignupScreenState extends State<SignupScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ─── Company Name ───
                 AuthTextField(
                   label: 'Company Name',
                   hint: 'Acme Corp',
@@ -103,8 +104,6 @@ class _SignupScreenState extends State<SignupScreen>
                   },
                 ),
                 const SizedBox(height: 16),
-
-                // ─── First Name ───
                 AuthTextField(
                   label: 'First Name',
                   hint: 'John',
@@ -118,8 +117,6 @@ class _SignupScreenState extends State<SignupScreen>
                   },
                 ),
                 const SizedBox(height: 16),
-
-                // ─── Last Name ───
                 AuthTextField(
                   label: 'Last Name',
                   hint: 'Doe',
@@ -133,8 +130,6 @@ class _SignupScreenState extends State<SignupScreen>
                   },
                 ),
                 const SizedBox(height: 16),
-
-                // ─── Email ───
                 AuthTextField(
                   label: 'Work Email',
                   hint: 'you@company.com',
@@ -152,39 +147,23 @@ class _SignupScreenState extends State<SignupScreen>
                   },
                 ),
                 const SizedBox(height: 16),
-
-                // ─── Password ───
-               AuthTextField(
-  label: 'Password',
-  hint: 'Password123!',
-  icon: Icons.lock_outline,
-  controller: _passwordController,
-  isPassword: true,
-  validator: (value) {
-    if (value == null || value.isEmpty) {
-      return 'Password is required';
-    }
-    if (value.length < 8) {
-      return 'Password must be at least 8 characters';
-    }
-    if (!RegExp(r'[A-Z]').hasMatch(value)) {
-      return 'Password must contain an uppercase letter';
-    }
-    if (!RegExp(r'[a-z]').hasMatch(value)) {
-      return 'Password must contain a lowercase letter';
-    }
-    if (!RegExp(r'[0-9]').hasMatch(value)) {
-      return 'Password must contain a number';
-    }
-    if (!RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-]').hasMatch(value)) {
-      return 'Password must contain a special character';
-    }
-    return null;
-  },
-),
+                AuthTextField(
+                  label: 'Password',
+                  hint: 'At least 6 characters',
+                  icon: Icons.lock_outline,
+                  controller: _passwordController,
+                  isPassword: true,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Password is required';
+                    }
+                    if (value.length < 6) {
+                      return 'At least 6 characters';
+                    }
+                    return null;
+                  },
+                ),
                 const SizedBox(height: 16),
-
-                // ─── Confirm Password ───
                 AuthTextField(
                   label: 'Confirm Password',
                   hint: '••••••••',
@@ -210,10 +189,11 @@ class _SignupScreenState extends State<SignupScreen>
         ],
         submitButton: BlocBuilder<LoginCubit, LoginState>(
           builder: (context, state) {
+            final isLoading = state is LoginLoading;
             return AuthButton(
               label: 'Create Account',
-              isLoading: state is LoginLoading,
-              onPressed: _onSignup,
+              isLoading: isLoading,
+              onPressed: isLoading ? null : _onSignup,
             );
           },
         ),
@@ -226,9 +206,6 @@ class _SignupScreenState extends State<SignupScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Terms Checkbox
-  // ═══════════════════════════════════════════════════════
   Widget _buildTermsCheckbox(BuildContext context) {
     final theme = Theme.of(context);
 
@@ -289,9 +266,57 @@ class _SignupScreenState extends State<SignupScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Messages
-  // ═══════════════════════════════════════════════════════
+  void _showEmailExistsDialog(BuildContext context, String email) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+
+        return AlertDialog(
+          backgroundColor: theme.colorScheme.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              const Icon(Icons.info_outline, color: AppColors.warning, size: 22),
+              const SizedBox(width: 10),
+              const Text('Email Already Registered'),
+            ],
+          ),
+          content: Text(
+            'The email "$email" is already registered.\n\n'
+            'Please sign in instead, or use a different email.',
+            style: TextStyle(
+              color: theme.colorScheme.onSurface.withOpacity(0.8),
+              fontSize: 14,
+              height: 1.5,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+              },
+              child: const Text('Use Different Email'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                context.go(AppRoutes.login);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+              ),
+              child: const Text('Sign In'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _showSuccess(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
