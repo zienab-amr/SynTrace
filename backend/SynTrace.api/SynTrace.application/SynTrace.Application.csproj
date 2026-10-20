@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <Folder Include="Behaviors\" />
+    <Folder Include="Features\Integrations\Jira\Queries\" />
   </ItemGroup>
 
   <ItemGroup>
