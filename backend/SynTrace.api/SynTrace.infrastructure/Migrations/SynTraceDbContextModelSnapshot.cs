@@ -302,6 +302,9 @@ namespace SynTrace.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<int>("ConnectionType")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("ConsumedAt")
                         .HasColumnType("datetime2");
 

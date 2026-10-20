@@ -58,6 +58,7 @@ namespace SynTrace.Infrastructure.Services.Integrations.Jira
             {
                 JiraOAuthStateId = Guid.NewGuid().ToString(),
                 StateHash = stateHash,
+                ConnectionType = Domain.Enums.JiraConnectionType.Company,
                 EmployeeId = _currentEmployee.EmployeeId,
                 CompanyId = _currentTenant.CompanyId,
                 ExpiresAt = DateTime.UtcNow.AddMinutes(5),

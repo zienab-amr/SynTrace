@@ -23,7 +23,7 @@ namespace SynTrace_api.Controllers
         {
             var query = new ConnectJiraCommand();
             var result = await _mediator.Send(query);
-            return Redirect(result);
+            return Ok(result);
         }
 
         [AllowAnonymous]
