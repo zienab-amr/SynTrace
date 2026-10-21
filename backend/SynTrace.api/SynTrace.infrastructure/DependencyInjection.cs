@@ -80,11 +80,15 @@ namespace SynTrace.Infrastructure
             services.AddScoped<IEmailService, EmailService>();
             services.AddScoped<ITokenService, TokenService>();
             services.AddScoped<IForgotPasswordService, ForgotPasswordService>();
-            services.AddScoped<ICurrentTenant, CurrentTenant>();
-            services.AddScoped<ICurrentEmployee, CurrentEmployee>();
             services.AddScoped<IRoleService, RoleService>();
             services.AddScoped<IJiraOAuthService, JiraOAuthService>();
 
+            //JWT Token Service
+            services.AddScoped<ICurrentTenant, CurrentTenant>();
+            services.AddScoped<ICurrentEmployee, CurrentEmployee>();
+            services.AddScoped<ICurrentRole, CurrentRole>();
+
+            //Repositories
             services.AddScoped<IEmployeeRepository, EmployeeRepository>();
             services.AddScoped<IJiraOAuthConnectionRepository, JiraOAuthConnectionRepository>();
 

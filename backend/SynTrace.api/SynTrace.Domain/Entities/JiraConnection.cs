@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using SynTrace.Domain.Enums;
 
 namespace SynTrace.Domain.Entities
 {
@@ -14,6 +15,7 @@ namespace SynTrace.Domain.Entities
         public string EncryptedAccessToken { get; set; } = string.Empty;
         public string? EncryptedRefreshToken { get; set; }
         public string ConnectedByEmployeeId { get; set; } = string.Empty;
+        public JiraConnectionType JiraConnectionType { get; set; }
         public Employee ConnectedByEmployee { get; set; } = null!;
         public string CompanyId { get; set; } = string.Empty;
         public Company Company { get; set; } = null!;

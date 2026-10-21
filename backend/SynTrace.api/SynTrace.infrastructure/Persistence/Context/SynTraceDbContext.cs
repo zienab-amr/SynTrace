@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using SynTrace.Application.Contracts;
 using SynTrace.Domain.Entities;
+using SynTrace.Domain.Enums;
 
 namespace SynTrace.Infrastructure.Persistence.Context
 {
@@ -34,6 +35,17 @@ namespace SynTrace.Infrastructure.Persistence.Context
                 .WithMany()
                 .HasForeignKey(x => x.ConnectedByEmployeeId)
                 .OnDelete(DeleteBehavior.NoAction);
+
+            modelBuilder.Entity<JiraConnection>()
+                .HasIndex(c => c.CompanyId)
+                .IsUnique()
+                .HasFilter("[JiraConnectionType] = 0 AND [status] = 1");
+
+            modelBuilder.Entity<JiraConnection>()
+                .HasIndex(c => new { c.CompanyId, c.ConnectedByEmployeeId })
+                .IsUnique()
+                .HasDatabaseName("UX_JiraConnections_ActiveEmployee")
+                .HasFilter("[JiraConnectionType] = 1 AND [status] = 1");
 
             modelBuilder.Entity<JiraOAuthState>()
                 .HasOne(x => x.Company)

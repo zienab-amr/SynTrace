@@ -1,9 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
-using SynTrace.Domain.Entities;
-using SynTrace.Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using SynTrace.Domain.Entities;
+using SynTrace.Domain.Enums;
+using SynTrace.Domain.Interfaces;
 using SynTrace.Infrastructure.Persistence.Context;
 
 namespace SynTrace.Infrastructure.Repositories
@@ -19,12 +20,6 @@ namespace SynTrace.Infrastructure.Repositories
         {
             var status = await _context.JiraOAuthStates.AddAsync(state);
 
-            var companyExists = await _context.Companies
-                                .AnyAsync(c => c.CompanyId == state.CompanyId);
-
-            Console.WriteLine($"CompanyId: {state.CompanyId}");
-            Console.WriteLine($"Company exists: {companyExists}");
-            Console.WriteLine($"Database: {_context.Database.GetDbConnection().Database}");
             await _context.SaveChangesAsync();
 
             return status.Entity;
@@ -54,6 +49,31 @@ namespace SynTrace.Infrastructure.Repositories
         {
             await _context.JiraConnections.AddAsync(connection);
             await _context.SaveChangesAsync();
+        }
+
+        public async Task<bool> CheckConnection(string companyId)
+        {
+            var check = await _context.JiraConnections.AnyAsync(c => c.status && c.CompanyId == companyId && c.JiraConnectionType == Domain.Enums.JiraConnectionType.Company);
+            return check;   
+        }
+
+        public async Task<bool> CheckEmployeeConnection(string companyId, string employeeId)
+        {
+            var check = await _context.JiraConnections.AnyAsync(c => c.status 
+                                && c.CompanyId == companyId 
+                                && c.JiraConnectionType == Domain.Enums.JiraConnectionType.Employee 
+                                && c.ConnectedByEmployeeId == employeeId);
+            return check;
+        }
+
+        public async Task<JiraConnection?> GetActiveCompanyConnection(string companyId)
+        {
+            return await _context.JiraConnections
+                .AsNoTracking()
+                .SingleOrDefaultAsync(c =>
+                    c.CompanyId == companyId &&
+                    c.JiraConnectionType == JiraConnectionType.Company &&
+                    c.status);
         }
     }
 }

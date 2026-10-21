@@ -274,6 +274,9 @@ namespace SynTrace.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int>("JiraConnectionType")
+                        .HasColumnType("int");
+
                     b.Property<string>("SiteUrl")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -286,9 +289,16 @@ namespace SynTrace.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CompanyId");
+                    b.HasIndex("CompanyId")
+                        .IsUnique()
+                        .HasFilter("[JiraConnectionType] = 0 AND [status] = 1");
 
                     b.HasIndex("ConnectedByEmployeeId");
+
+                    b.HasIndex("CompanyId", "ConnectedByEmployeeId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_JiraConnections_ActiveEmployee")
+                        .HasFilter("[JiraConnectionType] = 1 AND [status] = 1");
 
                     b.ToTable("JiraConnections");
                 });

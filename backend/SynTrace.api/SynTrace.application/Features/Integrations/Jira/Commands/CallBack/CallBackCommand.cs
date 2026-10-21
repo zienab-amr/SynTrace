@@ -6,7 +6,7 @@ using SynTrace.Application.DTOs.Responses;
 
 namespace SynTrace.Application.Features.Integrations.Jira.Commands.CallBack
 {
-    public class CallBackCommand : IRequest<Unit>
+    public class CallBackCommand : IRequest<JiraOAuthCallbackResponse>
     {
         public string Code { get; set; }
         public string State { get; set; }

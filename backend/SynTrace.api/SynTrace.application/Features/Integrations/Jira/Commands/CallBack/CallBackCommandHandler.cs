@@ -7,17 +7,23 @@ using SynTrace.Application.DTOs.Responses;
 
 namespace SynTrace.Application.Features.Integrations.Jira.Commands.CallBack
 {
-    public class CallBackCommandHandler : IRequestHandler<CallBackCommand, Unit>
+    public class CallBackCommandHandler : IRequestHandler<CallBackCommand, JiraOAuthCallbackResponse>
     {
         private readonly IJiraOAuthService _jiraOAuthService;
+
         public CallBackCommandHandler(IJiraOAuthService jiraOAuthService)
         {
             _jiraOAuthService = jiraOAuthService;
         }
-        public async Task<Unit> Handle(CallBackCommand request, CancellationToken cancellationToken)
+
+        public Task<JiraOAuthCallbackResponse> Handle(
+            CallBackCommand request,
+            CancellationToken cancellationToken)
         {
-            await _jiraOAuthService.CallBack(request.Code, request.State, cancellationToken: cancellationToken);
-            return Unit.Value;
+            return _jiraOAuthService.CallBack(
+                request.Code,
+                request.State,
+                cancellationToken);
         }
     }
 }
