@@ -356,6 +356,45 @@ namespace SynTrace.Infrastructure.Services.Integrations.Jira
             _memoryCache.Remove(GetPendingCacheKey(pendingId));
         }
 
+        private async Task SaveConnectionAsync(JiraConnection connection)
+        {
+            try
+            {
+                await _jiraOAuthConnectionRepository.CreateConnection(connection);
+            }
+            catch (DbUpdateException ex)
+            {
+                var sqlException = ex.GetBaseException() as SqlException;
+
+                var isUniqueViolation =
+                    sqlException is not null &&
+                    (sqlException.Number == 2601 ||
+                     sqlException.Number == 2627);
+
+                if (isUniqueViolation && connection.status)
+                {
+                    if (connection.JiraConnectionType == JiraConnectionType.Company &&
+                        await _jiraOAuthConnectionRepository.CheckConnection(
+                            connection.CompanyId))
+                    {
+                        throw new CompanyJiraConnectionAlreadyExistsException(
+                            "A Jira connection already exists for this company.");
+                    }
+
+                    if (connection.JiraConnectionType == JiraConnectionType.Employee &&
+                        await _jiraOAuthConnectionRepository.CheckEmployeeConnection(
+                            connection.CompanyId,
+                            connection.ConnectedByEmployeeId))
+                    {
+                        throw new EmployeeJiraConnectionAlreadyExistsException(
+                            "A Jira connection already exists for this employee.");
+                    }
+                }
+
+                // Preserve database errors unrelated to the expected conflict.
+                throw;
+            }
+        }
         private static string ComputeHash(string data)
         {
             var hash = SHA256.HashData(
