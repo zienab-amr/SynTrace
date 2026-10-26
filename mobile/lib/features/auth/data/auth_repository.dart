@@ -147,9 +147,28 @@ class AuthRepository {
   }
 
   String _extractError(DioException e) {
-    final apiException = e.error is ApiException
-        ? e.error as ApiException
-        : UnknownException(message: e.message);
-    return apiException.message;
+  final apiException = e.error is ApiException
+      ? e.error as ApiException
+      : UnknownException(message: e.message);
+  return apiException.message;
+}
+    // ═══════════════════════════════════════════════════════
+  // check Email Existance
+  // ═══════════════════════════════════════════════════════
+Future<bool> checkEmailExists(String email) async {
+  try {
+    final response = await ApiClient.instance.get(
+      ApiEndpoints.checkEmail,
+      queryParameters: {'email': email},
+    );
+
+    if (response.statusCode == 200 && response.data is Map) {
+      return response.data['exists'] as bool? ?? false;
+    }
+    return false;
+  } catch (_) {
+    return false;
   }
 }
+}
+

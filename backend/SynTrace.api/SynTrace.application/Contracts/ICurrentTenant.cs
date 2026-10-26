@@ -6,7 +6,7 @@ namespace SynTrace.Application.Contracts
 {
     public interface ICurrentTenant
     {
-        public Guid CompanyId { get;} 
+        public string CompanyId { get;} 
 
     }
 }

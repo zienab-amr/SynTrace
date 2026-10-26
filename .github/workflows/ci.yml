@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - development
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore backend/SynTrace.api/SynTrace.api.slnx
+
+      - name: Build project
+        run: dotnet build --no-restore backend/SynTrace.api/SynTrace.api.slnx
+
+      - name: Run tests
+        run: dotnet test backend/SynTrace.api/SynTrace.api.slnx

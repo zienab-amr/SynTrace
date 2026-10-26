@@ -1,39 +1,28 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-/// ═══════════════════════════════════════════════════════════
-/// Secure Storage Service
-/// 
-/// الخزنة الآمنة للتطبيق
-/// بنخزن فيها: Token, TenantId, API Keys
-/// ═══════════════════════════════════════════════════════════
 class SecureStorageService {
-  // ─── Singleton ───
   SecureStorageService._();
   static final SecureStorageService instance = SecureStorageService._();
 
-  // ─── الخزنة ───
   final _storage = const FlutterSecureStorage(
-    aOptions: AndroidOptions(
-      encryptedSharedPreferences: true,
-    ),
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
     iOptions: IOSOptions(
       accessibility: KeychainAccessibility.first_unlock,
     ),
   );
 
-  // ═══════════════════════════════════════════════════════
-  // Keys
-  // ═══════════════════════════════════════════════════════
   static const _keyToken = 'auth_token';
   static const _keyRefreshToken = 'refresh_token';
   static const _keyTenantId = 'tenant_id';
   static const _keyUserId = 'user_id';
   static const _keyUserRole = 'user_role';
-  static const _keyApiKey = 'api_key';
+  static const _keyUserName = 'user_name';
+  static const _keyCompanyName = 'company_name';
+  static const _keyAvatarBytes = 'avatar_bytes';
+  static const _keyOnboardingCompleted = 'onboarding_completed';
 
-  // ═══════════════════════════════════════════════════════
-  // 1. Auth Token
-  // ═══════════════════════════════════════════════════════
   Future<void> saveToken(String token) async {
     await _storage.write(key: _keyToken, value: token);
   }
@@ -42,13 +31,6 @@ class SecureStorageService {
     return await _storage.read(key: _keyToken);
   }
 
-  Future<void> deleteToken() async {
-    await _storage.delete(key: _keyToken);
-  }
-
-  // ═══════════════════════════════════════════════════════
-  // 2. Refresh Token
-  // ═══════════════════════════════════════════════════════
   Future<void> saveRefreshToken(String token) async {
     await _storage.write(key: _keyRefreshToken, value: token);
   }
@@ -57,13 +39,6 @@ class SecureStorageService {
     return await _storage.read(key: _keyRefreshToken);
   }
 
-  Future<void> deleteRefreshToken() async {
-    await _storage.delete(key: _keyRefreshToken);
-  }
-
-  // ═══════════════════════════════════════════════════════
-  // 3. Tenant ID (Multi-Tenancy)
-  // ═══════════════════════════════════════════════════════
   Future<void> saveTenantId(String tenantId) async {
     await _storage.write(key: _keyTenantId, value: tenantId);
   }
@@ -72,13 +47,6 @@ class SecureStorageService {
     return await _storage.read(key: _keyTenantId);
   }
 
-  Future<void> deleteTenantId() async {
-    await _storage.delete(key: _keyTenantId);
-  }
-
-  // ═══════════════════════════════════════════════════════
-  // 4. User Info (Cache)
-  // ═══════════════════════════════════════════════════════
   Future<void> saveUserId(String userId) async {
     await _storage.write(key: _keyUserId, value: userId);
   }
@@ -95,37 +63,65 @@ class SecureStorageService {
     return await _storage.read(key: _keyUserRole);
   }
 
-  // ═══════════════════════════════════════════════════════
-  // 5. API Key (للـ Backend Communication)
-  // ═══════════════════════════════════════════════════════
-  Future<void> saveApiKey(String apiKey) async {
-    await _storage.write(key: _keyApiKey, value: apiKey);
+  Future<void> saveUserName(String name) async {
+    await _storage.write(key: _keyUserName, value: name);
   }
 
-  Future<String?> getApiKey() async {
-    return await _storage.read(key: _keyApiKey);
+  Future<String?> getUserName() async {
+    return await _storage.read(key: _keyUserName);
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Helpers
-  // ═══════════════════════════════════════════════════════
-  
-  /// هل المستخدم عامل Login؟
+  Future<void> saveCompanyName(String name) async {
+    await _storage.write(key: _keyCompanyName, value: name);
+  }
+
+  Future<String?> getCompanyName() async {
+    return await _storage.read(key: _keyCompanyName);
+  }
+
+  Future<void> saveAvatarBytes(Uint8List bytes) async {
+    final base64String = base64Encode(bytes);
+    await _storage.write(key: _keyAvatarBytes, value: base64String);
+  }
+
+  Future<Uint8List?> getAvatarBytes() async {
+    final base64String = await _storage.read(key: _keyAvatarBytes);
+    if (base64String == null || base64String.isEmpty) return null;
+    try {
+      return base64Decode(base64String);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> deleteAvatarBytes() async {
+    await _storage.delete(key: _keyAvatarBytes);
+  }
+
+  Future<void> saveOnboardingCompleted(bool value) async {
+    await _storage.write(
+      key: _keyOnboardingCompleted,
+      value: value.toString(),
+    );
+  }
+
+  Future<bool> isOnboardingCompleted() async {
+    final value = await _storage.read(key: _keyOnboardingCompleted);
+    return value == 'true';
+  }
+
   Future<bool> isLoggedIn() async {
     final token = await getToken();
     return token != null && token.isNotEmpty;
   }
 
-  /// امسحي كل حاجة (لما يعمل Logout)
   Future<void> clearAll() async {
     await _storage.deleteAll();
   }
 
-  /// امسحي كل حاجة ماعدا الـ Tenant ID
-  Future<void> clearUserData() async {
+  Future<void> clearAuthData() async {
     await _storage.delete(key: _keyToken);
     await _storage.delete(key: _keyRefreshToken);
-    await _storage.delete(key: _keyUserId);
-    await _storage.delete(key: _keyUserRole);
+    await _storage.delete(key: _keyOnboardingCompleted);
   }
 }

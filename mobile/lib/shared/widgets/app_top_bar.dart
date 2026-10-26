@@ -16,12 +16,7 @@ class AppTopBar extends StatelessWidget {
     return Container(
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 24),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(color: theme.dividerColor, width: 1),
-        ),
-      ),
+      color: theme.scaffoldBackgroundColor,
       child: Row(
         children: [
           const Spacer(),
@@ -35,7 +30,6 @@ class AppTopBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          // ─── User Avatar ───
           ValueListenableBuilder<UserModel?>(
             valueListenable: CurrentUserService.instance.userNotifier,
             builder: (context, user, _) {

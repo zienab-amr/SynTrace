@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿
 using Microsoft.AspNetCore.Http;
 using SynTrace.Application.Contracts;
 
@@ -9,11 +7,13 @@ namespace SynTrace.Infrastructure.ExternalServices
     public class CurrentTenant : ICurrentTenant
     {
         private readonly IHttpContextAccessor _httpContextAccessor;
+
         public CurrentTenant(IHttpContextAccessor httpContextAccessor)
         {
             _httpContextAccessor = httpContextAccessor;
         }
-        public Guid CompanyId
+
+        public string CompanyId
         {
             get
             {
@@ -21,13 +21,12 @@ namespace SynTrace.Infrastructure.ExternalServices
                     .User
                     .FindFirst("CompanyId");
 
-                if (claim == null)
-                    throw new UnauthorizedAccessException("CompanyId claim not found.");
+                if (string.IsNullOrWhiteSpace(claim?.Value))
+                    throw new UnauthorizedAccessException(
+                        "Valid CompanyId claim not found.");
 
-                return Guid.Parse(claim.Value);
+                return claim.Value;
             }
         }
-
-
     }
 }

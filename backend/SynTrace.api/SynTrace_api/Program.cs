@@ -11,6 +11,18 @@ builder.Services.AddApplicationDI();
 builder.Services.AddInfrastructureDI(builder.Configuration);
 builder.Services.AddControllers();
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("JiraOAuthTest", policy =>
+    {
+        policy.WithOrigins(
+                  "http://127.0.0.1:5500",
+                  "http://localhost:59416")
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
@@ -33,6 +45,10 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseRouting();
+
+app.UseCors("JiraOAuthTest");
 
 app.UseAuthentication();
 app.UseAuthorization();

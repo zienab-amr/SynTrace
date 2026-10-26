@@ -17,7 +17,7 @@ class AuthButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      height: 54,   // ← 54 (كان 52)
+      height: 54,
       child: ElevatedButton(
         onPressed: isLoading ? null : onPressed,
         style: ElevatedButton.styleFrom(
@@ -26,7 +26,7 @@ class AuthButton extends StatelessWidget {
           disabledBackgroundColor: AppColors.primary.withOpacity(0.6),
           elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),   // ← 16
+            borderRadius: BorderRadius.circular(16),
           ),
         ),
         child: isLoading

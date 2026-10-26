@@ -1,4 +1,3 @@
-import 'package:equatable/equatable.dart';
 import 'package:syntrace/core/state/base_state.dart';
 import 'package:syntrace/features/auth/data/models/auth_models.dart';
 
@@ -48,4 +47,12 @@ class LoginError extends LoginState {
 
   @override
   List<Object?> get props => [message];
+}
+
+class EmailAlreadyExists extends LoginState {
+  final String email;
+  const EmailAlreadyExists(this.email);
+
+  @override
+  List<Object?> get props => [email];
 }

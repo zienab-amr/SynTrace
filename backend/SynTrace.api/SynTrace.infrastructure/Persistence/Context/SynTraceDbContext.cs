@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using SynTrace.Application.Contracts;
 using SynTrace.Domain.Entities;
+using SynTrace.Domain.Enums;
 
 namespace SynTrace.Infrastructure.Persistence.Context
 {
@@ -15,17 +16,56 @@ namespace SynTrace.Infrastructure.Persistence.Context
         {
             _currentTenant = currentTenant;
         }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
 
             modelBuilder.ApplyConfigurationsFromAssembly(
                 typeof(SynTraceDbContext).Assembly);
+
+            modelBuilder.Entity<JiraConnection>()
+                .HasOne(x => x.Company)
+                .WithMany()
+                .HasForeignKey(x => x.CompanyId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            modelBuilder.Entity<JiraConnection>()
+                .HasOne(x => x.ConnectedByEmployee)
+                .WithMany()
+                .HasForeignKey(x => x.ConnectedByEmployeeId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            modelBuilder.Entity<JiraConnection>()
+                .HasIndex(c => c.CompanyId)
+                .IsUnique()
+                .HasFilter("[JiraConnectionType] = 0 AND [status] = 1");
+
+            modelBuilder.Entity<JiraConnection>()
+                .HasIndex(c => new { c.CompanyId, c.ConnectedByEmployeeId })
+                .IsUnique()
+                .HasDatabaseName("UX_JiraConnections_ActiveEmployee")
+                .HasFilter("[JiraConnectionType] = 1 AND [status] = 1");
+
+            modelBuilder.Entity<JiraOAuthState>()
+                .HasOne(x => x.Company)
+                .WithMany()
+                .HasForeignKey(x => x.CompanyId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            modelBuilder.Entity<JiraOAuthState>()
+                .HasOne(x => x.Employee)
+                .WithMany()
+                .HasForeignKey(x => x.EmployeeId)
+                .OnDelete(DeleteBehavior.NoAction);
         }
+
         public DbSet<Company> Companies { get; set; }
         public DbSet<Employee> Employees { get; set; }
 
         public DbSet<RefreshToken> RefreshTokens { get; set; }
+        public DbSet<JiraOAuthState> JiraOAuthStates { get; set; }
+        public DbSet<JiraConnection> JiraConnections { get; set; }
 
     }
 }
