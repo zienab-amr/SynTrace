@@ -51,7 +51,7 @@ namespace SynTrace_api.Controllers
         }
 
         [HttpGet("all-employee")]
-        public async Task<IActionResult> AllEmployee(GetEmployeesByRoleQuery query)
+        public async Task<IActionResult> AllEmployee([FromQuery] GetEmployeesByRoleQuery query)
         {
             var employees = await _mediator.Send(query);
 
@@ -59,23 +59,23 @@ namespace SynTrace_api.Controllers
         }
 
         [HttpGet("employee-by-id")]
-        public async Task<IActionResult> GetById(GetEmployeeByIdQuery query)
+        public async Task<IActionResult> GetById([FromQuery] GetEmployeeByIdQuery query)
         {
-            var employee = _mediator.Send(query);
+            var employee = await _mediator.Send(query);
             return Ok(employee);
         }
 
         [HttpGet("employees-by-name")]
-        public async Task<IActionResult> GetByName(GetEmployeesByNameQuery query)
+        public async Task<IActionResult> GetByName([FromQuery] GetEmployeesByNameQuery query)
         {
-            var employees = _mediator.Send(query);
+            var employees = await _mediator.Send(query);
             return Ok(employees);
         }
 
         [HttpGet("employees-by-role")]
-        public async Task<IActionResult> GetByRole(GetEmployeesByRoleQuery query)
+        public async Task<IActionResult> GetByRole([FromQuery] GetEmployeesByRoleQuery query)
         {
-            var employees = _mediator.Send(query);
+            var employees = await _mediator.Send(query);
             return Ok(employees);
         }
     }
