@@ -35,6 +35,7 @@ namespace SynTrace.Application.Features.Employee.Commands.CreateEmployee
                 FirstName = request.FirstName,
                 LastName = request.LastName,
                 Email = request.Email,
+                UserName = request.Email,
                 PhoneNumber = request.PhoneNumber,
                 CompanyId = _currentTenant.CompanyId
             };
