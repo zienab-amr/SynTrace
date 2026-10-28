@@ -1,10 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+namespace SynTrace.Contracts.IntegrationEvents.Jira.Payloads;
 
-namespace SynTrace.Contracts.IntegrationEvents.Jira.Payloads
+public sealed record JiraWorklogPayload
 {
-    internal class JiraWorklogPayload
-    {
-    }
+    public string WorklogId { get; init; } = string.Empty;
+    public string IssueId { get; init; } = string.Empty;
+    public string? IssueKey { get; init; }
+    public string? AuthorAccountId { get; init; }
+    public long? TimeSpentSeconds { get; init; }
+    public DateTimeOffset? StartedAtUtc { get; init; }
 }

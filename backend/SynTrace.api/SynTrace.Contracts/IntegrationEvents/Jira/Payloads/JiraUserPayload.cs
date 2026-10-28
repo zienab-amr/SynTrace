@@ -1,10 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+namespace SynTrace.Contracts.IntegrationEvents.Jira.Payloads;
 
-namespace SynTrace.Contracts.IntegrationEvents.Jira.Payloads
+public sealed record JiraUserPayload
 {
-    internal class JiraUserPayload
-    {
-    }
+    public string AccountId { get; init; } = string.Empty;
+    public string? DisplayName { get; init; }
+    public bool? Active { get; init; }
 }
