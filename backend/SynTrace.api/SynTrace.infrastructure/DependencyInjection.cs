@@ -1,10 +1,10 @@
-﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
-using System.Text;
+﻿using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.IdentityModel.Tokens;
 using SynTrace.Application.Contracts;
 using SynTrace.Application.Contracts.Auth;
 using SynTrace.Application.Contracts.Integrations.Jira;
@@ -12,6 +12,9 @@ using SynTrace.Domain.Entities;
 using SynTrace.Domain.Interfaces;
 using SynTrace.Infrastructure.ExternalServices;
 using SynTrace.Infrastructure.Identity;
+using SynTrace.Infrastructure.Messaging.RabbitMQ.Configuration;
+using SynTrace.Infrastructure.Messaging.RabbitMQ.Connections;
+using SynTrace.Infrastructure.Messaging.RabbitMQ.Topology;
 using SynTrace.Infrastructure.Options;
 using SynTrace.Infrastructure.Persistence.Context;
 using SynTrace.Infrastructure.Repositories;
@@ -95,8 +98,19 @@ namespace SynTrace.Infrastructure
             //Http Client
             services.AddHttpClient();
 
+            //RabbitMQ Service
+            services.AddSingleton<RabbitMqConnectionProvider>();
+            services.AddSingleton<RabbitMqTopologyInitializer>();
+            services.AddHostedService<RabbitMqTopologyHostedService>();
+
             //binding configuration
             services.Configure<JiraOAuthOptions>(configuration.GetSection("JiraOAuth"));
+
+            services.Configure<RabbitMqOptions>(
+                 configuration.GetSection(RabbitMqOptions.SectionName));
+
+            services.Configure<RabbitMqTopologyOptions>(
+                configuration.GetSection(RabbitMqTopologyOptions.SectionName));
 
             return services;
         }
