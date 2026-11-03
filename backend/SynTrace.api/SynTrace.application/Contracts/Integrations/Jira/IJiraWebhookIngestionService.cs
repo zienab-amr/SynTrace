@@ -1,4 +1,4 @@
-﻿using SynTrace.Contracts.IntegrationEvents.Jira;
+using SynTrace.Contracts.IntegrationEvents.Jira;
 
 namespace SynTrace.Application.Integrations.Jira;
 
@@ -11,6 +11,15 @@ public interface IJiraWebhookIngestionService
     Task<JiraWebhookIngestionResult> IngestAsync(
         string connectionId,
         string? secret,
+        string? signatureHeader,
+        string? authorizationHeader,
+        byte[] rawBody,
+        string correlationId,
+        CancellationToken cancellationToken);
+
+    /// <summary>Admin webhook: authenticated by the X-Hub-Signature HMAC only.</summary>
+    Task<JiraWebhookIngestionResult> IngestAdminAsync(
+        string connectionId,
         string? signatureHeader,
         byte[] rawBody,
         string correlationId,
