@@ -55,5 +55,14 @@ public enum JiraEventType
     BoardCreated = 37,
     BoardUpdated = 38,
     BoardDeleted = 39,
-    BoardConfigurationChanged = 40
+    BoardConfigurationChanged = 40,
+
+    AttachmentCreated = 41,
+    AttachmentDeleted = 42,
+
+    // Messages for the AI side only. They are published with fixed "ai." routing keys.
+    FieldCatalog = 43,
+    IssueSnapshot = 44,
+    ImportCompleted = 45,
+    CompanyDisconnected = 46
 }
