@@ -11,4 +11,6 @@ public sealed record JiraIssuePayload
     public string? Status { get; init; }
     public string? AssigneeAccountId { get; init; }
     public DateTimeOffset? SourceUpdatedAtUtc { get; init; }
+    /// <summary>Jira ids of the issue's subtasks. Used to delete them with their parent.</summary>
+    public IReadOnlyList<string> SubtaskIds { get; init; } = Array.Empty<string>();
 }
