@@ -17,6 +17,7 @@ public sealed class JiraMaintenanceHostedService : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(6);
     private static readonly TimeSpan RefreshWhenLessThan = TimeSpan.FromDays(20);
+    private static readonly TimeSpan LedgerRetention = TimeSpan.FromDays(30);
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IJiraBackfillQueue _queue;
@@ -46,6 +47,13 @@ public sealed class JiraMaintenanceHostedService : BackgroundService
 
     private async Task RunOnceAsync(CancellationToken ct)
     {
+        await using (var cleanup = _scopeFactory.CreateAsyncScope())
+        {
+            var db = cleanup.ServiceProvider.GetRequiredService<SynTraceDbContext>();
+            var cutoff = DateTime.UtcNow.Subtract(LedgerRetention);
+            await db.ProcessedJiraEvents.Where(e => e.ProcessedAt < cutoff).ExecuteDeleteAsync(ct);
+        }
+
         List<(string Id, long? WebhookId, DateTime? ExpiresAt, JiraSyncStatus Sync)> connections;
         await using (var scope = _scopeFactory.CreateAsyncScope())
         {
