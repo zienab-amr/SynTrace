@@ -14,7 +14,10 @@ public sealed class JiraWebhookRegistrationService : IJiraWebhookRegistrationSer
     private static readonly string[] SupportedEvents =
     {
         "jira:issue_created", "jira:issue_updated", "jira:issue_deleted",
-        "comment_created", "comment_updated", "comment_deleted"
+        "comment_created", "comment_updated", "comment_deleted",
+        "sprint_created", "sprint_updated", "sprint_deleted", "sprint_started", "sprint_closed",
+        "jira:version_released", "jira:version_unreleased", "jira:version_created", "jira:version_moved",
+        "jira:version_updated", "jira:version_merged", "jira:version_deleted"
     };
 
     private readonly JiraApiClient _api;
