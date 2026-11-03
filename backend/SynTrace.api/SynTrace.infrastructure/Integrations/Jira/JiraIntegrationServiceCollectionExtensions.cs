@@ -15,6 +15,7 @@ public static class JiraIntegrationServiceCollectionExtensions
 
         services.AddScoped<JiraApiClient>();
         services.AddScoped<IJiraWebhookRegistrationService, JiraWebhookRegistrationService>();
+        services.AddScoped<IJiraConnectionAdminService, JiraConnectionAdminService>();
 
         services.AddSingleton<JiraWebhookNormalizer>();
         services.AddScoped<IJiraWebhookIngestionService, JiraWebhookIngestionService>();
