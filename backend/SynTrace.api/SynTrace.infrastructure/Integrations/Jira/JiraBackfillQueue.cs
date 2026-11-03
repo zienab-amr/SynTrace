@@ -7,7 +7,6 @@ using SynTrace.Application.Integrations.Jira;
 
 namespace SynTrace.Infrastructure.Integrations.Jira;
 
-/// <summary>In-process queue so the HTTP request that triggers a sync returns immediately.</summary>
 public sealed class JiraBackfillQueue : IJiraBackfillQueue
 {
     private readonly Channel<string> _channel = Channel.CreateUnbounded<string>();
@@ -16,7 +15,7 @@ public sealed class JiraBackfillQueue : IJiraBackfillQueue
     public ChannelReader<string> Reader => _channel.Reader;
 
     public ValueTask EnqueueAsync(string connectionId, CancellationToken cancellationToken = default) =>
-        _pending.TryAdd(connectionId, 0)                       // already queued/running => ignore (no duplicate runs)
+        _pending.TryAdd(connectionId, 0)                      
             ? _channel.Writer.WriteAsync(connectionId, cancellationToken)
             : ValueTask.CompletedTask;
 
