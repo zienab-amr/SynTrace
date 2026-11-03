@@ -24,6 +24,7 @@ services:
     environment:
       ConnectionStrings__ConnectionDB: "Server=sqlserver,1433;Database=SynTraceDB;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True;Encrypt=False"
       ASPNETCORE_ENVIRONMENT: Development
+      JiraOAuth__ClientSecret: ${JIRA_OAUTH_CLIENT_SECRET:?Set JIRA_OAUTH_CLIENT_SECRET in .env}
       RabbitMQ__HostName: "rabbitmq"
       RabbitMQ__Port: "5672"
       RabbitMQ__VirtualHost: "/"
@@ -36,6 +37,26 @@ services:
       rabbitmq:
         condition: service_healthy
 
+  worker:
+    build:
+      context: ./backend/SynTrace.api
+      dockerfile: SynTrace.Worker/Dockerfile
+
+    environment:
+      DOTNET_ENVIRONMENT: Development
+
+      RabbitMQ__HostName: "rabbitmq"
+      RabbitMQ__Port: "5672"
+      RabbitMQ__VirtualHost: "/"
+      RabbitMQ__UserName: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
+      RabbitMQ__Password: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
+      RabbitMQ__ClientProvidedName: "SynTrace.Worker"
+
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+    restart: unless-stopped
 
   ai-service:
     build:
