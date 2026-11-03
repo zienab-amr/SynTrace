@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
-using SynTrace.Domain.Entities;
+using SynTrace.Domain.Entities.Jira;
 
 namespace SynTrace.Domain.Interfaces
 {
@@ -13,6 +13,7 @@ namespace SynTrace.Domain.Interfaces
         public Task<bool> CheckConnection(string companyId);
         public Task<bool> CheckEmployeeConnection(string companyId, string employeeId);
         public Task<JiraConnection?> GetActiveCompanyConnection(string companyId);
+        public Task UpdateConnectionTokensAsync(string connectionId, string encryptedAccessToken, string? encryptedRefreshToken);
 
     }
 }

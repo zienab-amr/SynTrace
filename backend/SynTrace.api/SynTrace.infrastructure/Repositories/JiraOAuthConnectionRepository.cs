@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
-using SynTrace.Domain.Entities;
+using SynTrace.Domain.Entities.Jira;
 using SynTrace.Domain.Enums;
 using SynTrace.Domain.Interfaces;
 using SynTrace.Infrastructure.Persistence.Context;
@@ -74,6 +74,32 @@ namespace SynTrace.Infrastructure.Repositories
                     c.CompanyId == companyId &&
                     c.JiraConnectionType == JiraConnectionType.Company &&
                     c.status);
+        }
+
+        public async Task UpdateConnectionTokensAsync(
+        string connectionId,
+        string encryptedAccessToken,
+        string? encryptedRefreshToken)
+        {
+            var connection = await _context.JiraConnections
+                .SingleOrDefaultAsync(c => c.Id == connectionId);
+
+            if (connection is null)
+            {
+                throw new InvalidOperationException(
+                    "Jira connection was not found.");
+            }
+
+            connection.EncryptedAccessToken = encryptedAccessToken;
+
+            if (!string.IsNullOrWhiteSpace(encryptedRefreshToken))
+            {
+                connection.EncryptedRefreshToken = encryptedRefreshToken;
+            }
+
+            connection.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
         }
     }
 }
