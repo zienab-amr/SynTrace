@@ -21,6 +21,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.13" />
+    <PackageReference Include="RabbitMQ.Client" Version="7.2.2" />
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
     <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.13" />
   </ItemGroup>
@@ -30,6 +31,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Folder Include="Integrations\Jira\" />
     <Folder Include="Persistence\Configurations\" />
   </ItemGroup>
 
