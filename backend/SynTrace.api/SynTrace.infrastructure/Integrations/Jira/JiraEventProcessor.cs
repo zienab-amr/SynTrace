@@ -66,7 +66,7 @@ public sealed class JiraEventProcessor : IJiraEventProcessor
             {
                 var p = Read<JiraIssuePayload>(e);
                 await UpsertIssueAsync(e.CompanyId, p.IssueId, p.IssueKey, p.ProjectId, p.ProjectKey, p.Summary, p.Status,
-                    p.AssigneeAccountId, (p.SourceUpdatedAtUtc?.UtcDateTime) ?? fallbackStamp, isDelete: false, ct);
+                    p.AssigneeAccountId, (p.SourceUpdatedAtUtc?.UtcDateTime) ?? fallbackStamp, ct);
                 break;
             }
             case JiraEventType.IssueUpdated:
@@ -75,36 +75,54 @@ public sealed class JiraEventProcessor : IJiraEventProcessor
                 // SYNT-178 (create/update), SYNT-181 (status) and SYNT-182 (assignment). Changes[] is kept for AI/audit.
                 var p = Read<JiraIssueUpdatedPayload>(e);
                 await UpsertIssueAsync(e.CompanyId, p.IssueId, p.IssueKey, p.ProjectId, p.ProjectKey, p.Summary, p.Status,
-                    p.AssigneeAccountId, (p.SourceUpdatedAtUtc?.UtcDateTime) ?? fallbackStamp, isDelete: false, ct);
+                    p.AssigneeAccountId, (p.SourceUpdatedAtUtc?.UtcDateTime) ?? fallbackStamp, ct);
                 break;
             }
             case JiraEventType.IssueDeleted:
             {
                 var p = Read<JiraIssuePayload>(e);
-                await UpsertIssueAsync(e.CompanyId, p.IssueId, p.IssueKey, p.ProjectId, p.ProjectKey, null, null,
-                    null, fallbackStamp, isDelete: true, ct);
+                await DeleteIssuesAsync(e.CompanyId, p.SubtaskIds.Append(p.IssueId).ToList(), ct);
+                break;
+            }
+            case JiraEventType.ProjectDeleted:
+            case JiraEventType.ProjectSoftDeleted:
+            {
+                var p = Read<JiraProjectPayload>(e);
+                await DeleteProjectAsync(e.CompanyId, p.ProjectId, ct);
                 break;
             }
             case JiraEventType.CommentCreated:
             case JiraEventType.CommentUpdated:
+            {
+                var p = Read<JiraCommentPayload>(e);
+                await UpsertCommentAsync(e.CompanyId, p, fallbackStamp, ct);
+                break;
+            }
             case JiraEventType.CommentDeleted:
             {
                 var p = Read<JiraCommentPayload>(e);
-                await UpsertCommentAsync(e.CompanyId, p, fallbackStamp, e.EventType == JiraEventType.CommentDeleted, ct);
+                await _db.JiraComments.Where(c => c.CompanyId == e.CompanyId && c.ExternalId == p.CommentId)
+                    .ExecuteDeleteAsync(ct);
                 break;
             }
             case JiraEventType.SprintCreated:
             case JiraEventType.SprintUpdated:
             case JiraEventType.SprintStarted:
             case JiraEventType.SprintClosed:
+            {
+                var p = Read<JiraSprintPayload>(e);
+                await UpsertSprintAsync(e.CompanyId, p, ct);
+                break;
+            }
             case JiraEventType.SprintDeleted:
             {
                 var p = Read<JiraSprintPayload>(e);
-                await UpsertSprintAsync(e.CompanyId, p, e.EventType == JiraEventType.SprintDeleted, ct);
+                await _db.JiraSprints.Where(x => x.CompanyId == e.CompanyId && x.ExternalId == p.SprintId)
+                    .ExecuteDeleteAsync(ct);
                 break;
             }
             default:
-                // Versions / worklogs / links / issue types / projects / users / boards:
+                // Versions / worklogs / links / attachments / issue types / users / boards:
                 // the contract exists, persistence is not implemented yet. The event is recorded in the ledger only.
                 _logger.LogDebug("Jira event type {EventType} has no persistence handler yet.", e.EventType);
                 break;
@@ -113,7 +131,7 @@ public sealed class JiraEventProcessor : IJiraEventProcessor
 
     private async Task UpsertIssueAsync(
         string companyId, string issueId, string key, string? projectId, string? projectKey,
-        string? summary, string? status, string? assignee, DateTime stamp, bool isDelete, CancellationToken ct)
+        string? summary, string? status, string? assignee, DateTime stamp, CancellationToken ct)
     {
         var issue = await _db.JiraIssues.SingleOrDefaultAsync(i => i.CompanyId == companyId && i.ExternalId == issueId, ct);
 
@@ -134,20 +152,34 @@ public sealed class JiraEventProcessor : IJiraEventProcessor
         issue.SourceUpdatedAt = stamp;
         issue.UpdatedAt = DateTime.UtcNow;
 
-        if (isDelete)
-        {
-            issue.IsDeleted = true;     // soft delete + tombstone so a late, older "created" cannot resurrect it
-        }
-        else
-        {
-            issue.IsDeleted = false;
-            issue.Summary = summary ?? issue.Summary;
-            issue.Status = status ?? issue.Status;
-            issue.AssigneeAccountId = assignee;   // null is meaningful here: unassigned
-        }
+        issue.Summary = summary ?? issue.Summary;
+        issue.Status = status ?? issue.Status;
+        issue.AssigneeAccountId = assignee;   // null is meaningful here: unassigned
 
         if (projectId is not null)
             await EnsureProjectAsync(companyId, projectId, projectKey, ct);
+    }
+
+    private async Task DeleteIssuesAsync(string companyId, List<string> issueIds, CancellationToken ct)
+    {
+        await _db.JiraComments.Where(c => c.CompanyId == companyId && issueIds.Contains(c.IssueExternalId))
+            .ExecuteDeleteAsync(ct);
+        await _db.JiraIssues.Where(i => i.CompanyId == companyId && issueIds.Contains(i.ExternalId))
+            .ExecuteDeleteAsync(ct);
+    }
+
+    /// <summary>Jira sends no issue_deleted for the issues of a deleted project.</summary>
+    private async Task DeleteProjectAsync(string companyId, string projectId, CancellationToken ct)
+    {
+        var issueIds = _db.JiraIssues
+            .Where(i => i.CompanyId == companyId && i.ProjectExternalId == projectId)
+            .Select(i => i.ExternalId);
+        await _db.JiraComments.Where(c => c.CompanyId == companyId && issueIds.Contains(c.IssueExternalId))
+            .ExecuteDeleteAsync(ct);
+        await _db.JiraIssues.Where(i => i.CompanyId == companyId && i.ProjectExternalId == projectId)
+            .ExecuteDeleteAsync(ct);
+        await _db.JiraProjects.Where(p => p.CompanyId == companyId && p.ExternalId == projectId)
+            .ExecuteDeleteAsync(ct);
     }
 
     private async Task EnsureProjectAsync(string companyId, string projectId, string? projectKey, CancellationToken ct)
@@ -159,7 +191,7 @@ public sealed class JiraEventProcessor : IJiraEventProcessor
         _db.JiraProjects.Add(new JiraProject { CompanyId = companyId, ExternalId = projectId, Key = projectKey });
     }
 
-    private async Task UpsertCommentAsync(string companyId, JiraCommentPayload p, DateTime fallbackStamp, bool isDelete, CancellationToken ct)
+    private async Task UpsertCommentAsync(string companyId, JiraCommentPayload p, DateTime fallbackStamp, CancellationToken ct)
     {
         var stamp = (p.UpdatedAtUtc ?? p.CreatedAtUtc)?.UtcDateTime ?? fallbackStamp;
         var comment = await _db.JiraComments.SingleOrDefaultAsync(c => c.CompanyId == companyId && c.ExternalId == p.CommentId, ct);
@@ -181,18 +213,10 @@ public sealed class JiraEventProcessor : IJiraEventProcessor
         comment.SourceUpdatedAt = stamp;
         comment.UpdatedAt = DateTime.UtcNow;
 
-        if (isDelete)
-        {
-            comment.IsDeleted = true;
-        }
-        else
-        {
-            comment.IsDeleted = false;
-            comment.BodyText = p.BodyText ?? comment.BodyText;
-        }
+        comment.BodyText = p.BodyText ?? comment.BodyText;
     }
 
-    private async Task UpsertSprintAsync(string companyId, JiraSprintPayload p, bool isDelete, CancellationToken ct)
+    private async Task UpsertSprintAsync(string companyId, JiraSprintPayload p, CancellationToken ct)
     {
         var sprint = await _db.JiraSprints.SingleOrDefaultAsync(s => s.CompanyId == companyId && s.ExternalId == p.SprintId, ct);
         if (sprint is null)
@@ -207,7 +231,6 @@ public sealed class JiraEventProcessor : IJiraEventProcessor
         sprint.StartDate = p.StartDateUtc?.UtcDateTime ?? sprint.StartDate;
         sprint.EndDate = p.EndDateUtc?.UtcDateTime ?? sprint.EndDate;
         sprint.CompleteDate = p.CompleteDateUtc?.UtcDateTime ?? sprint.CompleteDate;
-        sprint.IsDeleted = isDelete;
         sprint.UpdatedAt = DateTime.UtcNow;
     }
 
