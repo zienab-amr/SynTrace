@@ -14,23 +14,33 @@ services:
       retries: 15
       start_period: 40s
 
-  
   backend:
     build:
       context: ./backend/SynTrace.api
       dockerfile: Dockerfile
+
     ports:
       - "127.0.0.1:8081:8080"
+
     environment:
-      ConnectionStrings__ConnectionDB: "Server=sqlserver,1433;Database=SynTraceDB;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True;Encrypt=False"
       ASPNETCORE_ENVIRONMENT: Development
+
+      ConnectionStrings__ConnectionDB: "Server=sqlserver,1433;Database=SynTraceDB;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True;Encrypt=False"
+
+      # JWT
+      jwt__key: ${JWT_KEY:?Set JWT_KEY in .env}
+
+      # Jira OAuth
       JiraOAuth__ClientSecret: ${JIRA_OAUTH_CLIENT_SECRET:?Set JIRA_OAUTH_CLIENT_SECRET in .env}
+
+      # RabbitMQ
       RabbitMQ__HostName: "rabbitmq"
       RabbitMQ__Port: "5672"
       RabbitMQ__VirtualHost: "/"
       RabbitMQ__UserName: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
       RabbitMQ__Password: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
       RabbitMQ__ClientProvidedName: "SynTrace.Api"
+
     depends_on:
       sqlserver:
         condition: service_healthy
