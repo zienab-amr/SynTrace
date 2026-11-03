@@ -8,12 +8,16 @@ using Microsoft.IdentityModel.Tokens;
 using SynTrace.Application.Contracts;
 using SynTrace.Application.Contracts.Auth;
 using SynTrace.Application.Contracts.Integrations.Jira;
+using SynTrace.Application.Integrations.Jira;
 using SynTrace.Domain.Entities;
 using SynTrace.Domain.Interfaces;
 using SynTrace.Infrastructure.ExternalServices;
 using SynTrace.Infrastructure.Identity;
+using SynTrace.Infrastructure.Integrations.Jira;
+using SynTrace.Infrastructure.Messaging.RabbitMQ;
 using SynTrace.Infrastructure.Messaging.RabbitMQ.Configuration;
 using SynTrace.Infrastructure.Messaging.RabbitMQ.Connections;
+using SynTrace.Infrastructure.Messaging.RabbitMQ.Publishing;
 using SynTrace.Infrastructure.Messaging.RabbitMQ.Topology;
 using SynTrace.Infrastructure.Options;
 using SynTrace.Infrastructure.Persistence.Context;
@@ -84,7 +88,10 @@ namespace SynTrace.Infrastructure
             services.AddScoped<ITokenService, TokenService>();
             services.AddScoped<IForgotPasswordService, ForgotPasswordService>();
             services.AddScoped<IRoleService, RoleService>();
+
+            //Jira Services
             services.AddScoped<IJiraOAuthService, JiraOAuthService>();
+            services.AddJiraIntegration(configuration);   
 
             //JWT Token Service
             services.AddScoped<ICurrentTenant, CurrentTenant>();
@@ -99,15 +106,13 @@ namespace SynTrace.Infrastructure
             services.AddHttpClient();
 
             //RabbitMQ Service
-            services.AddSingleton<RabbitMqConnectionProvider>();
-            services.AddSingleton<RabbitMqTopologyInitializer>();
-            services.AddHostedService<RabbitMqTopologyHostedService>();
+            services.AddRabbitMqInfrastructure(options =>
+            {
+                configuration.GetSection(RabbitMqOptions.SectionName).Bind(options);
+            });
 
             //binding configuration
             services.Configure<JiraOAuthOptions>(configuration.GetSection("JiraOAuth"));
-
-            services.Configure<RabbitMqOptions>(
-                 configuration.GetSection(RabbitMqOptions.SectionName));
 
             services.Configure<RabbitMqTopologyOptions>(
                 configuration.GetSection(RabbitMqTopologyOptions.SectionName));
