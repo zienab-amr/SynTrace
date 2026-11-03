@@ -1,4 +1,4 @@
-﻿namespace SynTrace.Domain.Entities;
+namespace SynTrace.Domain.Entities;
 
 public class JiraIssue : ITenantOwned
 {
@@ -11,7 +11,6 @@ public class JiraIssue : ITenantOwned
     public string? Summary { get; set; }
     public string? Status { get; set; }
     public string? AssigneeAccountId { get; set; }
-    public bool IsDeleted { get; set; }
     public DateTime? SourceUpdatedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

@@ -1,4 +1,4 @@
-﻿namespace SynTrace.Domain.Entities;
+namespace SynTrace.Domain.Entities;
 
 public class JiraProject : ITenantOwned
 {
@@ -9,7 +9,6 @@ public class JiraProject : ITenantOwned
     public string? Name { get; set; }
     public string? ProjectTypeKey { get; set; }
     public string? LeadAccountId { get; set; }
-    public bool IsDeleted { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

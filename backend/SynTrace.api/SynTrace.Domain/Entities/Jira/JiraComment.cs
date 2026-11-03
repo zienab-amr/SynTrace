@@ -1,4 +1,4 @@
-﻿namespace SynTrace.Domain.Entities;
+namespace SynTrace.Domain.Entities;
 
 public class JiraComment : ITenantOwned
 {
@@ -9,7 +9,6 @@ public class JiraComment : ITenantOwned
     public string? IssueKey { get; set; }
     public string? AuthorAccountId { get; set; }
     public string? BodyText { get; set; }
-    public bool IsDeleted { get; set; }
     public DateTime? SourceCreatedAt { get; set; }
     public DateTime? SourceUpdatedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
