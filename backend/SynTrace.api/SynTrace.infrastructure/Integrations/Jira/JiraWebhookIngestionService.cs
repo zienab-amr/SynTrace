@@ -11,10 +11,6 @@ using SynTrace.Infrastructure.Persistence.Context;
 
 namespace SynTrace.Infrastructure.Integrations.Jira;
 
-/// <summary>
-/// Thin pipeline for SYNT-141/311: authenticate -> parse -> validate -> normalise -> publish.
-/// No business processing happens here; that is the Worker's job.
-/// </summary>
 public sealed class JiraWebhookIngestionService : IJiraWebhookIngestionService
 {
     private readonly SynTraceDbContext _db;
