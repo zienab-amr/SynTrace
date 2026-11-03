@@ -243,10 +243,16 @@ namespace SynTrace.Infrastructure.Migrations
                     b.ToTable("Companies");
                 });
 
-            modelBuilder.Entity("SynTrace.Domain.Entities.JiraConnection", b =>
+            modelBuilder.Entity("SynTrace.Domain.Entities.Jira.JiraConnection", b =>
                 {
                     b.Property<string>("Id")
                         .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime?>("AdminWebhookLastReceivedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("AiImportCompletedAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("CloudId")
                         .IsRequired()
@@ -267,6 +273,9 @@ namespace SynTrace.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("EncryptedAdminWebhookSecret")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("EncryptedRefreshToken")
                         .HasColumnType("nvarchar(max)");
 
@@ -277,12 +286,32 @@ namespace SynTrace.Infrastructure.Migrations
                     b.Property<int>("JiraConnectionType")
                         .HasColumnType("int");
 
+                    b.Property<string>("LastSyncError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime?>("LastSyncedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("SiteUrl")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int>("SyncStatus")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("WebhookExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long?>("WebhookId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("WebhookSecretHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
 
                     b.Property<bool>("status")
                         .HasColumnType("bit");
@@ -303,7 +332,7 @@ namespace SynTrace.Infrastructure.Migrations
                     b.ToTable("JiraConnections");
                 });
 
-            modelBuilder.Entity("SynTrace.Domain.Entities.JiraOAuthState", b =>
+            modelBuilder.Entity("SynTrace.Domain.Entities.Jira.JiraOAuthState", b =>
                 {
                     b.Property<string>("JiraOAuthStateId")
                         .HasColumnType("nvarchar(450)");
@@ -336,6 +365,294 @@ namespace SynTrace.Infrastructure.Migrations
                     b.HasIndex("EmployeeId");
 
                     b.ToTable("JiraOAuthStates");
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.JiraComment", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("AuthorAccountId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("BodyText")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CompanyId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("IssueExternalId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("IssueKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("SourceCreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("SourceUpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "ExternalId")
+                        .IsUnique();
+
+                    b.HasIndex("CompanyId", "IssueExternalId");
+
+                    b.ToTable("JiraComments");
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.JiraIssue", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("AssigneeAccountId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("CompanyId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ProjectExternalId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ProjectKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("SourceUpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("Summary")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "ExternalId")
+                        .IsUnique();
+
+                    b.HasIndex("CompanyId", "Key");
+
+                    b.HasIndex("CompanyId", "ProjectExternalId");
+
+                    b.ToTable("JiraIssues");
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.JiraProject", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("CompanyId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("Key")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("LeadAccountId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<string>("ProjectTypeKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "ExternalId")
+                        .IsUnique();
+
+                    b.HasIndex("CompanyId", "Key");
+
+                    b.ToTable("JiraProjects");
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.JiraSprint", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("BoardExternalId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("CompanyId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime?>("CompleteDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EndDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<DateTime?>("StartDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("State")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "ExternalId")
+                        .IsUnique();
+
+                    b.ToTable("JiraSprints");
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.JiraUser", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("AccountId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<bool?>("Active")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("CompanyId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "AccountId")
+                        .IsUnique();
+
+                    b.ToTable("JiraUsers");
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.ProcessedJiraEvent", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("CompanyId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("EventId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("JiraConnectionId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("ProcessedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("ProcessedAt");
+
+                    b.HasIndex("JiraConnectionId", "EventId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_ProcessedJiraEvents_Connection_Event");
+
+                    b.ToTable("ProcessedJiraEvents");
                 });
 
             modelBuilder.Entity("SynTrace.Domain.Entities.RefreshToken", b =>
@@ -442,7 +759,7 @@ namespace SynTrace.Infrastructure.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("SynTrace.Domain.Entities.JiraConnection", b =>
+            modelBuilder.Entity("SynTrace.Domain.Entities.Jira.JiraConnection", b =>
                 {
                     b.HasOne("SynTrace.Domain.Entities.Company", "Company")
                         .WithMany()
@@ -461,7 +778,7 @@ namespace SynTrace.Infrastructure.Migrations
                     b.Navigation("ConnectedByEmployee");
                 });
 
-            modelBuilder.Entity("SynTrace.Domain.Entities.JiraOAuthState", b =>
+            modelBuilder.Entity("SynTrace.Domain.Entities.Jira.JiraOAuthState", b =>
                 {
                     b.HasOne("SynTrace.Domain.Entities.Company", "Company")
                         .WithMany()
@@ -478,6 +795,66 @@ namespace SynTrace.Infrastructure.Migrations
                     b.Navigation("Company");
 
                     b.Navigation("Employee");
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.JiraComment", b =>
+                {
+                    b.HasOne("SynTrace.Domain.Entities.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.JiraIssue", b =>
+                {
+                    b.HasOne("SynTrace.Domain.Entities.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.JiraProject", b =>
+                {
+                    b.HasOne("SynTrace.Domain.Entities.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.JiraSprint", b =>
+                {
+                    b.HasOne("SynTrace.Domain.Entities.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.JiraUser", b =>
+                {
+                    b.HasOne("SynTrace.Domain.Entities.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SynTrace.Domain.Entities.ProcessedJiraEvent", b =>
+                {
+                    b.HasOne("SynTrace.Domain.Entities.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("SynTrace.Domain.Entities.Jira.JiraConnection", null)
+                        .WithMany()
+                        .HasForeignKey("JiraConnectionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("SynTrace.Domain.Entities.RefreshToken", b =>
