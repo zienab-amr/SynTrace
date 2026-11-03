@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 
 namespace SynTrace.Infrastructure.Integrations.Jira;
 
@@ -17,6 +18,36 @@ public static class JiraWebhookSecurity
         var a = Encoding.ASCII.GetBytes(Hash(provided).ToUpperInvariant());
         var b = Encoding.ASCII.GetBytes(storedHash.ToUpperInvariant());
         return CryptographicOperations.FixedTimeEquals(a, b);
+    }
+
+    /// <summary>Verifies the HS256 bearer token Jira puts on OAuth 2.0 webhooks (signature and expiry).</summary>
+    public static bool VerifyJwt(string? authorizationHeader, string secret, DateTimeOffset now)
+    {
+        const string bearer = "Bearer ";
+        if (string.IsNullOrEmpty(secret) || authorizationHeader is null
+            || !authorizationHeader.StartsWith(bearer, StringComparison.OrdinalIgnoreCase)) return false;
+        var parts = authorizationHeader[bearer.Length..].Trim().Split('.');
+        if (parts.Length != 3) return false;
+        try
+        {
+            using var header = JsonDocument.Parse(Base64UrlDecode(parts[0]));
+            if (header.RootElement.Str("alg") != "HS256") return false;
+            using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
+            var expected = hmac.ComputeHash(Encoding.ASCII.GetBytes($"{parts[0]}.{parts[1]}"));
+            if (!CryptographicOperations.FixedTimeEquals(expected, Base64UrlDecode(parts[2]))) return false;
+            using var claims = JsonDocument.Parse(Base64UrlDecode(parts[1]));
+            return claims.RootElement.Long("exp") is not { } exp || DateTimeOffset.FromUnixTimeSeconds(exp) > now;
+        }
+        catch (Exception ex) when (ex is FormatException or JsonException or ArgumentOutOfRangeException)
+        {
+            return false;
+        }
+    }
+
+    private static byte[] Base64UrlDecode(string value)
+    {
+        var text = value.Replace('-', '+').Replace('_', '/');
+        return Convert.FromBase64String(text.PadRight(text.Length + (4 - text.Length % 4) % 4, '='));
     }
 
     public static bool VerifyHmac(byte[] rawBody, string? signatureHeader, string secret)
