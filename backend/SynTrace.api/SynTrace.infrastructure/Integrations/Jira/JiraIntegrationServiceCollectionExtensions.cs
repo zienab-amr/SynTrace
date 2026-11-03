@@ -9,7 +9,6 @@ namespace SynTrace.Infrastructure.Integrations.Jira;
 
 public static class JiraIntegrationServiceCollectionExtensions
 {
-    /// <summary>API host: webhook endpoint, registration, API client, back-fill + maintenance jobs.</summary>
     public static IServiceCollection AddJiraIntegration(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<JiraWebhookOptions>(configuration.GetSection(JiraWebhookOptions.SectionName));
@@ -31,7 +30,6 @@ public static class JiraIntegrationServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>Worker host: only what is needed to consume events and write them to the database.</summary>
     public static IServiceCollection AddJiraEventProcessing(this IServiceCollection services, IConfiguration configuration)
     {
         // The Worker has no HTTP context / tenant: SynTraceDbContext has a constructor without ICurrentTenant for it.
