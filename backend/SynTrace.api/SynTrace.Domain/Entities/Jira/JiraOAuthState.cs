@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using SynTrace.Domain.Enums;
 
-namespace SynTrace.Domain.Entities
+namespace SynTrace.Domain.Entities.Jira
 {
     public class JiraOAuthState
     {
