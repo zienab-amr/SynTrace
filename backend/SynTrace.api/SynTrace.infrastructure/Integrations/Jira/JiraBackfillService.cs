@@ -1,7 +1,14 @@
+using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SynTrace.Application.Integrations.Jira;
+using SynTrace.Application.Messaging;
+using SynTrace.Contracts.IntegrationEvents.Jira;
+using SynTrace.Contracts.Serialization;
 using SynTrace.Domain.Entities;
 using SynTrace.Domain.Enums;
 using SynTrace.Domain.Enums.Jira;
@@ -18,27 +25,31 @@ public sealed class JiraBackfillService : IJiraBackfillService
 {
     private readonly SynTraceDbContext _db;
     private readonly JiraApiClient _api;
+    private readonly IJiraEventPublisher _publisher;
     private readonly ILogger<JiraBackfillService> _logger;
 
-    public JiraBackfillService(SynTraceDbContext db, JiraApiClient api, ILogger<JiraBackfillService> logger)
+    public JiraBackfillService(SynTraceDbContext db, JiraApiClient api, IJiraEventPublisher publisher, ILogger<JiraBackfillService> logger)
     {
         _db = db;
         _api = api;
+        _publisher = publisher;
         _logger = logger;
     }
 
     public async Task RunAsync(string connectionId, CancellationToken ct)
     {
-        var companyId = await _db.JiraConnections.AsNoTracking()
+        var connection = await _db.JiraConnections.AsNoTracking()
             .Where(c => c.Id == connectionId && c.status)
-            .Select(c => c.CompanyId)
+            .Select(c => new { c.CompanyId, c.CloudId, c.SiteUrl, c.AiImportCompletedAt })
             .SingleOrDefaultAsync(ct);
 
-        if (companyId is null)
+        if (connection is null)
         {
             _logger.LogWarning("Back-fill skipped: connection {ConnectionId} not found/inactive.", connectionId);
             return;
         }
+
+        var companyId = connection.CompanyId;
 
         await SetStatusAsync(connectionId, JiraSyncStatus.Running, null, null, ct);
         _logger.LogInformation("Jira back-fill started for connection {ConnectionId}.", connectionId);
@@ -53,6 +64,15 @@ public sealed class JiraBackfillService : IJiraBackfillService
 
             await SyncSprintsAsync(connectionId, companyId, ct);
 
+            // Only the first import (or a manual sync): webhooks keep the AI current after that.
+            if (connection.AiImportCompletedAt is null)
+            {
+                await SendImportToAiAsync(connectionId, companyId, connection.CloudId, connection.SiteUrl,
+                    projects.Select(p => p.Key).ToList(), ct);
+                await _db.JiraConnections.Where(c => c.Id == connectionId)
+                    .ExecuteUpdateAsync(u => u.SetProperty(c => c.AiImportCompletedAt, (DateTime?)DateTime.UtcNow), ct);
+            }
+
             await SetStatusAsync(connectionId, JiraSyncStatus.Completed, DateTime.UtcNow, null, CancellationToken.None);
             _logger.LogInformation("Jira back-fill completed for connection {ConnectionId}.", connectionId);
         }
@@ -62,6 +82,104 @@ public sealed class JiraBackfillService : IJiraBackfillService
             var msg = ex.Message.Length > 500 ? ex.Message[..500] : ex.Message;
             await SetStatusAsync(connectionId, JiraSyncStatus.Failed, null, msg, CancellationToken.None);
         }
+    }
+
+    // ---------------- full copy for the AI ----------------
+    private async Task SendImportToAiAsync(
+        string connectionId, string companyId, string cloudId, string siteUrl, List<string> projectKeys, CancellationToken ct)
+    {
+        Task Publish(JiraEventType type, string entity, object payload) => _publisher.PublishAsync(new CanonicalJiraEvent
+        {
+            EventId = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{connectionId}|{type}|{entity}"))).ToLowerInvariant(),
+            EventType = type,
+            SourceEventName = "syntrace:import",
+            CompanyId = companyId,
+            JiraConnectionId = connectionId,
+            CloudId = cloudId,
+            SiteUrl = siteUrl,
+            CorrelationId = connectionId,
+            ReceivedAtUtc = DateTimeOffset.UtcNow,
+            Payload = JsonSerializer.SerializeToElement(payload, payload.GetType(), JiraEventContractJson.Options)
+        }, ct);
+
+        using (var fields = await _api.SendAsync(connectionId, HttpMethod.Get, "/rest/api/3/field", cancellationToken: ct))
+        {
+            var list = fields?.RootElement.Clone() ?? JsonSerializer.SerializeToElement(Array.Empty<object>());
+            await Publish(JiraEventType.FieldCatalog, DateTime.UtcNow.Ticks.ToString(), new { fields = list });
+        }
+
+        var sent = 0;
+        foreach (var projectKey in projectKeys)
+        {
+            string? nextToken = null;
+            do
+            {
+                var jql = Uri.EscapeDataString($"project = \"{projectKey}\" ORDER BY created ASC");
+                var path = $"/rest/api/3/search/jql?jql={jql}&maxResults=100&fields=updated";
+                if (nextToken is not null) path += $"&nextPageToken={Uri.EscapeDataString(nextToken)}";
+                using var page = await _api.SendAsync(connectionId, HttpMethod.Get, path, cancellationToken: ct);
+                if (page is null) break;
+                nextToken = page.RootElement.Str("nextPageToken");
+
+                foreach (var reference in page.RootElement.Arr("issues")?.EnumerateArray().ToList() ?? new List<JsonElement>())
+                {
+                    if (reference.Str("id") is not { } id) continue;
+                    var issue = await GetFullIssueAsync(connectionId, id, ct);
+                    if (issue is null) continue;   // deleted after it was listed
+                    var updated = reference.Obj("fields")?.Str("updated");
+                    await Publish(JiraEventType.IssueSnapshot, $"{id}|{updated}", issue);
+                    sent++;
+                }
+            } while (nextToken is not null);
+        }
+
+        await Publish(JiraEventType.ImportCompleted, DateTime.UtcNow.Ticks.ToString(), new { issueCount = sent });
+        _logger.LogInformation("Sent {Count} issues to the AI for connection {ConnectionId}.", sent, connectionId);
+    }
+
+    private async Task<JsonNode?> GetFullIssueAsync(string connectionId, string issueId, CancellationToken ct)
+    {
+        var id = Uri.EscapeDataString(issueId);
+        JsonNode? issue;
+        try
+        {
+            using var doc = await _api.SendAsync(connectionId, HttpMethod.Get,
+                $"/rest/api/3/issue/{id}?fields=*all&expand=names,changelog", cancellationToken: ct);
+            issue = doc is null ? null : JsonNode.Parse(doc.RootElement.GetRawText());
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+        if (issue is null) return null;
+
+        // Jira cuts long lists short inside an issue. The AI needs all of them.
+        await CompleteListAsync(connectionId, issue["fields"]?["comment"], "comments", $"/rest/api/3/issue/{id}/comment", "comments", ct);
+        await CompleteListAsync(connectionId, issue["fields"]?["worklog"], "worklogs", $"/rest/api/3/issue/{id}/worklog", "worklogs", ct);
+        await CompleteListAsync(connectionId, issue["changelog"], "histories", $"/rest/api/3/issue/{id}/changelog", "values", ct);
+        return issue;
+    }
+
+    private async Task CompleteListAsync(
+        string connectionId, JsonNode? holder, string itemsName, string path, string pageItemsName, CancellationToken ct)
+    {
+        if (holder is not JsonObject container || container[itemsName] is not JsonArray items) return;
+        var total = container["total"]?.GetValue<int>() ?? items.Count;
+        if (total <= items.Count) return;
+
+        var all = new JsonArray();
+        var startAt = 0;
+        while (true)
+        {
+            using var page = await _api.SendAsync(connectionId, HttpMethod.Get, $"{path}?startAt={startAt}&maxResults=100", cancellationToken: ct);
+            var values = page?.RootElement.Arr(pageItemsName)?.EnumerateArray().ToList();
+            if (values is null || values.Count == 0) break;
+            foreach (var value in values) all.Add(JsonNode.Parse(value.GetRawText()));
+            startAt += values.Count;
+            if (startAt >= total) break;
+        }
+        container[itemsName] = all;
+        container["total"] = all.Count;
     }
 
     // ---------------- users ----------------
@@ -143,7 +261,6 @@ public sealed class JiraBackfillService : IJiraBackfillService
                 project.Name = p.Str("name");
                 project.ProjectTypeKey = p.Str("projectTypeKey");
                 project.LeadAccountId = p.Obj("lead")?.Str("accountId");
-                project.IsDeleted = false;
                 project.UpdatedAt = DateTime.UtcNow;
                 result.Add((id, key));
             }
@@ -206,7 +323,6 @@ public sealed class JiraBackfillService : IJiraBackfillService
                 issue.Summary = fields?.Str("summary");
                 issue.Status = fields?.Obj("status")?.Str("name");
                 issue.AssigneeAccountId = fields?.Obj("assignee")?.Str("accountId");
-                issue.IsDeleted = false;
                 issue.SourceUpdatedAt = updated ?? issue.SourceUpdatedAt;
                 issue.UpdatedAt = DateTime.UtcNow;
 
@@ -280,7 +396,6 @@ public sealed class JiraBackfillService : IJiraBackfillService
             comment.BodyText = cm.TryGetProperty("body", out var body) ? JiraJson.AdfToText(body) : null;
             comment.SourceCreatedAt = cm.Date("created")?.UtcDateTime;
             comment.SourceUpdatedAt = updated;
-            comment.IsDeleted = false;
             comment.UpdatedAt = DateTime.UtcNow;
         }
         await _db.SaveChangesAsync(ct);
@@ -343,7 +458,6 @@ public sealed class JiraBackfillService : IJiraBackfillService
                         sprint.StartDate = s.Date("startDate")?.UtcDateTime;
                         sprint.EndDate = s.Date("endDate")?.UtcDateTime;
                         sprint.CompleteDate = s.Date("completeDate")?.UtcDateTime;
-                        sprint.IsDeleted = false;
                         sprint.UpdatedAt = DateTime.UtcNow;
                     }
                     await _db.SaveChangesAsync(ct);
