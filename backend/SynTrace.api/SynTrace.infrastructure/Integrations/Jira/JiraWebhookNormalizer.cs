@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using SynTrace.Application.Integrations.Jira;
 using SynTrace.Contracts.IntegrationEvents.Jira;
 using SynTrace.Contracts.IntegrationEvents.Jira.Payloads;
 using SynTrace.Contracts.Serialization;
@@ -9,33 +10,19 @@ namespace SynTrace.Infrastructure.Integrations.Jira;
 
 public sealed class JiraWebhookNormalizer
 {
-    private static readonly Dictionary<string, JiraEventType> EventMap = new(StringComparer.Ordinal)
-    {
-        ["jira:issue_created"] = JiraEventType.IssueCreated,
-        ["jira:issue_updated"] = JiraEventType.IssueUpdated,
-        ["jira:issue_deleted"] = JiraEventType.IssueDeleted,
-        ["comment_created"] = JiraEventType.CommentCreated,
-        ["comment_updated"] = JiraEventType.CommentUpdated,
-        ["comment_deleted"] = JiraEventType.CommentDeleted,
-        // Not deliverable through dynamic (OAuth) webhooks, but mapped so admin-registered webhooks also work.
-        ["sprint_created"] = JiraEventType.SprintCreated,
-        ["sprint_updated"] = JiraEventType.SprintUpdated,
-        ["sprint_deleted"] = JiraEventType.SprintDeleted,
-        ["sprint_started"] = JiraEventType.SprintStarted,
-        ["sprint_closed"] = JiraEventType.SprintClosed
-    };
-
     public CanonicalJiraEvent? Normalize(
         JsonElement root,
         string companyId,
         string connectionId,
+        string cloudId,
+        string siteUrl,
         string correlationId,
         DateTimeOffset receivedAtUtc)
     {
         if (root.ValueKind != JsonValueKind.Object) return null;
 
         var sourceName = root.Str("webhookEvent");
-        if (sourceName is null || !EventMap.TryGetValue(sourceName, out var type)) return null;
+        if (!JiraWebhookEventMapper.TryMapEventTypeJira(sourceName, root, out var type)) return null;
 
         DateTimeOffset? occurred = root.Long("timestamp") is { } ms
             ? DateTimeOffset.FromUnixTimeMilliseconds(ms)
@@ -81,8 +68,21 @@ public sealed class JiraWebhookNormalizer
                 payload = p; entityId = p.SprintId;
                 break;
             }
+            case JiraEventType.ProjectDeleted:
+            case JiraEventType.ProjectSoftDeleted:
+            {
+                var p = BuildProject(root);
+                if (p is null) return null;
+                payload = p; entityId = p.ProjectId;
+                break;
+            }
             default:
-                return null;
+            {
+                // No typed payload: the Worker only records it, the AI reads RawWebhook.
+                payload = new Dictionary<string, object>();
+                entityId = OtherEntityId(root);
+                break;
+            }
         }
 
         var changelogId = root.Obj("changelog")?.Str("id");
@@ -97,10 +97,13 @@ public sealed class JiraWebhookNormalizer
             SourceEventName = sourceName,
             CompanyId = companyId,
             JiraConnectionId = connectionId,
+            CloudId = cloudId,
+            SiteUrl = siteUrl,
             CorrelationId = correlationId,
             OccurredAtUtc = occurred,
             ReceivedAtUtc = receivedAtUtc,
-            Payload = JsonSerializer.SerializeToElement(payload, payload.GetType(), JiraEventContractJson.Options)
+            Payload = JsonSerializer.SerializeToElement(payload, payload.GetType(), JiraEventContractJson.Options),
+            RawWebhook = root.Clone()
         };
     }
 
@@ -112,6 +115,10 @@ public sealed class JiraWebhookNormalizer
         if (id is null || key is null) return null;
 
         var fields = issue.Obj("fields");
+        var subtaskIds = new List<string>();
+        if (fields?.Arr("subtasks") is { } subtasks)
+            foreach (var subtask in subtasks.EnumerateArray())
+                if (subtask.Str("id") is { } subtaskId) subtaskIds.Add(subtaskId);
         return new JiraIssuePayload
         {
             IssueId = id,
@@ -121,7 +128,8 @@ public sealed class JiraWebhookNormalizer
             Summary = fields?.Str("summary"),
             Status = fields?.Obj("status")?.Str("name"),
             AssigneeAccountId = fields?.Obj("assignee")?.Str("accountId"),
-            SourceUpdatedAtUtc = fields?.Date("updated") ?? occurred
+            SourceUpdatedAtUtc = fields?.Date("updated") ?? occurred,
+            SubtaskIds = subtaskIds
         };
     }
 
@@ -182,6 +190,32 @@ public sealed class JiraWebhookNormalizer
             CreatedAtUtc = comment.Date("created"),
             UpdatedAtUtc = comment.Date("updated")
         };
+    }
+
+    private static JiraProjectPayload? BuildProject(JsonElement root)
+    {
+        if (root.Obj("project") is not { } project) return null;
+        var id = project.Str("id");
+        if (id is null) return null;
+        return new JiraProjectPayload
+        {
+            ProjectId = id,
+            ProjectKey = project.Str("key"),
+            Name = project.Str("name")
+        };
+    }
+
+    private static string OtherEntityId(JsonElement root)
+    {
+        foreach (var (entity, idField) in new[]
+                 {
+                     ("worklog", "id"), ("attachment", "id"), ("issueLink", "id"), ("project", "id"),
+                     ("user", "accountId"), ("version", "id"), ("board", "id"), ("issueType", "id"), ("issuetype", "id")
+                 })
+        {
+            if (root.Obj(entity)?.Str(idField) is { } id) return id;
+        }
+        return string.Empty;
     }
 
     private static JiraSprintPayload? BuildSprint(JsonElement root)
