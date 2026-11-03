@@ -40,7 +40,7 @@ namespace SynTrace.Infrastructure.Messaging.RabbitMQ.Connections
 
             try
             {
-                if (_connection is not null)
+                if (_connection is { IsOpen: true })
                     return _connection;
 
                 _connection = await _connectionFactory
