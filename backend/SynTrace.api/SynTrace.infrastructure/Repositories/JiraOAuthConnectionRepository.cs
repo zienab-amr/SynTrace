@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
@@ -65,6 +65,10 @@ namespace SynTrace.Infrastructure.Repositories
                                 && c.ConnectedByEmployeeId == employeeId);
             return check;
         }
+
+        public Task ResetAiImportAsync(string connectionId) =>
+            _context.JiraConnections.Where(c => c.Id == connectionId)
+                .ExecuteUpdateAsync(u => u.SetProperty(c => c.AiImportCompletedAt, (DateTime?)null));
 
         public async Task<JiraConnection?> GetActiveCompanyConnection(string companyId)
         {
