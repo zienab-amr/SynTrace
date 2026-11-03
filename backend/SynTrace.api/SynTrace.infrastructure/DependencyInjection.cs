@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using SynTrace.Application.Contracts;
+using SynTrace.Application.Contracts.Assistant;
 using SynTrace.Application.Contracts.Auth;
 using SynTrace.Application.Contracts.Integrations.Jira;
 using SynTrace.Application.Integrations.Jira;
@@ -22,6 +23,7 @@ using SynTrace.Infrastructure.Messaging.RabbitMQ.Topology;
 using SynTrace.Infrastructure.Options;
 using SynTrace.Infrastructure.Persistence.Context;
 using SynTrace.Infrastructure.Repositories;
+using SynTrace.Infrastructure.Services.Assistant;
 using SynTrace.Infrastructure.Services.Integrations.Jira;
 
 namespace SynTrace.Infrastructure
@@ -104,6 +106,10 @@ namespace SynTrace.Infrastructure
 
             //Http Client
             services.AddHttpClient();
+
+            //AI service
+            services.Configure<AiServiceOptions>(configuration.GetSection(AiServiceOptions.SectionName));
+            services.AddScoped<IAssistantClient, AssistantClient>();
 
             //RabbitMQ Service
             services.AddRabbitMqInfrastructure(options =>
