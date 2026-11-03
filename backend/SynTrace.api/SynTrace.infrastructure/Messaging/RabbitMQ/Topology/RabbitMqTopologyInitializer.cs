@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Options;
+using RabbitMQ.Client;
 using SynTrace.Infrastructure.Messaging.RabbitMQ.Configuration;
 using SynTrace.Infrastructure.Messaging.RabbitMQ.Connections;
 
@@ -46,6 +47,29 @@ namespace SynTrace.Infrastructure.Messaging.RabbitMQ.Topology
             await channel.ExchangeDeclareAsync(t.DeadLetterExchangeName, TopicExchange, durable: true, autoDelete: false, cancellationToken: cancellationToken);
             await channel.QueueDeclareAsync(t.DeadLetterQueueName, durable: true, exclusive: false, autoDelete: false, cancellationToken: cancellationToken);
             await channel.QueueBindAsync(t.DeadLetterQueueName, t.DeadLetterExchangeName, t.BindingPattern, cancellationToken: cancellationToken);
+
+            await channel.QueueDeclareAsync(t.AiQueueName, durable: true, exclusive: false, autoDelete: false, cancellationToken: cancellationToken);
+            await channel.QueueBindAsync(t.AiQueueName, t.ExchangeName, t.BindingPattern, cancellationToken: cancellationToken);
+            await channel.QueueBindAsync(t.AiQueueName, t.ExchangeName, t.AiBindingPattern, cancellationToken: cancellationToken);
+
+            await channel.ExchangeDeclareAsync(t.AiRetryExchangeName, ExchangeType.Direct, durable: true, autoDelete: false, cancellationToken: cancellationToken);
+            await channel.QueueDeclareAsync(
+                t.AiRetryQueueName,
+                durable: true,
+                exclusive: false,
+                autoDelete: false,
+                arguments: new Dictionary<string, object?>
+                {
+                    ["x-message-ttl"] = t.RetryDelaySeconds * 1000,
+                    ["x-dead-letter-exchange"] = string.Empty,
+                    ["x-dead-letter-routing-key"] = t.AiQueueName
+                },
+                cancellationToken: cancellationToken);
+            await channel.QueueBindAsync(t.AiRetryQueueName, t.AiRetryExchangeName, t.AiRetryRoutingKey, cancellationToken: cancellationToken);
+
+            await channel.ExchangeDeclareAsync(t.AiDeadLetterExchangeName, ExchangeType.Direct, durable: true, autoDelete: false, cancellationToken: cancellationToken);
+            await channel.QueueDeclareAsync(t.AiDeadLetterQueueName, durable: true, exclusive: false, autoDelete: false, cancellationToken: cancellationToken);
+            await channel.QueueBindAsync(t.AiDeadLetterQueueName, t.AiDeadLetterExchangeName, t.AiDeadLetterRoutingKey, cancellationToken: cancellationToken);
         }
     }
 }

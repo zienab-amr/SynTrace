@@ -1,4 +1,4 @@
-﻿using System.Text.RegularExpressions;
+using System.Text.RegularExpressions;
 using SynTrace.Contracts.IntegrationEvents.Jira;
 
 namespace SynTrace.Infrastructure.Messaging.RabbitMQ.Publishing;
@@ -14,6 +14,17 @@ public sealed class JiraRoutingKeyResolver
                 eventType,
                 "Unsupported Jira event type.");
         }
+
+        var aiRoutingKey = eventType switch
+        {
+            JiraEventType.FieldCatalog => "ai.import.fields",
+            JiraEventType.IssueSnapshot => "ai.import.issue",
+            JiraEventType.ImportCompleted => "ai.import.completed",
+            JiraEventType.CompanyDisconnected => "ai.company.disconnected",
+            _ => null
+        };
+        if (aiRoutingKey is not null)
+            return aiRoutingKey;
 
         var eventName = Regex.Replace(
             eventType.ToString(),
