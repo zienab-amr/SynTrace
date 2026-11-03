@@ -1,4 +1,4 @@
-﻿namespace SynTrace.Domain.Entities;
+namespace SynTrace.Domain.Entities;
 
 public class JiraSprint : ITenantOwned
 {
@@ -11,7 +11,6 @@ public class JiraSprint : ITenantOwned
     public DateTime? StartDate { get; set; }
     public DateTime? EndDate { get; set; }
     public DateTime? CompleteDate { get; set; }
-    public bool IsDeleted { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
