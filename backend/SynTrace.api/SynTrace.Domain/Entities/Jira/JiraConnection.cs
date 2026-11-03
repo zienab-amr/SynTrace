@@ -1,4 +1,4 @@
-﻿using SynTrace.Domain.Enums;
+using SynTrace.Domain.Enums;
 using SynTrace.Domain.Enums.Jira;
 
 namespace SynTrace.Domain.Entities.Jira
@@ -27,5 +27,12 @@ namespace SynTrace.Domain.Entities.Jira
         public JiraSyncStatus SyncStatus { get; set; } = JiraSyncStatus.NotStarted;
         public DateTime? LastSyncedAt { get; set; }
         public string? LastSyncError { get; set; }
+
+        /// <summary>Encrypted, not hashed: checking the HMAC signature needs the secret itself.</summary>
+        public string? EncryptedAdminWebhookSecret { get; set; }
+        public DateTime? AdminWebhookLastReceivedAt { get; set; }
+
+        /// <summary>Null until the full copy of the issues has been sent to the AI.</summary>
+        public DateTime? AiImportCompletedAt { get; set; }
     }
 }
