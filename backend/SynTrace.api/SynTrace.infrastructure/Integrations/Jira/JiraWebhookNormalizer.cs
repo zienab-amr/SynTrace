@@ -7,10 +7,6 @@ using SynTrace.Contracts.Serialization;
 
 namespace SynTrace.Infrastructure.Integrations.Jira;
 
-/// <summary>
-/// Raw Jira webhook JSON -> CanonicalJiraEvent. Returns null for events SynTrace does not support (caller answers 200 "ignored").
-/// The EventId is deterministic, so a Jira retry of the same delivery yields the same id (idempotency, SYNT-147).
-/// </summary>
 public sealed class JiraWebhookNormalizer
 {
     private static readonly Dictionary<string, JiraEventType> EventMap = new(StringComparer.Ordinal)

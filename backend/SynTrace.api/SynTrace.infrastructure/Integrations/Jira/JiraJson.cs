@@ -5,7 +5,6 @@ using System.Text.RegularExpressions;
 
 namespace SynTrace.Infrastructure.Integrations.Jira;
 
-/// <summary>Small, null-safe helpers for reading Jira JSON.</summary>
 internal static class JiraJson
 {
     private static readonly Regex OffsetWithoutColon = new(@"^(.*[+-]\d{2})(\d{2})$", RegexOptions.Compiled);
