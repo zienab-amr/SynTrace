@@ -16,6 +16,8 @@ public sealed record CanonicalJiraEvent
 
     public string JiraConnectionId { get; init; } = string.Empty;
 
+    public string CorrelationId { get; init; } = string.Empty;
+
     public DateTimeOffset? OccurredAtUtc { get; init; }
 
     public DateTimeOffset ReceivedAtUtc { get; init; }
