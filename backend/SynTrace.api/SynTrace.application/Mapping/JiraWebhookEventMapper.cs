@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using SynTrace.Contracts.IntegrationEvents.Jira;
 
 namespace SynTrace.Application.Integrations.Jira;
@@ -39,6 +39,7 @@ public static class JiraWebhookEventMapper
             case "jira:version_created": eventType = JiraEventType.VersionCreated; return true;
             case "jira:version_moved": eventType = JiraEventType.VersionMoved; return true;
             case "jira:version_updated": eventType = JiraEventType.VersionUpdated; return true;
+            case "jira:version_merged": eventType = JiraEventType.VersionMerged; return true;
             case "jira:version_deleted":
                 eventType = HasMergedTo(payload)
                     ? JiraEventType.VersionMerged
@@ -49,6 +50,8 @@ public static class JiraWebhookEventMapper
             case "worklog_updated": eventType = JiraEventType.WorklogUpdated; return true;
             case "worklog_deleted": eventType = JiraEventType.WorklogDeleted; return true;
 
+            case "attachment_created": eventType = JiraEventType.AttachmentCreated; return true;
+            case "attachment_deleted": eventType = JiraEventType.AttachmentDeleted; return true;
             case "issuelink_created": eventType = JiraEventType.IssueLinkCreated; return true;
             case "issuelink_deleted": eventType = JiraEventType.IssueLinkDeleted; return true;
 
