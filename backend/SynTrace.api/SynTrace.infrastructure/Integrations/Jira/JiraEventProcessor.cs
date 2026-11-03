@@ -11,12 +11,6 @@ using SynTrace.Infrastructure.Persistence.Context;
 
 namespace SynTrace.Infrastructure.Integrations.Jira;
 
-/// <summary>
-/// Applies one canonical event to the database inside ONE transaction:
-///   1) idempotency ledger insert  2) entity upsert  3) commit.
-/// If anything fails the whole transaction rolls back, so the retry starts clean (SYNT-147/151/177..182).
-/// Stale / out-of-order events are ignored using the Jira "updated" stamp.
-/// </summary>
 public sealed class JiraEventProcessor : IJiraEventProcessor
 {
     private readonly SynTraceDbContext _db;
