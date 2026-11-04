@@ -10,6 +10,7 @@ from datetime import date, timedelta
 from query_engine import _scope, run_query
 
 MAX_LISTED = 20
+MAX_PEOPLE = 200
 GROUPS = {
     "assignee": "coalesce(p.displayName, 'Unassigned')",
     "status": "coalesce(w.status, 'Unknown')",
@@ -46,6 +47,7 @@ kind:
 - "search": finding tickets by topic or meaning. A bare work topic with no verb, such as
   "meeting transcripts" or "login", is a search.
 - "out_of_scope": clearly not about work or software, such as weather, food or sports.
+  A question about a person's tickets is never out of scope, even if the name is not in the list.
 
 For "search", also set search_text: the topic as short English keywords, because tickets may be
 in English. Example: "شاشات الموبايل" -> "mobile app screens".
@@ -58,7 +60,9 @@ For "aggregate", also use these fields. Use null or false when a field is not as
 - order: desc for most, asc for least
 - project: one of {projects} | null
 - status_category: open | to_do | in_progress | done | null ("open" means not done)
-- assignee: person name. For time_logged, comments and changes it is who logged, wrote or changed.
+- assignee: person name exactly as in the people list, matching Arabic spellings to it. For
+  time_logged, comments and changes it is who logged, wrote or changed.
+- me: true when the person asking means themselves, such as "my tickets" or "تذاكري"
 - reporter: person name | null
 - text: words to find in tickets or, for comments, in comment text | null
 - label: label name | null
@@ -74,7 +78,12 @@ For "aggregate", also use these fields. Use null or false when a field is not as
 - overdue: true | false
 - list_tickets: true when the user wants the tickets listed, false when only a number is asked
 
+People: {people}
+
 Examples:
+"تذاكر فاطمة" when the list has Fatma Ali -> {{"kind":"aggregate","assignee":"Fatma Ali","list_tickets":true}}
+"إيه تذاكري؟" -> {{"kind":"aggregate","me":true,"list_tickets":true}}
+"تذاكر أحمد" when the list has no Ahmed -> {{"kind":"aggregate","assignee":"أحمد","list_tickets":true}}
 "مين عنده أكتر تذاكر؟" -> {{"kind":"aggregate","group_by":"assignee","order":"desc"}}
 "كام تذكرة مفتوحة في ABC؟" -> {{"kind":"aggregate","project":"ABC","status_category":"open"}}
 "How many tickets are done?" -> {{"kind":"aggregate","status_category":"done"}}
@@ -94,8 +103,55 @@ Question:
 """.strip()
 
 
+def known_people(ctx):
+    """Names seen on the tickets this person may read, so names never come from another company."""
+    rows = run_query(
+        "MATCH (w:WorkItem {tenant_id: $tenant})-[:ASSIGNED_TO|REPORTED_BY]->(p:Person) "
+        "WHERE w.project_key IN $allowed RETURN DISTINCT p.displayName AS name "
+        "UNION MATCH (w:WorkItem {tenant_id: $tenant})-[:HAS_COMMENT|HAS_WORKLOG|HAD_CHANGE]->()"
+        "-[:WRITTEN_BY|LOGGED_BY|CHANGED_BY]->(p:Person) "
+        "WHERE w.project_key IN $allowed RETURN DISTINCT p.displayName AS name",
+        **_scope(ctx))
+    return sorted({r.get("name") for r in rows if r.get("name")})[:MAX_PEOPLE]
+
+
 def planner_prompt(question, ctx):
-    return PLANNER_PROMPT.format(projects=", ".join(ctx.allowed_projects), question=question)
+    try:
+        people = ", ".join(known_people(ctx)) or "unknown"
+    except Exception:
+        people = "unknown"
+    return PLANNER_PROMPT.format(projects=", ".join(ctx.allowed_projects), people=people,
+                                 question=question)
+
+
+def check_people(plan, ctx, arabic):
+    """Replace a name with the one real match. -> a question for the user, or None when clear."""
+    if plan["me"] and not ctx.jira_account_id:
+        return ("مش عارف حساب Jira بتاعك. اربط حسابك، أو اكتب اسمك في السؤال." if arabic
+                else "I don't know your Jira account. Connect it, or write your name in the question.")
+    names = [plan[field] for field in ("assignee", "reporter") if plan[field]]
+    if not names:
+        return None
+    try:
+        people = known_people(ctx)
+    except Exception:
+        return None
+    if not people:
+        return None
+    for field in ("assignee", "reporter"):
+        if not plan[field]:
+            continue
+        wanted = plan[field].lower()
+        matches = [p for p in people if p.lower() == wanted] or [p for p in people if wanted in p.lower()]
+        if len(matches) == 1:
+            plan[field] = matches[0]
+        elif matches:
+            shown = "، ".join(matches) if arabic else ", ".join(matches)
+            return f"تقصد مين: {shown}؟" if arabic else f"Which person do you mean: {shown}?"
+        else:
+            return (f"مش لاقي حد باسم {plan[field]}." if arabic
+                    else f"I couldn't find anyone named {plan[field]}.")
+    return None
 
 
 def _clean_text(value):
@@ -152,7 +208,7 @@ def parse_plan(text):
     plan.update(kind=kind, metric=metric, since_days=since_days, date_field=date_field,
                 group_by=group_by, status_category=category,
                 order="ASC" if raw.get("order") == "asc" else "DESC",
-                unassigned=raw.get("unassigned") is True,
+                unassigned=raw.get("unassigned") is True, me=raw.get("me") is True,
                 overdue=raw.get("overdue") is True,
                 list_tickets=raw.get("list_tickets") is True)
     return plan
@@ -177,6 +233,10 @@ def _match(plan, ctx):
     if plan["unassigned"]:
         where.append("NOT EXISTS { MATCH (w)-[:ASSIGNED_TO]->(:Person) }")
     is_tickets = plan["metric"] == "tickets"
+    if plan["me"]:
+        params["me"] = ctx.jira_account_id
+        if is_tickets:
+            where.append("EXISTS { MATCH (w)-[:ASSIGNED_TO]->(me:Person {accountId: $me}) }")
     if plan["assignee"]:
         params["assignee"] = plan["assignee"]
         if is_tickets:
@@ -255,6 +315,8 @@ def _where(conditions):
 
 def _run_time_logged(plan, clause, params):
     conditions = []
+    if plan["me"]:
+        conditions.append("lp.accountId = $me")
     if plan["assignee"]:
         conditions.append("toLower(coalesce(lp.displayName, '')) CONTAINS toLower($assignee)")
     if plan["since_days"]:
@@ -274,6 +336,8 @@ def _run_time_logged(plan, clause, params):
 
 def _run_comments(plan, clause, params):
     conditions = []
+    if plan["me"]:
+        conditions.append("cp.accountId = $me")
     if plan["assignee"]:
         conditions.append("toLower(coalesce(cp.displayName, '')) CONTAINS toLower($assignee)")
     if plan["text"]:
@@ -292,6 +356,8 @@ def _run_comments(plan, clause, params):
 
 def _run_changes(plan, clause, params):
     conditions = []
+    if plan["me"]:
+        conditions.append("EXISTS { MATCH (e)-[:CHANGED_BY]->(:Person {accountId: $me}) }")
     if plan["assignee"]:
         conditions.append("toLower(coalesce(e.author, '')) CONTAINS toLower($assignee)")
     if plan["change_field"]:
@@ -352,6 +418,8 @@ def _describe(plan, arabic):
             parts.append(category)
         if plan["unassigned"]:
             parts.append("من غير مسؤول")
+        if plan["me"]:
+            parts.append("بتاعتك")
         if plan["assignee"]:
             parts.append(f"بتاعة {plan['assignee']}")
         if plan["priority"]:
@@ -380,6 +448,8 @@ def _describe(plan, arabic):
     category = {"open": "open", "to_do": "to do", "in_progress": "in progress",
                 "done": "done"}.get(plan["status_category"])
     parts.append("overdue tickets" if plan["overdue"] else (f"{category} tickets" if category else "tickets"))
+    if plan["me"]:
+        parts.append("assigned to you")
     if plan["unassigned"]:
         parts.append("with no assignee")
     if plan["assignee"]:

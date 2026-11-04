@@ -475,7 +475,8 @@ def _open_question_result(question, ctx, search_text=None):
     context = "\n\n".join([build_search_context(hits)] + [build_ticket_context(d) for d in details])
     answer = call_llm(question, context[:MAX_CONTEXT_CHARS], style="search")
     answer_was_missing = not answer
-    if answer and answer.strip().upper().strip(".") == "NONE":
+    # An answer that names no ticket means the LLM found nothing that fits.
+    if answer and (answer.strip().upper().strip(".") == "NONE" or not KEY_RE.search(answer.upper())):
         return {"status": "no_results", "answer": _no_results(question), "links": []}
     facts = search_facts(hits)
     for detail in details:
@@ -499,6 +500,9 @@ def _open_question_result(question, ctx, search_text=None):
 
 
 def _aggregate_result(question, plan, ctx):
+    clarification = analytics.check_people(plan, ctx, _is_arabic(question))
+    if clarification:
+        return {"status": "clarify", "answer": clarification, "links": []}
     result = analytics.run_plan(plan, ctx)
     return {"status": "ok", "answer": analytics.format_answer(plan, result, _is_arabic(question)),
             "links": _links_of(result["tickets"] + result["records"])}

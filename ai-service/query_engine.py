@@ -57,6 +57,7 @@ def run_query(query, **params):
 class AccessContext:
     tenant_id: str
     allowed_projects: tuple  # فاضية = مفيش حاجة تتشاف (deny by default)
+    jira_account_id: str = None  # who is asking, for questions such as "my tickets"
 
 
 def default_context():

@@ -36,6 +36,7 @@ class AskRequest(CamelModel):
     company_id: str = Field(min_length=1, max_length=200)
     employee_id: str = Field(min_length=1, max_length=200)
     allowed_projects: List[str] = Field(default_factory=list, max_length=5000)
+    jira_account_id: Optional[str] = Field(default=None, max_length=200)
 
 
 class Link(CamelModel):
@@ -66,7 +67,8 @@ def ask(request: AskRequest, x_internal_api_key: Optional[str] = Header(default=
     question = request.question.strip()
     if not question:
         raise HTTPException(400, "question is empty")
-    ctx = AccessContext(request.company_id, tuple(p.strip().upper() for p in request.allowed_projects if p.strip()))
+    ctx = AccessContext(request.company_id, tuple(p.strip().upper() for p in request.allowed_projects if p.strip()),
+                        request.jira_account_id)
     try:
         result = generate_answer_result(question, ctx)
     except Exception as exc:

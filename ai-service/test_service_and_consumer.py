@@ -454,6 +454,61 @@ class ProcessorTests(unittest.TestCase):
         self.assertIn("Reporter: Omar", contexts[0])
         self.assertEqual(result["answer"], "AAA-1 is with Sara.")
 
+    def _people_ctx(self, account=None):
+        import query_engine as qe
+        return qe.AccessContext("t", ("AAA",), account)
+
+    def _check(self, plan_json, people, account=None):
+        import analytics
+        plan = self._plan(plan_json)
+        with patch.object(analytics, "known_people", lambda ctx: people):
+            return plan, analytics.check_people(plan, self._people_ctx(account), True)
+
+    def test_a_name_resolves_to_one_real_person(self):
+        plan, question = self._check('{"kind":"aggregate","assignee":"fatma"}', ["Fatma Ali", "Sara"])
+        self.assertIsNone(question)
+        self.assertEqual(plan["assignee"], "Fatma Ali")
+
+    def test_two_matches_ask_and_no_match_says_so(self):
+        _, question = self._check('{"kind":"aggregate","assignee":"Sara"}', ["Sara A", "Sara B"])
+        self.assertIn("Sara A", question)
+        self.assertIn("Sara B", question)
+        _, question = self._check('{"kind":"aggregate","assignee":"Omar"}', ["Sara A"])
+        self.assertIn("Omar", question)
+
+    def test_my_tickets_need_a_known_account_and_filter_on_it(self):
+        import analytics
+        _, question = self._check('{"kind":"aggregate","me":true}', [])
+        self.assertIsNotNone(question)
+        plan = self._plan('{"kind":"aggregate","me":true}')
+        calls = []
+
+        def fake(query, **params):
+            calls.append((query, params))
+            return [{"total": 4}]
+        with patch.object(analytics, "run_query", fake):
+            result = analytics.run_plan(plan, self._people_ctx("acc-1"))
+        self.assertEqual(result["total"], 4)
+        self.assertEqual(calls[0][1]["me"], "acc-1")
+        self.assertIn("accountId: $me", calls[0][0])
+
+    def test_a_people_lookup_failure_never_breaks_the_planner(self):
+        import analytics
+
+        def down(*a, **k):
+            raise RuntimeError("down")
+        with patch.object(analytics, "run_query", down):
+            self.assertIn("People: unknown", analytics.planner_prompt("q", self._people_ctx()))
+
+    def test_llm_reply_without_any_ticket_is_no_results(self):
+        import answer_generator as ag
+        hit = {"key": "AAA-1", "summary": "Login", "status": "To Do", "assignee": "S", "score": 0.6}
+        fake = types.SimpleNamespace(semantic_search=lambda q, c: [hit])
+        with patch.dict(sys.modules, {"semantic_search": fake}), \
+                patch.object(ag, "_top_ticket_details", lambda h, c: []), \
+                patch.object(ag, "call_llm", lambda *a, **k: "No tickets are about this."):
+            self.assertEqual(ag._open_question_result("database", None)["status"], "no_results")
+
     def test_search_reply_none_means_no_results(self):
         import answer_generator as ag
         hit = {"key": "AAA-1", "summary": "Login", "status": "To Do", "assignee": "S", "score": 0.6}
