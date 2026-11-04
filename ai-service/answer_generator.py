@@ -213,7 +213,9 @@ def build_prompt(question, context, style="short"):
                   "short sentence in the answer language, then list every such ticket, one per line "
                   "as: KEY: summary. Do not list only keys.")
     elif style == "comments":
-        length = ("Answer from what the comments say and name the ticket keys. Comment text may say "
+        length = ("Answer from what the comments say. The ticket a comment belongs to is the key at "
+                  "the start of its line; copy that key exactly and never change its project. "
+                  "Comment text may say "
                   "who wrote it inside the text; report that name as written. "
                   "If no comment answers the question, say so briefly and name no ticket.")
     else:
@@ -242,6 +244,7 @@ Use plain text with no markdown. In Egyptian Arabic, follow these patterns:
 - Nothing blocks it: "مفيش تذاكر معطلة ABC-1."
 - It blocks nothing: "ABC-1 مش معطلة أي تذكرة."
 - A missing value: "ABC-1 ملهاش معاد تسليم."
+- Who created it, from Reporter: "ABC-1 عملها Sara."
 Do not include URLs; they will be added separately by the application.
 
 Retrieved data:
@@ -549,8 +552,24 @@ def _aggregate_result(question, plan, ctx):
             "links": [] if result["groups"] else _links_of(result["tickets"] + result["records"])}
 
 
-def _keyless_question_result(question, ctx):
+def _compound_result(questions, ctx):
+    parts, links = [], []
+    for sub in questions:
+        result = _keyless_question_result(sub, ctx, allow_compound=False)
+        parts.append(f"{sub}\n{result['answer']}")
+        links.extend(result["links"])
+    unique = {link["key"]: link for link in links}
+    return {"status": "ok", "answer": "\n\n".join(parts), "links": list(unique.values())}
+
+
+def _keyless_question_result(question, ctx, allow_compound=True):
+    if not allow_compound and analytics.is_key_question(question):   # a part naming a ticket
+        return generate_answer_result(question, ctx)
     plan = analytics.parse_plan(_complete(analytics.planner_prompt(question, ctx)))
+    if plan and plan["kind"] == "compound":
+        if allow_compound:
+            return _compound_result(plan["questions"], ctx)
+        plan = None
     if plan and plan["kind"] == "out_of_scope":
         message = OUT_OF_SCOPE_MESSAGE_AR if _is_arabic(question) else OUT_OF_SCOPE_MESSAGE
         return {"status": "no_results", "answer": message, "links": []}

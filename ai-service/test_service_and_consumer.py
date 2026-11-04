@@ -643,6 +643,75 @@ class ProcessorTests(unittest.TestCase):
         with patch.dict(sys.modules, {"semantic_search": fake}), patch.object(ag, "call_llm", lambda *a, **k: None):
             self.assertEqual(ag._open_question_result("weather today", None)["status"], "no_results")
 
+    def test_compound_and_date_plans_are_validated(self):
+        plan = self._plan('{"kind":"compound","questions":["a?","b?"]}')
+        self.assertEqual(plan["questions"], ["a?", "b?"])
+        self.assertIsNone(self._plan('{"kind":"compound","questions":["only one"]}'))
+        self.assertIsNone(self._plan('{"kind":"compound","questions":["a","b","c","d"]}'))
+        self.assertIsNone(self._plan('{"kind":"aggregate","since_date":"2026-13-40"}'))
+        self.assertIsNone(self._plan('{"kind":"aggregate","since_date":"x\' OR 1=1"}'))
+
+    def test_date_period_filters_tickets_and_records(self):
+        plan = '{"kind":"aggregate","date_field":"created","since_date":"2026-10-01","until_date":"2026-11-01"}'
+        _, calls = self._execute(plan, [[{"total": 1}]])
+        self.assertIn("w.created >= $since", calls[0][0])
+        self.assertIn("w.created < $until", calls[0][0])
+        self.assertEqual((calls[0][1]["since"], calls[0][1]["until"]), ("2026-10-01", "2026-11-01"))
+        plan = '{"kind":"aggregate","metric":"changes","since_date":"2026-10-01","until_date":"2026-11-01"}'
+        _, calls = self._execute(plan, [[{"n": 0}], []])
+        self.assertIn("e.changed_at < $until", calls[0][0])
+
+    def test_compound_answers_each_part_and_never_nests(self):
+        import answer_generator as ag
+        import query_engine as qe
+        ctx = qe.AccessContext("t", ("AAA",))
+        plans = iter(['{"kind":"compound","questions":["one?","two?"]}',
+                      '{"kind":"out_of_scope"}', '{"kind":"compound","questions":["x?","y?"]}'])
+        with patch.object(ag, "_complete", lambda p: next(plans)), \
+                patch.object(ag, "_open_question_result", lambda q, c, s=None: {"status": "ok", "answer": "searched", "links": []}):
+            result = ag._keyless_question_result("both?", ctx)
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("one?", result["answer"])
+        self.assertIn("two?\nsearched", result["answer"])
+
+    def test_a_compound_part_naming_a_ticket_uses_the_ticket_path(self):
+        import answer_generator as ag
+        import query_engine as qe
+        ctx = qe.AccessContext("t", ("AAA",))
+        calls = []
+        real = ag.answer_key_question
+
+        def keys(question, c):
+            calls.append(question)
+            if "AAA-1" in question:
+                return [{"type": "not_found", "key": "AAA-1", "message": "No ticket found with key AAA-1."}]
+            return real(question, c)
+        with patch.object(ag, "answer_key_question", keys):
+            result = ag._compound_result(["status of AAA-1?"], ctx)
+        self.assertEqual(calls, ["status of AAA-1?"])
+        self.assertIn("No ticket found", result["answer"])
+
+    def test_unanswered_questions_are_recorded_only_when_enabled(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "unanswered.jsonl")
+            with patch.dict(os.environ, {"UNANSWERED_LOG_PATH": path}):
+                ai_service._record_unanswered("q1", "company", "no_results", "c1")
+                ai_service._record_unanswered("q2", "company", "ok", "c2")
+            with open(path, encoding="utf-8") as saved:
+                lines = [json.loads(line) for line in saved]
+            self.assertEqual([line["question"] for line in lines], ["q1"])
+            self.assertNotIn("company", lines[0]["company"])
+        env = {k: v for k, v in os.environ.items() if k != "UNANSWERED_LOG_PATH"}
+        with patch.dict(os.environ, env, clear=True):
+            ai_service._record_unanswered("q3", "company", "no_results", "c3")
+
+    def test_empty_arabic_period_reads_naturally(self):
+        import analytics
+        plan = self._plan('{"kind":"aggregate","since_date":"2026-09-01"}')
+        text = analytics.format_answer(plan, {"total": 0, "groups": [], "tickets": [], "records": [], "any_due_date": True}, True)
+        self.assertTrue(text.startswith("مفيش تذاكر"))
+
     def test_search_reply_none_means_no_results(self):
         import answer_generator as ag
         hit = {"key": "AAA-1", "summary": "Login", "status": "To Do", "assignee": "S", "score": 0.6}

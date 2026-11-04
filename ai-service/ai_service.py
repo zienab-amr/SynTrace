@@ -5,12 +5,16 @@ HTTP service the backend calls for user questions. It must not be exposed to the
   uvicorn ai_service:app --host 0.0.0.0 --port 8000
 
 Tenant and allowed projects come from the backend, which takes them from the user's JWT.
-Question and answer text are never logged.
+Question and answer text are never logged, except that setting UNANSWERED_LOG_PATH writes
+unanswered questions to that private file, so they can be reviewed. It is off by default.
 """
+import hashlib
+import json
 import logging
 import os
 import secrets
 import uuid
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from dotenv import load_dotenv
@@ -51,6 +55,23 @@ class AskResponse(CamelModel):
     correlation_id: str
 
 
+UNANSWERED = {"no_results", "not_found", "clarify", "search_unavailable"}
+
+
+def _record_unanswered(question, company_id, status, correlation):
+    """A write failure must never fail the answer."""
+    path = os.getenv("UNANSWERED_LOG_PATH")
+    if not path or status not in UNANSWERED:
+        return
+    entry = {"at": datetime.now(timezone.utc).isoformat(), "status": status, "correlation": correlation,
+             "company": hashlib.sha256(company_id.encode()).hexdigest()[:12], "question": question}
+    try:
+        with open(path, "a", encoding="utf-8") as out:
+            out.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError as exc:
+        log.warning("could not record an unanswered question: %s", type(exc).__name__)
+
+
 def _authorize(key):
     expected = os.getenv("AI_API_KEY")
     if not expected:   # never run open because of a missing setting
@@ -74,6 +95,7 @@ def ask(request: AskRequest, x_internal_api_key: Optional[str] = Header(default=
     except Exception as exc:
         log.error("ask failed correlation=%s error=%s", correlation, type(exc).__name__)
         raise HTTPException(503, "assistant is unavailable") from None
+    _record_unanswered(question, request.company_id, result["status"], correlation)
     if result["status"] == "search_unavailable":
         log.error("search unavailable correlation=%s", correlation)
         raise HTTPException(503, "assistant is unavailable")

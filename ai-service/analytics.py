@@ -5,13 +5,16 @@ against fixed values and the code runs fixed Cypher scoped to the tenant and all
 The LLM never writes Cypher and never writes the numbers in the answer.
 """
 import json
+import re
 from datetime import date, timedelta
 
 from query_engine import _scope, run_query
 
+_KEY = re.compile(r"\b[A-Za-z][A-Za-z0-9_]*-\d+\b")
 MAX_LISTED = 20
 MAX_PEOPLE = 200
 MAX_READ_COMMENTS = 40
+MAX_SUB_QUESTIONS = 3
 GROUPS = {
     "assignee": "coalesce(p.displayName, 'Unassigned')",
     "status": "coalesce(w.status, 'Unknown')",
@@ -48,6 +51,8 @@ kind:
 - "aggregate": counts, rankings, or lists of tickets chosen by a filter.
 - "search": finding tickets by topic or meaning. A bare work topic with no verb, such as
   "meeting transcripts" or "login", is a search.
+- "compound": two or three different questions in one. Set questions to a list where each one
+  makes sense alone, in the user's language, with names repeated instead of pronouns.
 - "out_of_scope": clearly not about work or software, such as weather, food or sports.
   A question about a person's tickets is never out of scope, even if the name is not in the list.
 
@@ -76,6 +81,8 @@ For "aggregate", also use these fields. Use null or false when a field is not as
 - read_comments: true when the answer needs reading what people wrote, such as why something
   happened, who rejected something, or which comments discuss a topic
 - since_days: only the last N days, as a whole number | null
+- since_date, until_date: YYYY-MM-DD for a period; until_date is the day after it ends. Today is
+  {today}. Use them for yesterday, last week, this month or a named month or day.
 - date_field: created | updated | resolved, the ticket date since_days applies to | null
 - unassigned: true | false
 - priority: priority name | null
@@ -100,6 +107,8 @@ Examples:
 "آخر الكومنتات" -> {{"kind":"aggregate","metric":"comments"}}
 "مين رفض تذكرة في QA وليه؟" -> {{"kind":"aggregate","metric":"comments","read_comments":true}}
 "فين اتكلموا عن OAuth؟" -> {{"kind":"aggregate","metric":"comments","read_comments":true}}
+"مين عنده أكتر تذاكر وإيه المفتوح عند فاطمة؟" -> {{"kind":"compound","questions":["مين عنده أكتر تذاكر؟","ايه التذاكر المفتوحة عند فاطمة؟"]}}
+"التذاكر اللي اتعملت في مارس 2026" -> {{"kind":"aggregate","date_field":"created","since_date":"2026-03-01","until_date":"2026-04-01","list_tickets":true}}
 "مين قفل أكتر تذاكر؟" -> {{"kind":"aggregate","metric":"changes","to_status":"Done","group_by":"assignee"}}
 "ايه التذاكر اللي رجعت Reopened؟" -> {{"kind":"aggregate","metric":"changes","to_status":"Reopened"}}
 "Which tickets moved from In Review to In Progress?" -> {{"kind":"aggregate","metric":"changes","from_status":"In Review","to_status":"In Progress"}}
@@ -135,6 +144,7 @@ def planner_prompt(question, ctx):
     except Exception:
         people = "unknown"
     return PLANNER_PROMPT.format(projects=", ".join(ctx.allowed_projects), people=people,
+                                 today=date.today().strftime("%Y-%m-%d (%A)"),
                                  question=question)
 
 
@@ -176,6 +186,19 @@ def _clean_text(value):
     return value.strip()
 
 
+def is_key_question(question):
+    """A sub-question that names a ticket goes through the ticket path."""
+    return bool(_KEY.search(question or ""))
+
+
+def _clean_date(value):
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("bad date")
+    return date.fromisoformat(value).isoformat()
+
+
 def parse_plan(text):
     """-> a valid plan, or None. A question without a valid plan goes to semantic search."""
     if not text:
@@ -193,6 +216,12 @@ def parse_plan(text):
     kind = raw.get("kind")
     if kind == "out_of_scope":
         return {"kind": kind}
+    if kind == "compound":
+        questions = raw.get("questions")
+        if (not isinstance(questions, list) or not 2 <= len(questions) <= MAX_SUB_QUESTIONS
+                or not all(isinstance(q, str) and 0 < len(q.strip()) <= 500 for q in questions)):
+            return None
+        return {"kind": kind, "questions": [q.strip() for q in questions]}
     if kind == "search":
         try:
             return {"kind": kind, "search_text": _clean_text(raw.get("search_text"))}
@@ -205,6 +234,11 @@ def parse_plan(text):
     since_days = raw.get("since_days")
     date_field = raw.get("date_field") or "updated"
     if metric not in METRICS or date_field not in DATE_FIELDS:
+        return None
+    try:
+        since_date = _clean_date(raw.get("since_date"))
+        until_date = _clean_date(raw.get("until_date"))
+    except ValueError:
         return None
     if since_days is not None and (not isinstance(since_days, int) or isinstance(since_days, bool)
                                    or not 1 <= since_days <= MAX_SINCE_DAYS):
@@ -220,6 +254,7 @@ def parse_plan(text):
     if plan["project"]:
         plan["project"] = plan["project"].upper()
     plan.update(kind=kind, metric=metric, since_days=since_days, date_field=date_field,
+                since_date=since_date, until_date=until_date,
                 group_by=group_by, status_category=category,
                 order="ASC" if raw.get("order") == "asc" else "DESC",
                 unassigned=raw.get("unassigned") is True, me=raw.get("me") is True,
@@ -279,8 +314,14 @@ def _match(plan, ctx):
         params["parent"] = plan["parent"]
     if plan["since_days"]:
         params["since"] = (date.today() - timedelta(days=plan["since_days"])).isoformat()
-        if is_tickets:
-            where.append(f"{DATE_FIELDS[plan['date_field']]} >= $since")
+    if plan["since_date"]:
+        params["since"] = plan["since_date"]
+    if plan["until_date"]:
+        params["until"] = plan["until_date"]
+    if is_tickets and "since" in params:
+        where.append(f"{DATE_FIELDS[plan['date_field']]} >= $since")
+    if is_tickets and "until" in params:
+        where.append(f"{DATE_FIELDS[plan['date_field']]} < $until")
     if plan["sprint"] == "current":
         where.append("EXISTS { MATCH (w)-[:IN_SPRINT]->(cs:Sprint) WHERE cs.state = 'active' }")
     elif plan["sprint"]:
@@ -327,6 +368,15 @@ def _empty_result():
     return {"total": 0, "groups": [], "tickets": [], "records": [], "any_due_date": True}
 
 
+def _dates(params, field):
+    conditions = []
+    if "since" in params:
+        conditions.append(f"{field} >= $since")
+    if "until" in params:
+        conditions.append(f"{field} < $until")
+    return conditions
+
+
 def _where(conditions):
     return f"WHERE {' AND '.join(conditions)} " if conditions else ""
 
@@ -337,8 +387,7 @@ def _run_time_logged(plan, clause, params):
         conditions.append("lp.accountId = $me")
     if plan["assignee"]:
         conditions.append("toLower(coalesce(lp.displayName, '')) CONTAINS toLower($assignee)")
-    if plan["since_days"]:
-        conditions.append("l.started >= $since")
+    conditions.extend(_dates(params, "l.started"))
     base = (f"{clause} MATCH (w)-[:HAS_WORKLOG]->(l:Worklog) OPTIONAL MATCH (l)-[:LOGGED_BY]->(lp:Person) "
             f"WITH w, l, lp {_where(conditions)}")
     row = run_query(f"{base}RETURN sum(coalesce(l.timeSpentSeconds, 0)) AS seconds, count(l) AS n", **params)[0]
@@ -361,8 +410,7 @@ def _run_comments(plan, clause, params):
     if plan["text"] and not plan["read_comments"]:
         params["text_words"] = plan["text"].lower().split()
         conditions.append("any(word IN $text_words WHERE toLower(coalesce(c.text, '')) CONTAINS word)")
-    if plan["since_days"]:
-        conditions.append("c.created >= $since")
+    conditions.extend(_dates(params, "c.created"))
     base = (f"{clause} MATCH (w)-[:HAS_COMMENT]->(c:Comment) OPTIONAL MATCH (c)-[:WRITTEN_BY]->(cp:Person) "
             f"WITH w, c, cp {_where(conditions)}")
     result = _empty_result()
@@ -383,8 +431,7 @@ def _run_changes(plan, clause, params):
     if plan["change_field"]:
         conditions.append("toLower(e.field) = toLower($change_field)")
         params["change_field"] = plan["change_field"]
-    if plan["since_days"]:
-        conditions.append("e.changed_at >= $since")
+    conditions.extend(_dates(params, "e.changed_at"))
     for name, prop in (("from_status", "from_name"), ("to_status", "to_name")):
         if plan[name]:
             conditions.append(f"toLower(e.{prop}) = toLower(${name})")
@@ -485,6 +532,10 @@ def _describe(plan, arabic):
             parts.append(f"فيها {plan['text']}")
         if plan["since_days"]:
             parts.append(f"في آخر {plan['since_days']} يوم")
+        if plan["since_date"]:
+            parts.append(f"من {plan['since_date']}")
+        if plan["until_date"]:
+            parts.append(f"قبل {plan['until_date']}")
         return " ".join(parts)
     category = {"open": "open", "to_do": "to do", "in_progress": "in progress",
                 "done": "done"}.get(plan["status_category"])
@@ -517,6 +568,10 @@ def _describe(plan, arabic):
         parts.append(f"mentioning {plan['text']}")
     if plan["since_days"]:
         parts.append(f"from the last {plan['since_days']} days")
+    if plan["since_date"]:
+        parts.append(f"from {plan['since_date']}")
+    if plan["until_date"]:
+        parts.append(f"before {plan['until_date']}")
     return " ".join(parts)
 
 
@@ -529,7 +584,8 @@ def format_answer(plan, result, arabic):
         return ("مفيش تذكرة عليها معاد تسليم أصلًا، فمفيش تذاكر متأخرة." if arabic
                 else "No ticket has a due date, so none are overdue.")
     if not total:
-        return f"مفيش {description}." if arabic else f"There are no {description}."
+        return (f"مفيش {description.replace('التذاكر', 'تذاكر', 1)}." if arabic
+                else f"There are no {description}.")
     groups = result["groups"]
     lines = [] if plan["group_by"] == "parent" else [
         f"عدد {description}: {total}." if arabic else f"Number of {description}: {total}."]
