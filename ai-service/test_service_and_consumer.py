@@ -440,15 +440,15 @@ class ProcessorTests(unittest.TestCase):
         fake = types.SimpleNamespace(semantic_search=lambda q, c: hits)
         seen, contexts = [], []
 
-        def details(key, ctx):
-            seen.append(key)
-            return {"key": key, "summary": "Login", "assignee": "Sara", "reporter": "Omar"}
+        def details(card, ctx):
+            seen.append(card["key"])
+            return {"key": card["key"], "summary": "Login", "assignee": "Sara", "reporter": "Omar"}, {}
 
         def llm(question, context, style="short"):
             contexts.append(context)
             return "AAA-1 is with Sara."
         with patch.dict(sys.modules, {"semantic_search": fake}), \
-                patch.object(ag, "get_ticket_details", details), patch.object(ag, "call_llm", llm):
+                patch.object(ag, "fetch_ticket_bundle", details), patch.object(ag, "call_llm", llm):
             result = ag._open_question_result("who works on login?", object())
         self.assertEqual(seen, ["AAA-1", "AAA-2", "AAA-3"])
         self.assertIn("Reporter: Omar", contexts[0])
@@ -505,9 +505,136 @@ class ProcessorTests(unittest.TestCase):
         hit = {"key": "AAA-1", "summary": "Login", "status": "To Do", "assignee": "S", "score": 0.6}
         fake = types.SimpleNamespace(semantic_search=lambda q, c: [hit])
         with patch.dict(sys.modules, {"semantic_search": fake}), \
-                patch.object(ag, "_top_ticket_details", lambda h, c: []), \
+                patch.object(ag, "_top_ticket_details", lambda h, c: ([], [])), \
                 patch.object(ag, "call_llm", lambda *a, **k: "No tickets are about this."):
             self.assertEqual(ag._open_question_result("database", None)["status"], "no_results")
+
+    def test_exact_words_raise_a_ticket_and_keyword_failure_keeps_search_working(self):
+        import query_engine as qe
+        import semantic_search as ss
+        ctx = qe.AccessContext("t", ("AAA",))
+        row = lambda uid, key, v: ({"uid": uid, "rkey": key, "summary": key, "status": "To Do", "url": "u",
+                                    "project": "AAA", "assignee": "S", "emb": v}, v, 1.0)
+        vectors = [row("a", "AAA-1", [0.6, 0.8]), row("b", "AAA-2", [0.62, 0.78])]
+
+        def query(cypher, **params):
+            if "size([word IN" in cypher:
+                self.assertEqual(params["words"], ["oauth"])
+                return [{"uid": "a", "found": 1}]
+            return [{"uid": "a"}, {"uid": "b"}]
+        with patch.object(ss, "_load_vectors", lambda c: vectors), patch.object(ss, "embed_texts", lambda t: [[1.0, 0.0]]), \
+                patch.object(ss, "run_query", query):
+            self.assertEqual([h["key"] for h in ss.semantic_search("tickets about OAuth", ctx, min_score=0)],
+                             ["AAA-1", "AAA-2"])
+
+        def keyword_down(cypher, **params):
+            if "size([word IN" in cypher:
+                raise RuntimeError("down")
+            return [{"uid": "a"}, {"uid": "b"}]
+        with patch.object(ss, "_load_vectors", lambda c: vectors), patch.object(ss, "embed_texts", lambda t: [[1.0, 0.0]]), \
+                patch.object(ss, "run_query", keyword_down):
+            self.assertEqual(ss.semantic_search("OAuth", ctx, min_score=0)[0]["key"], "AAA-2")
+
+    def test_status_transitions_and_who_changed_them_come_from_the_graph(self):
+        import analytics
+        plan = '{"kind":"aggregate","metric":"changes","to_status":"Done","group_by":"assignee"}'
+        result, calls = self._execute(plan, [[{"n": 10}], [], [{"name": "Ihab", "n": 10}]])
+        self.assertEqual(calls[0][1]["to_status"], "Done")
+        self.assertIn("e.to_name", calls[0][0])
+        self.assertIn("Ihab: 10", analytics.format_answer(self._plan(plan), result, False))
+
+    def test_epic_ranking_filters_parents_and_hides_the_misleading_total(self):
+        import analytics
+        plan = '{"kind":"aggregate","group_by":"parent","parent_type":"Epic"}'
+        result, calls = self._execute(plan, [[{"total": 274}], [{"name": "A-1: X", "n": 8}]])
+        self.assertIn("par.issuetype", calls[1][0])
+        text = analytics.format_answer(self._plan(plan), result, False)
+        self.assertNotIn("274", text)
+        self.assertIn("Most: A-1: X (8).", text)
+
+    def test_comment_search_matches_any_word(self):
+        plan = '{"kind":"aggregate","metric":"comments","text":"OAuth state"}'
+        _, calls = self._execute(plan, [[{"n": 0}], []])
+        self.assertEqual(calls[0][1]["text_words"], ["oauth", "state"])
+
+    def test_reading_comments_uses_the_llm_and_a_wrong_key_falls_back(self):
+        import answer_generator as ag
+        import query_engine as qe
+        ctx = qe.AccessContext("t", ("AAA",))
+        plan = self._plan('{"kind":"aggregate","metric":"comments","read_comments":true}')
+        records = [{"key": "AAA-1", "url": "u", "at": "2026-11-01", "who": "S", "text": "QA rejected it"}]
+        result = {"total": 1, "groups": [], "tickets": [], "records": records, "any_due_date": True}
+        with patch.object(ag.analytics, "check_people", lambda *a: None), \
+                patch.object(ag.analytics, "run_plan", lambda p, c: result):
+            with patch.object(ag, "call_llm", lambda *a, **k: "AAA-1 was rejected by QA."):
+                self.assertEqual(ag._aggregate_result("who rejected?", plan, ctx)["answer"], "AAA-1 was rejected by QA.")
+            with patch.object(ag, "call_llm", lambda *a, **k: "ZZZ-9 was rejected."):
+                self.assertIn("AAA-1 (2026-11-01, S)", ag._aggregate_result("who rejected?", plan, ctx)["answer"])
+
+    def test_search_path_gives_the_llm_relations(self):
+        import answer_generator as ag
+        hit = {"key": "AAA-1", "summary": "Filter", "status": "To Do", "assignee": "S"}
+        bundle = ({"key": "AAA-1", "summary": "Filter"},
+                  {"blocks": {"key": "AAA-1", "items": [{"key": "BBB-2", "summary": "Y", "status": "To Do", "assignee": "S"}]}})
+        with patch.object(ag, "fetch_ticket_bundle", lambda h, c: bundle):
+            contexts, facts = ag._top_ticket_details([hit], object())
+        self.assertTrue(any("BBB-2" in c for c in contexts))
+        self.assertIn("BBB-2", facts)
+
+    def test_a_long_ticket_cannot_push_relations_out_of_the_context(self):
+        import answer_generator as ag
+        hits = [{"key": f"AAA-{i}"} for i in range(1, 4)]
+
+        def bundle(hit, ctx):
+            key = hit["key"]
+            return ({"key": key, "summary": "S", "description": "x" * 20000},
+                    {"blocks": {"key": key, "items": [{"key": "BBB-" + key[-1], "summary": "Y", "status": "To Do", "assignee": "S"}]}})
+        with patch.object(ag, "fetch_ticket_bundle", bundle):
+            contexts, _ = ag._top_ticket_details(hits, object())
+        joined = "\n".join(contexts)[:ag.MAX_CONTEXT_CHARS]
+        for key in ("BBB-1", "BBB-2", "BBB-3"):
+            self.assertIn(key, joined)
+
+    def test_a_comment_answer_may_name_tickets_mentioned_in_the_comments(self):
+        import answer_generator as ag
+        import query_engine as qe
+        plan = self._plan('{"kind":"aggregate","metric":"comments","read_comments":true}')
+        records = [{"key": "AAA-1", "url": "u", "at": "2026-11-01", "who": "S", "text": "Blocked by BBB-2"}]
+        result = {"total": 1, "groups": [], "tickets": [], "records": records, "any_due_date": True}
+        with patch.object(ag.analytics, "check_people", lambda *a: None), \
+                patch.object(ag.analytics, "run_plan", lambda p, c: result), \
+                patch.object(ag, "call_llm", lambda *a, **k: "AAA-1 is blocked by BBB-2."):
+            answer = ag._aggregate_result("blockers?", plan, qe.AccessContext("t", ("AAA",)))
+        self.assertEqual(answer["answer"], "AAA-1 is blocked by BBB-2.")
+
+    def test_a_ticket_picked_beyond_the_closest_ones_gets_its_details_before_answering(self):
+        import answer_generator as ag
+        hits = [{"key": f"AAA-{i}", "summary": f"T{i}", "status": "To Do", "assignee": "S", "score": 0.6}
+                for i in range(1, 6)]
+        fake = types.SimpleNamespace(semantic_search=lambda q, c: hits)
+        replies = ["AAA-5 blocks nothing.", "AAA-5 blocks BBB-1."]
+        contexts = []
+
+        def llm(question, context, style="short"):
+            contexts.append(context)
+            return replies[len(contexts) - 1]
+
+        def bundle(hit, ctx):
+            items = [{"key": "BBB-1", "summary": "Y", "status": "To Do", "assignee": "S"}] if hit["key"] == "AAA-5" else []
+            return {"key": hit["key"], "summary": hit["summary"]}, {"blocks": {"key": hit["key"], "items": items}}
+        with patch.dict(sys.modules, {"semantic_search": fake}), \
+                patch.object(ag, "fetch_ticket_bundle", bundle), patch.object(ag, "call_llm", llm):
+            result = ag._open_question_result("does it block anything?", object())
+        self.assertEqual(result["answer"], "AAA-5 blocks BBB-1.")
+        self.assertIn("BBB-1", contexts[1])
+
+    def test_model_typography_cannot_hide_keys_or_names(self):
+        import answer_generator as ag
+        text = "SYNDATA\u20113 is with Fatma\u202fSaeed"
+        reply = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=text))])
+        client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=lambda **k: reply)))
+        with patch.object(ag, "_get_client", lambda: client):
+            self.assertEqual(ag._complete("p"), "SYNDATA-3 is with Fatma Saeed")
 
     def test_search_reply_none_means_no_results(self):
         import answer_generator as ag

@@ -230,14 +230,20 @@ def get_children(key, ctx, limit=MAX_CHILD_ITEMS):
             MATCH (c:WorkItem)-[:CHILD_OF]->(w)
             WHERE c.tenant_id = $tenant AND c.project_key IN $allowed
             OPTIONAL MATCH (c)-[:ASSIGNED_TO]->(p:Person)
+            OPTIONAL MATCH (b:WorkItem {tenant_id: $tenant})-[:BLOCKS]->(c)
+            WHERE b.project_key IN $allowed
+            WITH c, p, collect(DISTINCT b.key) AS blockers
             RETURN c.key AS rkey, c.summary AS summary, c.status AS status,
-                   c.url AS url, c.project_key AS project, p.displayName AS assignee
+                   c.url AS url, c.project_key AS project, p.displayName AS assignee, blockers
             ORDER BY CASE c.statusCategory WHEN 'done' THEN 1 ELSE 0 END, c.key
             LIMIT $limit
             """,
             key=key, limit=limit, **_scope(ctx),
         )
         items = _items_from(rows, ctx)
+        blocked = {r["rkey"]: r.get("blockers") or [] for r in rows}
+        for item in items:
+            item["blockers"] = blocked.get(item["key"], [])
     return {"key": key, "total": total, "by_status_category": by_cat,
             "by_type": by_type, "items": items, "more": max(0, total - len(items))}
 

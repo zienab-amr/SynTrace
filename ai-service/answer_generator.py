@@ -116,7 +116,8 @@ def build_ticket_context(card):
                 lines.append(f"  - {it['key']}: {it['summary']} (details restricted)")
             else:
                 lines.append(f"  - {it['key']}: {it.get('summary')} "
-                             f"(Status: {it.get('status')}; Assignee: {it.get('assignee')})")
+                             f"(Status: {it.get('status')}; Assignee: {it.get('assignee')}; "
+                             f"Blocked by: {', '.join(it.get('blockers') or []) or 'None'})")
         if ch.get("more"):
             lines.append(f"  - ... and {ch['more']} more")
 
@@ -203,12 +204,18 @@ def build_prompt(question, context, style="short"):
                   "These tickets are only a sample, so never count or total anything from them. "
                   "A bare topic means: which tickets are about this topic. "
                   "Reply with exactly NONE only if no ticket is about the topic or question. "
+                  "Only tickets with a full details section show relations, comments and dates; "
+                  "never say a ticket has none of these from the short list alone. "
                   "If the question asks for a detail of one ticket, such as its assignee, status, "
                   "comments or dates, answer it from the full details below and name the ticket key. "
                   "If several tickets fit and their answers differ, briefly ask which one is meant "
                   "and name the keys. If it asks which tickets are about a topic, start with one "
                   "short sentence in the answer language, then list every such ticket, one per line "
                   "as: KEY: summary. Do not list only keys.")
+    elif style == "comments":
+        length = ("Answer from what the comments say and name the ticket keys. Comment text may say "
+                  "who wrote it inside the text; report that name as written. "
+                  "If no comment answers the question, say so briefly and name no ticket.")
     else:
         length = ("Answer in one to three short sentences. Always name the ticket key, "
                   "even when the answer is that a value is missing or there are none.")
@@ -231,7 +238,9 @@ statuses as written.
 Use plain text with no markdown. In Egyptian Arabic, follow these patterns:
 - Who works on a ticket: "ABC-1 ماسكها Sara." Never "ABC-1 ماسكة Sara."
 - It blocks another ticket: "ABC-1 معطلة ABC-2."
+- "ABC-1 بتعطل حاجة؟" asks what ABC-1 blocks, not what blocks it.
 - Nothing blocks it: "مفيش تذاكر معطلة ABC-1."
+- It blocks nothing: "ABC-1 مش معطلة أي تذكرة."
 - A missing value: "ABC-1 ملهاش معاد تسليم."
 Do not include URLs; they will be added separately by the application.
 
@@ -247,13 +256,18 @@ Answer:
 
 # ---------- 4. LLM call (Groq) ----------
 
+# Some models write non-breaking hyphens and spaces, which hide ticket keys and names from checks.
+_TYPOGRAPHY = str.maketrans({"\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-",
+                             "\u00a0": " ", "\u202f": " ", "\u2009": " "})
+
+
 def _complete(prompt):
     """The answer text, or None. A rate limit moves on to GROQ_FALLBACK_MODEL when one is set."""
     for model in filter(None, (GROQ_MODEL, os.getenv("GROQ_FALLBACK_MODEL"))):
         try:
             completion = _get_client().chat.completions.create(
                 model=model, messages=[{"role": "user", "content": prompt}], temperature=0)
-            return completion.choices[0].message.content
+            return (completion.choices[0].message.content or "").translate(_TYPOGRAPHY)
         except Exception as e:
             log.warning("LLM call failed: %s", type(e).__name__)
             if type(e).__name__ != "RateLimitError":
@@ -304,6 +318,7 @@ def ticket_facts(card):
     ch = card.get("children") or {}
     for it in ch.get("items", []):
         facts.extend([it.get("key"), it.get("summary"), it.get("status"), it.get("assignee")])
+        facts.extend(it.get("blockers") or [])
     for l in card.get("worklogs") or []:
         facts.extend([l.get("author"), _hours(l.get("seconds"))])
     if card.get("worklogs"):
@@ -449,17 +464,26 @@ def _links_of(cards):
 
 
 def _top_ticket_details(hits, ctx):
-    """Full details of the closest tickets, so a question can name a ticket by its meaning."""
-    details = []
+    """Full details and relations of the closest tickets, so a question can name a ticket by meaning.
+    -> (context blocks, facts)."""
+    contexts, facts = [], []
     for hit in hits[:DETAILED_SEARCH_HITS]:
         try:
-            detail = get_ticket_details(hit["key"], ctx)
+            detail, relations = fetch_ticket_bundle(hit, ctx)
         except Exception as e:
             log.warning("ticket details unavailable: %s", type(e).__name__)
             break
-        if detail and not detail.get("incomplete"):
-            details.append(detail)
-    return details
+        if not detail or detail.get("incomplete"):
+            continue
+        # Relations go first and each ticket has its own share, so a long ticket cannot push
+        # another ticket's relations out of the context.
+        blocks = [build_relation_context(hit["key"], result, name) for name, result in relations.items()]
+        blocks.append(build_ticket_context(detail))
+        contexts.append("\n\n".join(blocks)[:MAX_CONTEXT_CHARS // DETAILED_SEARCH_HITS])
+        facts.extend(ticket_facts(detail))
+        for result in relations.values():
+            facts.extend(relation_facts(hit["key"], result))
+    return contexts, facts
 
 
 def _open_question_result(question, ctx, search_text=None):
@@ -471,16 +495,24 @@ def _open_question_result(question, ctx, search_text=None):
         return {"status": "search_unavailable", "answer": _no_results(question), "links": []}
     if not hits:
         return {"status": "no_results", "answer": _no_results(question), "links": []}
-    details = _top_ticket_details(hits, ctx)
-    context = "\n\n".join([build_search_context(hits)] + [build_ticket_context(d) for d in details])
+    details, detail_facts = _top_ticket_details(hits, ctx)
+    context = "\n\n".join(details + [build_search_context(hits)])
     answer = call_llm(question, context[:MAX_CONTEXT_CHARS], style="search")
+    # The LLM may pick a ticket beyond the closest ones, whose details it has not seen yet.
+    detailed = {hit["key"].upper() for hit in hits[:DETAILED_SEARCH_HITS]}
+    known = {hit["key"].upper(): hit for hit in hits}
+    named = [known[key] for key in dict.fromkeys(KEY_RE.findall((answer or "").upper()))
+             if key in known and key not in detailed]
+    if details and named and len(named) <= DETAILED_SEARCH_HITS:
+        more, more_facts = _top_ticket_details(named, ctx)
+        detail_facts = detail_facts + more_facts
+        context = "\n\n".join(more + details + [build_search_context(hits)])
+        answer = call_llm(question, context[:MAX_CONTEXT_CHARS], style="search") or answer
     answer_was_missing = not answer
     # An answer that names no ticket means the LLM found nothing that fits.
     if answer and (answer.strip().upper().strip(".") == "NONE" or not KEY_RE.search(answer.upper())):
         return {"status": "no_results", "answer": _no_results(question), "links": []}
-    facts = search_facts(hits)
-    for detail in details:
-        facts.extend(ticket_facts(detail))
+    facts = search_facts(hits) + detail_facts
     if _accepted(answer, facts, question):
         # لينكات للتذاكر اللي الإجابة ذكرتها بس (مش كل نتايج البحث)
         mentioned = set(KEY_RE.findall(answer.upper()))
@@ -504,8 +536,17 @@ def _aggregate_result(question, plan, ctx):
     if clarification:
         return {"status": "clarify", "answer": clarification, "links": []}
     result = analytics.run_plan(plan, ctx)
+    if plan["read_comments"] and result["records"]:
+        answer = call_llm(question, analytics.comments_context(result)[:MAX_CONTEXT_CHARS], style="comments")
+        keys = {r["key"] for r in result["records"]}
+        for record in result["records"]:   # comments may name other tickets
+            keys.update(KEY_RE.findall((record.get("text") or "").upper()))
+        if _accepted(answer, list(keys), question):
+            named = set(KEY_RE.findall(answer.upper()))
+            return {"status": "ok", "answer": answer,
+                    "links": _links_of([r for r in result["records"] if r["key"] in named])}
     return {"status": "ok", "answer": analytics.format_answer(plan, result, _is_arabic(question)),
-            "links": _links_of(result["tickets"] + result["records"])}
+            "links": [] if result["groups"] else _links_of(result["tickets"] + result["records"])}
 
 
 def _keyless_question_result(question, ctx):

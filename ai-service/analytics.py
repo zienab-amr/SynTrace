@@ -11,6 +11,7 @@ from query_engine import _scope, run_query
 
 MAX_LISTED = 20
 MAX_PEOPLE = 200
+MAX_READ_COMMENTS = 40
 GROUPS = {
     "assignee": "coalesce(p.displayName, 'Unassigned')",
     "status": "coalesce(w.status, 'Unknown')",
@@ -33,7 +34,8 @@ CATEGORY_CONDITIONS = {
     "done": "w.statusCategory = 'done'",
 }
 TEXT_FILTERS = ("project", "assignee", "priority", "issuetype", "sprint", "text", "label",
-                "component", "parent", "reporter", "change_field")
+                "component", "parent", "reporter", "change_field", "from_status", "to_status",
+                "parent_type")
 METRICS = ("tickets", "time_logged", "comments", "changes")
 DATE_FIELDS = {"created": "w.created", "updated": "w.updated", "resolved": "w.resolutiondate"}
 MAX_SINCE_DAYS = 3650
@@ -69,6 +71,10 @@ For "aggregate", also use these fields. Use null or false when a field is not as
 - component: component name | null
 - parent: epic or parent ticket name or key, to get the tickets under it | null
 - change_field: for changes, the field such as status or assignee | null
+- from_status, to_status: for changes, the status a ticket moved from or to | null
+- parent_type: with group_by parent, the type of parent such as Epic | null
+- read_comments: true when the answer needs reading what people wrote, such as why something
+  happened, who rejected something, or which comments discuss a topic
 - since_days: only the last N days, as a whole number | null
 - date_field: created | updated | resolved, the ticket date since_days applies to | null
 - unassigned: true | false
@@ -76,7 +82,7 @@ For "aggregate", also use these fields. Use null or false when a field is not as
 - issuetype: type name | null
 - sprint: "current" | sprint name | null
 - overdue: true | false
-- list_tickets: true when the user wants the tickets listed, false when only a number is asked
+- list_tickets: true when the user wants the tickets listed. False for "كام" and "how many".
 
 People: {people}
 
@@ -87,10 +93,18 @@ Examples:
 "مين عنده أكتر تذاكر؟" -> {{"kind":"aggregate","group_by":"assignee","order":"desc"}}
 "كام تذكرة مفتوحة في ABC؟" -> {{"kind":"aggregate","project":"ABC","status_category":"open"}}
 "How many tickets are done?" -> {{"kind":"aggregate","status_category":"done"}}
+"كام تذكرة عند سارة؟" when the list has Sara Ali -> {{"kind":"aggregate","assignee":"Sara Ali","list_tickets":false}}
 "كام epic عندنا؟" -> {{"kind":"aggregate","issuetype":"Epic"}}
 "Tickets under the Identity epic" -> {{"kind":"aggregate","parent":"Identity","list_tickets":true}}
 "مين سجل أكتر وقت؟" -> {{"kind":"aggregate","metric":"time_logged","group_by":"assignee"}}
 "آخر الكومنتات" -> {{"kind":"aggregate","metric":"comments"}}
+"مين رفض تذكرة في QA وليه؟" -> {{"kind":"aggregate","metric":"comments","read_comments":true}}
+"فين اتكلموا عن OAuth؟" -> {{"kind":"aggregate","metric":"comments","read_comments":true}}
+"مين قفل أكتر تذاكر؟" -> {{"kind":"aggregate","metric":"changes","to_status":"Done","group_by":"assignee"}}
+"ايه التذاكر اللي رجعت Reopened؟" -> {{"kind":"aggregate","metric":"changes","to_status":"Reopened"}}
+"Which tickets moved from In Review to In Progress?" -> {{"kind":"aggregate","metric":"changes","from_status":"In Review","to_status":"In Progress"}}
+"Which epic has the most tickets?" -> {{"kind":"aggregate","group_by":"parent","parent_type":"Epic"}}
+"امتى المشروع هيخلص؟" -> {{"kind":"search","search_text":"project end date"}}
 "مين غيّر حالات التذاكر الأسبوع ده؟" -> {{"kind":"aggregate","metric":"changes","change_field":"status","since_days":7}}
 "What was created this month?" -> {{"kind":"aggregate","since_days":30,"date_field":"created","list_tickets":true}}
 "ايه التذاكر اللي في السبرنت الحالي؟" -> {{"kind":"aggregate","sprint":"current","list_tickets":true}}
@@ -209,6 +223,7 @@ def parse_plan(text):
                 group_by=group_by, status_category=category,
                 order="ASC" if raw.get("order") == "asc" else "DESC",
                 unassigned=raw.get("unassigned") is True, me=raw.get("me") is True,
+                read_comments=raw.get("read_comments") is True,
                 overdue=raw.get("overdue") is True,
                 list_tickets=raw.get("list_tickets") is True)
     return plan
@@ -288,6 +303,9 @@ def run_plan(plan, ctx):
     group_by = plan["group_by"]
     if group_by:
         link = GROUP_LINKS.get(group_by, "OPTIONAL MATCH (w)-[:ASSIGNED_TO]->(p:Person)")
+        if group_by == "parent" and plan["parent_type"]:
+            link += " AND toLower(par.issuetype) = toLower($parent_type)"
+            params["parent_type"] = plan["parent_type"]
         rows = run_query(
             f"{clause} {link} WITH {GROUPS[group_by]} AS name, count(DISTINCT w) AS n "
             f"RETURN name, n ORDER BY n {plan['order']}, name LIMIT {MAX_LISTED}", **params)
@@ -340,8 +358,9 @@ def _run_comments(plan, clause, params):
         conditions.append("cp.accountId = $me")
     if plan["assignee"]:
         conditions.append("toLower(coalesce(cp.displayName, '')) CONTAINS toLower($assignee)")
-    if plan["text"]:
-        conditions.append("toLower(coalesce(c.text, '')) CONTAINS toLower($text)")
+    if plan["text"] and not plan["read_comments"]:
+        params["text_words"] = plan["text"].lower().split()
+        conditions.append("any(word IN $text_words WHERE toLower(coalesce(c.text, '')) CONTAINS word)")
     if plan["since_days"]:
         conditions.append("c.created >= $since")
     base = (f"{clause} MATCH (w)-[:HAS_COMMENT]->(c:Comment) OPTIONAL MATCH (c)-[:WRITTEN_BY]->(cp:Person) "
@@ -349,7 +368,8 @@ def _run_comments(plan, clause, params):
     result = _empty_result()
     result["total"] = run_query(f"{base}RETURN count(c) AS n", **params)[0]["n"]
     rows = run_query(f"{base}RETURN w.key AS key, w.url AS url, c.created AS at, cp.displayName AS who, "
-                     f"c.text AS text ORDER BY c.created DESC LIMIT {MAX_LISTED}", **params)
+                     f"c.text AS text ORDER BY c.created DESC "
+                     f"LIMIT {MAX_READ_COMMENTS if plan['read_comments'] else MAX_LISTED}", **params)
     result["records"] = [dict(r) for r in rows]
     return result
 
@@ -365,6 +385,11 @@ def _run_changes(plan, clause, params):
         params["change_field"] = plan["change_field"]
     if plan["since_days"]:
         conditions.append("e.changed_at >= $since")
+    for name, prop in (("from_status", "from_name"), ("to_status", "to_name")):
+        if plan[name]:
+            conditions.append(f"toLower(e.{prop}) = toLower(${name})")
+            params[name] = plan[name]
+            conditions.append("e.field = 'status'")
     base = f"{clause} MATCH (w)-[:HAD_CHANGE]->(e:ChangeEvent) WITH w, e {_where(conditions)}"
     result = _empty_result()
     result["total"] = run_query(f"{base}RETURN count(e) AS n", **params)[0]["n"]
@@ -372,6 +397,11 @@ def _run_changes(plan, clause, params):
                      f"e.field AS field, e.from_name AS old, e.to_name AS new "
                      f"ORDER BY e.changed_at DESC LIMIT {MAX_LISTED}", **params)
     result["records"] = [dict(r) for r in rows]
+    if plan["group_by"]:
+        name = "w.project_key" if plan["group_by"] == "project" else "coalesce(e.author, 'Unknown')"
+        rows = run_query(f"{base}WITH {name} AS name, count(e) AS n "
+                         f"RETURN name, n ORDER BY n {plan['order']}, name LIMIT {MAX_LISTED}", **params)
+        result["groups"] = [{"name": r["name"], "count": r["n"]} for r in rows]
     return result
 
 
@@ -394,6 +424,9 @@ def _format_records(plan, result, arabic):
     if not total:
         return f"مفيش {label[0]}." if arabic else f"There are no {label[1]}."
     lines = [f"العدد: {total}." if arabic else f"Total: {total}."]
+    if result["groups"]:
+        lines.extend(f"- {g['name']}: {g['count']}" for g in result["groups"])
+        return "\n".join(lines)
     for r in result["records"]:
         at = str(r.get("at") or "")[:10]
         if plan["metric"] == "comments":
@@ -405,6 +438,14 @@ def _format_records(plan, result, arabic):
     more = total - len(result["records"])
     if more > 0:
         lines.append(f"... و{more} كمان." if arabic else f"... and {more} more.")
+    return "\n".join(lines)
+
+
+def comments_context(result):
+    lines = ["Comments, latest first:"]
+    for r in result["records"]:
+        text = " ".join((r.get("text") or "").split())[:300]
+        lines.append(f"- {r['key']} ({str(r.get('at') or '')[:10]}, posted by {r.get('who') or 'Unknown'}): {text}")
     return "\n".join(lines)
 
 
@@ -489,8 +530,9 @@ def format_answer(plan, result, arabic):
                 else "No ticket has a due date, so none are overdue.")
     if not total:
         return f"مفيش {description}." if arabic else f"There are no {description}."
-    lines = [f"عدد {description}: {total}." if arabic else f"Number of {description}: {total}."]
     groups = result["groups"]
+    lines = [] if plan["group_by"] == "parent" else [
+        f"عدد {description}: {total}." if arabic else f"Number of {description}: {total}."]
     if groups:
         edge = groups[0]["count"]
         names = " و".join(g["name"] for g in groups if g["count"] == edge) if arabic else \

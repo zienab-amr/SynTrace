@@ -5,13 +5,17 @@ semantic_search.py
 
   python semantic_search.py "tickets about login"     # بيطبع أعلى النتايج بالـ scores (للمعايرة)
 """
+import logging
 import math
 import os
+import re
 import sys
 import time
 
 from embeddings import embed_texts
 from query_engine import AccessContext, build_item, default_context, run_query
+
+log = logging.getLogger("syntrace.search")
 
 SEMANTIC_K = int(os.getenv("SEMANTIC_K", "10"))
 # Calibrated with calibrate_search.py. Scores of related and unrelated questions overlap for
@@ -19,6 +23,9 @@ SEMANTIC_K = int(os.getenv("SEMANTIC_K", "10"))
 # relevant tickets.
 SEMANTIC_MIN_SCORE = float(os.getenv("SEMANTIC_MIN_SCORE", "0.35"))
 CACHE_TTL = 60
+KEYWORD_BOOST = float(os.getenv("SEMANTIC_KEYWORD_BOOST", "0.15"))
+STOP_WORDS = {"the", "and", "for", "are", "about", "which", "what", "who", "tickets", "ticket", "with",
+              "that", "this", "from", "have", "has", "show", "list", "any"}
 
 _CACHE = {}
 
@@ -53,6 +60,26 @@ def _live_uids(uids, ctx):
     return {r["uid"] for r in rows}
 
 
+def _keyword_scores(text, ctx):
+    """uid -> share of the words found in a ticket's title, description or comments. Exact terms
+    such as OAuth or an error code can score low on meaning alone."""
+    words = sorted({w for w in re.findall(r"\w{3,}", text.lower()) if w not in STOP_WORDS})
+    if not words:
+        return {}
+    rows = run_query(
+        """
+        MATCH (w:WorkItem {tenant_id: $tenant})
+        WHERE w.project_key IN $allowed AND w.embedding IS NOT NULL
+        OPTIONAL MATCH (w)-[:HAS_COMMENT]->(c:Comment)
+        WITH w, toLower(coalesce(w.summary, '') + ' ' + coalesce(w.description_text, '') + ' ' +
+                        reduce(s = '', t IN collect(coalesce(c.text, '')) | s + ' ' + t)) AS body
+        WITH w, size([word IN $words WHERE body CONTAINS word]) AS found
+        WHERE found > 0
+        RETURN w.uid AS uid, found
+        """, tenant=ctx.tenant_id, allowed=list(ctx.allowed_projects), words=words)
+    return {r["uid"]: r["found"] / len(words) for r in rows}
+
+
 def semantic_search(text, ctx: AccessContext, k=SEMANTIC_K, min_score=SEMANTIC_MIN_SCORE):
     """بترجّع list من الـ items (نفس شكل build_item) + score، الأعلى الأول."""
     items = _load_vectors(ctx)
@@ -60,9 +87,15 @@ def semantic_search(text, ctx: AccessContext, k=SEMANTIC_K, min_score=SEMANTIC_M
         return []
     q = embed_texts([text])[0]
     qn = math.sqrt(sum(x * x for x in q)) or 1.0
+    try:
+        keywords = _keyword_scores(text, ctx)
+    except Exception as exc:   # the search still works on meaning alone
+        log.warning("keyword search failed: %s", type(exc).__name__)
+        keywords = {}
     scored = []
     for r, v, norm in items:
         score = sum(a * b for a, b in zip(q, v)) / (qn * norm)
+        score += KEYWORD_BOOST * keywords.get(r["uid"], 0)
         if score >= min_score:
             scored.append((score, r))
     scored.sort(key=lambda t: t[0], reverse=True)
