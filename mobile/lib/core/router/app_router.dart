@@ -33,6 +33,13 @@ import 'package:syntrace/shared/widgets/app_shell.dart';
 
 final appRouter = GoRouter(
   initialLocation: AppRoutes.splash,
+  redirect: (context, state) {
+    final isJiraCallback = state.matchedLocation.startsWith('/jira/callback');
+    if (isJiraCallback) {
+      return null;
+    }
+    return null;
+  },
   routes: [
     // ═══ Splash ═══
     GoRoute(
@@ -88,6 +95,18 @@ final appRouter = GoRouter(
           ),
         ),
 
+        GoRoute(
+          path: '/jira/callback',
+          builder: (context, state) {
+            final status = state.uri.queryParameters['status'] ?? '';
+            final pendingId = state.uri.queryParameters['pendingId'];
+            return BlocProvider(
+              create: (context) => IntegrationsCubit(),
+              child: JiraCallbackScreen(status: status, pendingId: pendingId),
+            );
+          },
+        ),
+
         // Chat
         GoRoute(
           path: AppRoutes.chat,
@@ -97,7 +116,6 @@ final appRouter = GoRouter(
           ),
         ),
 
-        // Graph
         // Graph
         GoRoute(
           path: AppRoutes.graph,

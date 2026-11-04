@@ -23,6 +23,9 @@ class AppRoutes {
   // Roles 
   static const String roles = '/roles'; 
 
+   static const String employees = '/employees';
+  static const String addEmployee = '/employees/add';
+  
   static String profileDetailsById(String id) => '/profile/$id';
   static String projectDetailsById(String id) => '/projects/$id';
   static const String team = '/team';

@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:syntrace/core/network/api_client.dart';
 import 'package:syntrace/core/network/api_endpoints.dart';
@@ -57,7 +58,13 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
     emit(const IntegrationsLoading());
 
     try {
-      final response = await ApiClient.instance.get(ApiEndpoints.jiraConnect);
+      final response = await ApiClient.instance.get(
+        ApiEndpoints.jiraConnect,
+        options: Options(
+          followRedirects: false,
+          validateStatus: (status) => status != null && status < 400,
+        ),
+      );
 
       if (response.statusCode == 409) {
         _updateStatus(IntegrationType.jira, IntegrationStatus.connected);
@@ -66,8 +73,8 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
         return;
       }
 
-      if (response.statusCode != 200) {
-        emit(IntegrationsError('Server did not return a Jira URL (status ${response.statusCode}).'));
+      if (response.data is Map && response.data['message'] != null) {
+        emit(IntegrationsError(response.data['message'].toString()));
         emit(IntegrationsLoaded(List.from(_current)));
         return;
       }
@@ -75,10 +82,12 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
       String? authUrl;
       final data = response.data;
 
-      if (data is String && data.trim().isNotEmpty) {
+      if (data is String && data.startsWith('http')) {
         authUrl = data.trim();
       } else if (data is Map) {
-        authUrl = data['url']?.toString() ?? data['authorizeUrl']?.toString() ?? data['authUrl']?.toString();
+        authUrl = data['url']?.toString() ??
+            data['authorizeUrl']?.toString() ??
+            data['authUrl']?.toString();
       }
 
       if (authUrl == null || !authUrl.startsWith('http')) {
@@ -89,7 +98,7 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
 
       final uri = Uri.parse(authUrl);
       if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        await launchUrl(uri, webOnlyWindowName: '_self');
         emit(IntegrationsLoaded(List.from(_current)));
       } else {
         emit(const IntegrationsError('Could not open browser.'));
@@ -117,9 +126,23 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
         queryParameters: {'pendingId': pendingId},
       );
 
-      if (response.statusCode == 200 && response.data is List) {
-        final sites = List<Map<String, dynamic>>.from(response.data);
-        emit(IntegrationsSiteSelectionRequired(sites: sites, pendingId: pendingId));
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data;
+        List<dynamic> rawSites = [];
+
+        if (data is List) {
+          rawSites = data;
+        } else if (data is Map) {
+          rawSites = data['data'] as List? ?? data['items'] as List? ?? data['sites'] as List? ?? [];
+        }
+
+        if (rawSites.isNotEmpty) {
+          final sites = rawSites.map((e) => e as Map<String, dynamic>).toList();
+          emit(IntegrationsSiteSelectionRequired(sites: sites, pendingId: pendingId));
+        } else {
+          emit(const IntegrationsError('No sites found for this account.'));
+          emit(IntegrationsLoaded(List.from(_current)));
+        }
       } else {
         emit(const IntegrationsError('Failed to fetch Jira sites.'));
         emit(IntegrationsLoaded(List.from(_current)));
@@ -135,13 +158,17 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
     try {
       final response = await ApiClient.instance.post(
         ApiEndpoints.jiraCompleteConnection,
+        queryParameters: {
+          'pendingId': pendingId,
+          'cloudId': cloudId,
+        },
         data: {
           'pendingId': pendingId,
           'cloudId': cloudId,
         },
       );
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 || response.statusCode == 204) {
         await loadIntegrations();
       } else {
         emit(const IntegrationsError('Failed to complete Jira connection.'));
@@ -157,7 +184,7 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
     emit(const IntegrationsLoading());
     try {
       final response = await ApiClient.instance.delete(ApiEndpoints.jiraDisconnect);
-      
+
       if (response.statusCode == 200) {
         _updateStatus(IntegrationType.jira, IntegrationStatus.disconnected);
         emit(IntegrationsLoaded(List.from(_current)));
