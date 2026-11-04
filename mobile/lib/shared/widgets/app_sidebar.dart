@@ -87,6 +87,18 @@ class _AppSidebarState extends State<AppSidebar> {
                   isCollapsed: _isCollapsed,
                 ),
                 SidebarItem(
+                  icon: Icons.notifications_active_outlined,
+                  label: 'Activity Feed',
+                  route: AppRoutes.notifications,
+                  isCollapsed: _isCollapsed,
+                ),
+                SidebarItem(
+                  icon: Icons.task_alt,
+                  label: 'Meetings',
+                  route: AppRoutes.meetings,
+                  isCollapsed: _isCollapsed,
+                ),
+                SidebarItem(
                   icon: CupertinoIcons.settings,
                   label: 'Settings',
                   route: AppRoutes.settings,

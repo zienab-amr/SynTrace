@@ -18,6 +18,13 @@ class AppRoutes {
   static const String notifications = '/notifications';
   static const String projects = '/projects';
   static const String tasks = '/tasks';
+  static const String meetings = '/meetings';
 
+  // Roles 
+  static const String roles = '/roles'; 
+
+  static String profileDetailsById(String id) => '/profile/$id';
   static String projectDetailsById(String id) => '/projects/$id';
+  static const String team = '/team';
+  static const String developers = '/developers';
 }
