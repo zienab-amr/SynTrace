@@ -339,6 +339,121 @@ class ProcessorTests(unittest.TestCase):
                 patch.object(ag, "call_llm", lambda *a, **k: None):
             self.assertIn("unavailable", ag._open_question_result("how many?", None)["answer"])
 
+    def test_custom_fields_keep_useful_values_and_hide_internal_ones(self):
+        import query_engine as qe
+        fields = {"Story point estimate": 5.0, "Rank": "0|i003", "Team": ["A", "B"], "Empty": None,
+                  "Notes": "x" * 500, "Blob": {"a": 1}}
+        defs = {"customfield_1": {"name": "Rank", "kind": "rank"}}
+        self.assertEqual(qe.readable_custom_fields(json.dumps(fields), json.dumps(defs)),
+                         {"Story point estimate": 5.0, "Team": "A, B"})
+        self.assertEqual(qe.readable_custom_fields("not json", None), {})
+
+    def test_custom_fields_reach_the_llm_and_a_value_is_grounded(self):
+        import answer_generator as ag
+        card = {"key": "AAA-1", "custom_fields": {"Story point estimate": 5.0}}
+        self.assertIn("Story point estimate: 5.0", ag.build_ticket_context(card))
+        self.assertIn(5.0, ag.ticket_facts(card))
+
+    def test_out_of_scope_says_so_in_the_question_language(self):
+        import answer_generator as ag
+        import query_engine as qe
+        ctx = qe.AccessContext("t", ("AAA",))
+        with patch.object(ag, "answer_key_question", lambda q, c: [{"type": "no_key_found"}]), \
+                patch.object(ag, "_complete", lambda p: '{"kind":"out_of_scope"}'):
+            self.assertIn("برا بيانات", ag.generate_answer_result("الجو؟", ctx)["answer"])
+            self.assertIn("jira ticket key", ag.generate_answer_result("weather?", ctx)["answer"].lower())
+
+    def _plan(self, text):
+        import analytics
+        return analytics.parse_plan(text)
+
+    def test_new_plan_fields_are_validated(self):
+        self.assertIsNone(self._plan('{"kind":"aggregate","metric":"drop"}'))
+        self.assertIsNone(self._plan('{"kind":"aggregate","since_days":"7 OR 1=1"}'))
+        self.assertIsNone(self._plan('{"kind":"aggregate","since_days":0}'))
+        self.assertIsNone(self._plan('{"kind":"aggregate","date_field":"x"}'))
+        self.assertEqual(self._plan('{"kind":"aggregate","since_days":7}')["since_days"], 7)
+
+    def _execute(self, plan_json, answers):
+        import analytics
+        import query_engine as qe
+        calls = []
+
+        def fake(query, **params):
+            calls.append((query, params))
+            return answers.pop(0)
+        ctx = qe.AccessContext("t", ("AAA",))
+        with patch.object(analytics, "run_query", fake):
+            return analytics.run_plan(self._plan(plan_json), ctx), calls
+
+    def test_time_logged_is_summed_by_the_graph_and_scoped(self):
+        import analytics
+        result, calls = self._execute('{"kind":"aggregate","metric":"time_logged","group_by":"assignee"}',
+                                      [[{"seconds": 7200, "n": 2}], [{"name": "Sara", "n": 7200}]])
+        self.assertTrue(all("w.project_key IN $allowed" in q and p["tenant"] == "t" for q, p in calls))
+        text = analytics.format_answer(self._plan('{"kind":"aggregate","metric":"time_logged"}'), result, False)
+        self.assertIn("2h", text)
+        self.assertIn("Sara: 2h", text)
+
+    def test_comment_and_change_lists_are_scoped_and_values_are_parameters(self):
+        import analytics
+        evil = "x' OR 1=1"
+        plan = '{"kind":"aggregate","metric":"comments","text":"%s","assignee":"Sara"}' % evil
+        record = {"key": "AAA-1", "url": "u", "at": "2026-11-01T10:00", "who": "Sara", "text": "hello"}
+        result, calls = self._execute(plan, [[{"n": 1}], [record]])
+        self.assertTrue(all(evil not in q and "$allowed" in q for q, _ in calls))
+        self.assertIn("AAA-1 (2026-11-01, Sara): hello", analytics.format_answer(self._plan(plan), result, False))
+        change = {"key": "AAA-1", "url": "u", "at": "2026-11-01", "who": "Sara", "field": "status",
+                  "old": "To Do", "new": "Done"}
+        plan = '{"kind":"aggregate","metric":"changes","change_field":"status","since_days":7}'
+        result, calls = self._execute(plan, [[{"n": 1}], [change]])
+        self.assertEqual(calls[0][1]["change_field"], "status")
+        self.assertIn("status: To Do -> Done", analytics.format_answer(self._plan(plan), result, False))
+
+    def test_outside_project_returns_nothing_for_every_metric(self):
+        for metric in ("tickets", "time_logged", "comments", "changes"):
+            result, calls = self._execute('{"kind":"aggregate","metric":"%s","project":"SECRET"}' % metric, [])
+            self.assertEqual((result["total"], calls), (0, []))
+
+    def test_ticket_filters_go_through_parameters(self):
+        plan = '{"kind":"aggregate","label":"a","component":"b","parent":"c","reporter":"d","text":"e","since_days":3}'
+        result, calls = self._execute(plan, [[{"total": 2}]])
+        query, params = calls[0]
+        self.assertEqual(result["total"], 2)
+        for name, value in (("label", "a"), ("component", "b"), ("parent", "c"), ("reporter", "d"), ("text", "e")):
+            self.assertEqual(params[name], value)
+            self.assertIn(f"${name}", query)
+
+    def test_full_ticket_details_reach_the_llm_within_a_budget(self):
+        import answer_generator as ag
+        card = {"key": "AAA-1", "reporter": "Omar", "labels": ["api"], "components": ["Core"],
+                "changes": [{"at": "2026-11-01", "field": "status", "from": "To Do", "to": "Done", "by": "Sara"}]}
+        context = ag.build_ticket_context(card)
+        for piece in ("Reporter: Omar", "Labels: api", "Components: Core", "status: To Do -> Done (by Sara)"):
+            self.assertIn(piece, context)
+        self.assertIn("Sara", ag.ticket_facts(card))
+
+    def test_question_without_a_key_gets_full_details_of_the_closest_tickets(self):
+        import answer_generator as ag
+        hits = [{"key": f"AAA-{i}", "summary": f"T{i}", "status": "To Do", "assignee": "S", "score": 0.6}
+                for i in range(1, 6)]
+        fake = types.SimpleNamespace(semantic_search=lambda q, c: hits)
+        seen, contexts = [], []
+
+        def details(key, ctx):
+            seen.append(key)
+            return {"key": key, "summary": "Login", "assignee": "Sara", "reporter": "Omar"}
+
+        def llm(question, context, style="short"):
+            contexts.append(context)
+            return "AAA-1 is with Sara."
+        with patch.dict(sys.modules, {"semantic_search": fake}), \
+                patch.object(ag, "get_ticket_details", details), patch.object(ag, "call_llm", llm):
+            result = ag._open_question_result("who works on login?", object())
+        self.assertEqual(seen, ["AAA-1", "AAA-2", "AAA-3"])
+        self.assertIn("Reporter: Omar", contexts[0])
+        self.assertEqual(result["answer"], "AAA-1 is with Sara.")
+
     def test_search_reply_none_means_no_results(self):
         import answer_generator as ag
         hit = {"key": "AAA-1", "summary": "Login", "status": "To Do", "assignee": "S", "score": 0.6}
