@@ -21,49 +21,51 @@ class MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final isUser = message.role == ChatRole.user;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(
-        crossAxisAlignment:
-            isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: [
-          // ─── Progress Steps (AI Only) ───
-          if (!isUser && message.steps.isNotEmpty) ...[
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.85,
-              ),
-              child: AiProgressSteps(steps: message.steps),
-            ),
-            const SizedBox(height: 10),
-          ],
-
-          // ─── Message Row ───
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment:
-                isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-            children: [
-              // ─── Failed Icon (User Message) ───
-              if (isUser && message.hasError && onRetry != null) ...[
-                _buildFailedIcon(context),
-                const SizedBox(width: 8),
-              ],
-
-              // ─── Bubble ───
-              Flexible(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: MediaQuery.of(context).size.width * 0.85,
-                  ),
-                  child: isUser
-                      ? _buildUserBubble(context)
-                      : _buildAiBubble(context),
+    return SelectionArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          crossAxisAlignment:
+              isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            // ─── Progress Steps (AI Only) ───
+            if (!isUser && message.steps.isNotEmpty) ...[
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.85,
                 ),
+                child: AiProgressSteps(steps: message.steps),
               ),
+              const SizedBox(height: 10),
             ],
-          ),
-        ],
+
+            // ─── Message Row ───
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment:
+                  isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+              children: [
+                // ─── Failed Icon (User Message) ───
+                if (isUser && message.hasError && onRetry != null) ...[
+                  _buildFailedIcon(context),
+                  const SizedBox(width: 8),
+                ],
+
+                // ─── Bubble ───
+                Flexible(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.85,
+                    ),
+                    child: isUser
+                        ? _buildUserBubble(context)
+                        : _buildAiBubble(context),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -191,29 +193,26 @@ class MessageBubble extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ─── Empty + Streaming: Blinking Cursor Only ───
           if (message.content.isEmpty && message.isStreaming)
             Row(
               children: [
                 _BlinkingCursor(color: theme.colorScheme.onSurface),
               ],
             )
-          // ─── Content ───
           else if (message.content.isNotEmpty)
             MarkdownBody(
               data: message.content,
+              selectable: true, // تفعيل النسخ
               styleSheet: _markdownStyle(theme),
-              selectable: true,
             ),
 
-          // ─── Blinking Cursor during Streaming ───
           if (message.isStreaming && message.content.isNotEmpty) ...[
             const SizedBox(height: 4),
             _BlinkingCursor(color: theme.colorScheme.onSurface),
           ],
 
           // ─── Jira Cards ───
-            if (message.jiraCards.isNotEmpty) ...[
+          if (message.jiraCards.isNotEmpty) ...[
             const SizedBox(height: 12),
             ...message.jiraCards.map((card) {
               return JiraCardWidget(card: card);
