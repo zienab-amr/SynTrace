@@ -1,1 +1,16 @@
 .env
+# AI service
+venv/
+.venv/
+__pycache__/
+*.pyc
+all_tickets/
+field_meta.json
+raw_events/
+eval_results.csv
+ask_batch_results.csv
+regression_results.csv
+calibrate_out.txt
+test_out.txt
+eval_out.txt
+unanswered*.jsonl
