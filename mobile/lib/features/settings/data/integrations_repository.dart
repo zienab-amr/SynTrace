@@ -1,40 +1,46 @@
-import 'package:syntrace/features/settings/data/models/integration_model.dart';
+import 'package:syntrace/core/network/api_client.dart';
+import 'package:syntrace/core/network/api_endpoints.dart';
+import 'package:syntrace/core/network/api_response.dart';
 
-class IntegrationsRepository 
-{
+class IntegrationsRepository {
+  final ApiClient _apiClient = ApiClient.instance;
 
-  // ═══════════════════════════════════════════════════════
-  Future<List<IntegrationModel>> getIntegrations() async 
-  {
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    return const [
-      IntegrationModel(
-        type: IntegrationType.jira,
-        name: 'Jira',
-        description: 'Sync issues, sprints, and backlogs',
-        status: IntegrationStatus.disconnected,
-      ),
-      IntegrationModel(
-        type: IntegrationType.github,
-        name: 'GitHub',
-        description: 'Connect commits, PRs, and branches',
-        status: IntegrationStatus.disconnected,
-      ),
-    ];
+  Future<ApiResponse<dynamic>> checkJiraStatus() async {
+    return await _apiClient.safeRequest<dynamic>(
+      request: () => _apiClient.get(ApiEndpoints.jiraSyncStatus),
+      fromData: (data) => data,
+    );
   }
 
- // ═══════════════════════════════════════════════════════
-  Future<bool> connectIntegration(IntegrationType type) async
-  {
-    await Future.delayed(const Duration(milliseconds: 800));
-    return true;
+  Future<ApiResponse<dynamic>> connectJira() async {
+    return await _apiClient.safeRequest<dynamic>(
+      request: () => _apiClient.get(ApiEndpoints.jiraConnect),
+      fromData: (data) => data,
+    );
   }
 
- // ═══════════════════════════════════════════════════════
-  Future<bool> disconnectIntegration(IntegrationType type) async
-  {
-    await Future.delayed(const Duration(milliseconds: 500));
-    return true;
+  Future<ApiResponse<dynamic>> disconnectJira() async {
+    return await _apiClient.safeRequest<dynamic>(
+      request: () => _apiClient.delete(ApiEndpoints.jiraDisconnect),
+      fromData: (data) => data,
+    );
+  }
+
+  
+  Future<ApiResponse<dynamic>> fetchJiraCallback() async {
+    return await _apiClient.safeRequest<dynamic>(
+      request: () => _apiClient.get(ApiEndpoints.jiraCallback),
+      fromData: (data) => data,
+    );
+  }
+
+  Future<ApiResponse<dynamic>> sendJiraWebhook(String connectionId, dynamic payload) async {
+    return await _apiClient.safeRequest<dynamic>(
+      request: () => _apiClient.post(
+        ApiEndpoints.jiraWebhook(connectionId),
+        data: payload,
+      ),
+      fromData: (data) => data,
+    );
   }
 }

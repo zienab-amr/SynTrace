@@ -157,21 +157,20 @@ class IntegrationCard extends StatelessWidget
     if (isConnected) {
       return SizedBox(
         height: 36,
-        child: OutlinedButton(
+        child: ElevatedButton(
           onPressed: onDisconnect,
-          style: OutlinedButton.styleFrom(
-            foregroundColor: Theme.of(context).colorScheme.onSurface,
-            side: BorderSide(
-              color: Theme.of(context).dividerColor.withOpacity(0.5),
-            ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green, 
+            foregroundColor: Colors.white, 
+            elevation: 0,
             padding: const EdgeInsets.symmetric(horizontal: 20),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
             ),
           ),
           child: const Text(
-            'Manage',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+            'Connected',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
           ),
         ),
       );
