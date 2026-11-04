@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 os.environ["AI_API_KEY"] = "test-key"
+os.environ["ASK_CACHE_SECONDS"] = "0"
 
 from fastapi.testclient import TestClient
 
@@ -57,7 +58,7 @@ class ServiceTests(unittest.TestCase):
                             headers={**HEADERS, "X-Correlation-Id": "c1"})
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json(), {"status": "ok", "answer": "a", "links": [{"key": "FIX-1", "url": "u"}],
-                                    "correlationId": "c1"})
+                                    "correlationId": "c1", "source": "ticket"})
         self.assertEqual((seen["ctx"].tenant_id, seen["ctx"].allowed_projects), (T, ("FIX",)))
 
     def test_wrong_or_missing_key_is_rejected(self):
@@ -674,6 +675,57 @@ class ProcessorTests(unittest.TestCase):
         self.assertIn("one?", result["answer"])
         self.assertIn("two?\nsearched", result["answer"])
 
+    def _comment_answer(self, pick, written="AAA-1 was rejected."):
+        import answer_generator as ag
+        import query_engine as qe
+        records = [{"key": "AAA-1", "who": "M", "text": "rejected", "at": "2026-01-01", "url": "u"},
+                   {"key": "AAA-2", "who": "M", "text": "retest failed", "at": "2026-01-01", "url": "u"},
+                   {"key": "AAA-3", "who": "M", "text": "looks good", "at": "2026-01-01", "url": "u"}]
+        result = {"total": 3, "groups": [], "tickets": [], "records": records, "any_due_date": True}
+        plan = ag.analytics.parse_plan('{"kind":"aggregate","metric":"comments","read_comments":true}')
+        with patch.object(ag.analytics, "check_people", lambda *a: None), \
+                patch.object(ag.analytics, "run_plan", lambda *a: result), \
+                patch.object(ag, "_complete", lambda p: pick), \
+                patch.object(ag, "call_llm", lambda *a, **k: written):
+            return ag._aggregate_result("who rejected?", plan, qe.AccessContext("t", ("AAA",)))
+
+    def test_every_picked_comment_ticket_appears_in_the_answer(self):
+        result = self._comment_answer('{"answers":["yes","yes","no"]}')
+        self.assertIn("AAA-1", result["answer"])
+        self.assertIn("AAA-2: retest failed", result["answer"])
+        self.assertNotIn("AAA-3", result["answer"])
+
+    def test_no_picked_comment_says_so(self):
+        self.assertIn("No comment", self._comment_answer('{"answers":["no","no","no"]}')["answer"])
+
+    def test_a_bad_comment_pick_is_ignored(self):
+        for reply in ("nope", '{"answers":["yes"]}', '{"answers":["maybe","no","no"]}', '{"answers":"yes"}'):
+            self.assertNotIn("AAA-2", self._comment_answer(reply)["answer"])
+
+    def _compound_with_top(self, groups):
+        import answer_generator as ag
+        import query_engine as qe
+        ctx = qe.AccessContext("t", ("AAA",))
+        asked = []
+
+        def part(question, c, allow_compound=True):
+            asked.append(question)
+            top = ag.analytics.single_top({"groups": groups}) if len(asked) == 1 else None
+            return {"status": "ok", "answer": "n", "links": [], "top": top}
+        with patch.object(ag, "_keyless_question_result", part):
+            return ag._compound_result(["who has most?", "done for TOP_RESULT?"], ctx), asked
+
+    def test_a_later_compound_part_uses_the_earlier_top_result(self):
+        result, asked = self._compound_with_top([{"name": "Martina", "count": 65}, {"name": "Ihab", "count": 63}])
+        self.assertEqual(asked[1], "done for Martina?")
+        self.assertNotIn("TOP_RESULT", result["answer"])
+
+    def test_a_tie_never_guesses_the_later_compound_part(self):
+        result, asked = self._compound_with_top([{"name": "Martina", "count": 65}, {"name": "Ihab", "count": 65}])
+        self.assertEqual(len(asked), 1)
+        self.assertIn("no single result", result["answer"])
+        self.assertNotIn("TOP_RESULT", result["answer"])
+
     def test_a_compound_part_naming_a_ticket_uses_the_ticket_path(self):
         import answer_generator as ag
         import query_engine as qe
@@ -711,6 +763,63 @@ class ProcessorTests(unittest.TestCase):
         plan = self._plan('{"kind":"aggregate","since_date":"2026-09-01"}')
         text = analytics.format_answer(plan, {"total": 0, "groups": [], "tickets": [], "records": [], "any_due_date": True}, True)
         self.assertTrue(text.startswith("مفيش تذاكر"))
+
+    def test_identical_questions_reuse_an_answer_only_in_the_same_scope(self):
+        import query_engine as qe
+        calls = []
+
+        def answer(question, ctx):
+            calls.append(ctx.tenant_id)
+            return {"status": "ok", "answer": "a", "links": []}
+        with patch.object(ai_service, "CACHE_SECONDS", 60), patch.dict(ai_service._answers, clear=True), \
+                patch.object(ai_service, "generate_answer_result", answer):
+            first = qe.AccessContext("t1", ("AAA",))
+            ai_service._cached_answer("Who  has tickets?", first)
+            ai_service._cached_answer("who has tickets?", first)
+            ai_service._cached_answer("who has tickets?", qe.AccessContext("t2", ("AAA",)))
+            ai_service._cached_answer("who has tickets?", qe.AccessContext("t1", ("BBB",)))
+            ai_service._cached_answer("who has tickets?", qe.AccessContext("t1", ("AAA",), "acc"))
+        self.assertEqual(calls, ["t1", "t2", "t1", "t1"])
+
+    def test_failed_answers_are_not_cached(self):
+        import query_engine as qe
+        calls = []
+
+        def answer(question, ctx):
+            calls.append(1)
+            return {"status": "no_results", "answer": "a", "links": []}
+        with patch.object(ai_service, "CACHE_SECONDS", 60), patch.dict(ai_service._answers, clear=True), \
+                patch.object(ai_service, "generate_answer_result", answer):
+            ctx = qe.AccessContext("t", ("AAA",))
+            ai_service._cached_answer("q", ctx)
+            ai_service._cached_answer("q", ctx)
+        self.assertEqual(len(calls), 2)
+
+    def test_empty_values_are_left_out_of_the_llm_context(self):
+        import answer_generator as ag
+        context = ag.build_ticket_context({"key": "AAA-1", "duedate": None})
+        self.assertIn("Due date: None", context)
+        self.assertIn("Comments: None", context)
+        self.assertNotIn("Reporter", context)
+        self.assertNotIn("Labels", context)
+
+    def test_listed_tickets_use_number_order(self):
+        import analytics
+        _, calls = self._execute('{"kind":"aggregate","list_tickets":true}', [[{"total": 1}], []])
+        self.assertIn("toInteger(split(w.key, '-')[-1])", calls[1][0])
+
+    def test_answers_say_where_they_came_from(self):
+        import answer_generator as ag
+        result = {"total": 0, "groups": [], "tickets": [], "records": [], "any_due_date": True}
+        with patch.object(ag.analytics, "check_people", lambda *a: None), \
+                patch.object(ag.analytics, "run_plan", lambda p, c: result):
+            answer = ag._aggregate_result("q", self._plan('{"kind":"aggregate"}'), None)
+        self.assertEqual(answer["source"], "graph_query")
+
+    def test_smoke_test_reads_a_count_from_an_answer(self):
+        import project_smoke_test as smoke
+        self.assertTrue(smoke.contains_number("Number of tickets: 505.", 505))
+        self.assertFalse(smoke.contains_number("Number of tickets: 4.", 505))
 
     def test_search_reply_none_means_no_results(self):
         import answer_generator as ag

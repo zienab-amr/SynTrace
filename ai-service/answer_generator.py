@@ -27,7 +27,7 @@ GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
 SEMANTIC_STRONG_SCORE = float(os.getenv("SEMANTIC_STRONG_SCORE", "0.42"))
 # One question stays well under the Groq limit of 8000 tokens per minute.
 DETAILED_SEARCH_HITS = 3
-MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "12000"))
+MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "9000"))
 KEY_RE = re.compile(r'\b[A-Z][A-Z0-9_]*-\d+\b')
 
 NO_RESULTS_MESSAGE = ("I couldn't find relevant tickets for this question. "
@@ -92,13 +92,14 @@ def build_ticket_context(card):
         f"Project: {card.get('project')}",
         f"Sprints: {', '.join(card.get('sprints', [])) or 'None'}",
         f"Due date: {card.get('duedate') or 'None'}",
-        f"Reporter: {card.get('reporter') or 'None'}",
-        f"Created: {card.get('created') or 'None'}",
-        f"Updated: {card.get('updated') or 'None'}",
-        f"Resolved: {card.get('resolved') or 'None'}",
-        f"Labels: {', '.join(card.get('labels') or []) or 'None'}",
-        f"Components: {', '.join(card.get('components') or []) or 'None'}",
     ]
+    # Empty values are left out to save tokens; "Due date" and "Comments" stay so they read as none.
+    for label, value in (("Reporter", card.get("reporter")), ("Created", card.get("created")),
+                         ("Updated", card.get("updated")), ("Resolved", card.get("resolved")),
+                         ("Labels", ", ".join(card.get("labels") or [])),
+                         ("Components", ", ".join(card.get("components") or []))):
+        if value:
+            lines.append(f"{label}: {value}")
     if card.get("parent"):
         lines.append(f"Parent ticket: {card['parent']}")
     custom = card.get("custom_fields")
@@ -122,7 +123,7 @@ def build_ticket_context(card):
             lines.append(f"  - ... and {ch['more']} more")
 
     hist = card.get("assignment_history")
-    if hist:
+    if hist and not card.get("changes"):   # the change history already holds assignee changes
         lines.append("Assignment history (latest first):")
         for h in hist:
             lines.append(f"  - {h['at']}: {h['from']} -> {h['to']}"
@@ -213,10 +214,13 @@ def build_prompt(question, context, style="short"):
                   "short sentence in the answer language, then list every such ticket, one per line "
                   "as: KEY: summary. Do not list only keys.")
     elif style == "comments":
-        length = ("Answer from what the comments say. The ticket a comment belongs to is the key at "
+        length = ("Answer from what the comments say. Name every ticket whose comments answer the "
+                  "question, not only the first, including other wording of the same event such as "
+                  "rejected, failed or reopened. The ticket a comment belongs to is the key at "
                   "the start of its line; copy that key exactly and never change its project. "
-                  "Comment text may say "
-                  "who wrote it inside the text; report that name as written. "
+                  "Comment text may name "
+                  "its real author at its start, such as [QA / Name]. Then that person wrote it, not "
+                  "the person in posted by, so report only that name. "
                   "If no comment answers the question, say so briefly and name no ticket.")
     else:
         length = ("Answer in one to three short sentences. Always name the ticket key, "
@@ -237,7 +241,8 @@ data does not provide the answer.
 {length}
 Write the answer in {language}, whatever language the data is in; keep ticket keys, names and
 statuses as written.
-Use plain text with no markdown. In Egyptian Arabic, follow these patterns:
+Use plain text with no markdown. When comparing tickets, give one line per ticket with the same
+details in the same order. In Egyptian Arabic, follow these patterns:
 - Who works on a ticket: "ABC-1 ماسكها Sara." Never "ABC-1 ماسكة Sara."
 - It blocks another ticket: "ABC-1 معطلة ABC-2."
 - "ABC-1 بتعطل حاجة؟" asks what ABC-1 blocks, not what blocks it.
@@ -531,7 +536,7 @@ def _open_question_result(question, ctx, search_text=None):
                     "The assistant is unavailable right now, so these are search matches only "
                     "and may not answer your question.\n")
             answer = note + answer
-    return {"status": "ok", "answer": answer, "links": _links_of(shown)}
+    return {"status": "ok", "answer": answer, "source": "semantic_search", "links": _links_of(shown)}
 
 
 def _aggregate_result(question, plan, ctx):
@@ -539,23 +544,48 @@ def _aggregate_result(question, plan, ctx):
     if clarification:
         return {"status": "clarify", "answer": clarification, "links": []}
     result = analytics.run_plan(plan, ctx)
+    source = {"comments": "comments", "changes": "change_history", "time_logged": "worklogs"}.get(
+        plan["metric"], "graph_query")
     if plan["read_comments"] and result["records"]:
+        picked = analytics.parse_comment_pick(
+            _complete(analytics.comment_pick_prompt(question, result["records"])), result["records"])
+        if picked == []:
+            message = ("مفيش كومنت بيجاوب على السؤال ده." if _is_arabic(question)
+                       else "No comment answers this question.")
+            return {"status": "ok", "answer": message, "source": source, "links": []}
+        if picked:
+            result["records"] = picked
         answer = call_llm(question, analytics.comments_context(result)[:MAX_CONTEXT_CHARS], style="comments")
         keys = {r["key"] for r in result["records"]}
         for record in result["records"]:   # comments may name other tickets
             keys.update(KEY_RE.findall((record.get("text") or "").upper()))
         if _accepted(answer, list(keys), question):
             named = set(KEY_RE.findall(answer.upper()))
-            return {"status": "ok", "answer": answer,
+            if picked:   # every picked ticket appears, even if the written answer skipped it
+                for record in picked:
+                    if record["key"] not in named:
+                        named.add(record["key"])
+                        answer += f"\n- {record['key']}: {' '.join((record.get('text') or '').split())[:200]}"
+            return {"status": "ok", "answer": answer, "source": source,
                     "links": _links_of([r for r in result["records"] if r["key"] in named])}
     return {"status": "ok", "answer": analytics.format_answer(plan, result, _is_arabic(question)),
+            "source": source, "top": analytics.single_top(result),
             "links": [] if result["groups"] else _links_of(result["tickets"] + result["records"])}
 
 
 def _compound_result(questions, ctx):
-    parts, links = [], []
+    parts, links, top = [], [], None
     for sub in questions:
+        if "TOP_RESULT" in sub:
+            if not top:   # no single first result, so never guess who the part means
+                sub = sub.replace("TOP_RESULT", "...")
+                message = ("مش هقدر أجاوب الجزء ده لأن الإجابة اللي قبله مفيهاش نتيجة واحدة." if _is_arabic(sub)
+                           else "I can't answer this part because the previous answer has no single result.")
+                parts.append(f"{sub}\n{message}")
+                continue
+            sub = sub.replace("TOP_RESULT", top)
         result = _keyless_question_result(sub, ctx, allow_compound=False)
+        top = result.get("top")
         parts.append(f"{sub}\n{result['answer']}")
         links.extend(result["links"])
     unique = {link["key"]: link for link in links}

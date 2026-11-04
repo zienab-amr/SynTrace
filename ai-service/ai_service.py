@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import secrets
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -53,6 +54,28 @@ class AskResponse(CamelModel):
     answer: str
     links: List[Link]
     correlation_id: str
+    source: Optional[str] = None
+
+
+CACHE_SECONDS = int(os.getenv("ASK_CACHE_SECONDS", "120"))
+CACHE_SIZE = 500
+_answers = {}   # identical questions in one scope; short-lived so Jira changes appear quickly
+
+
+def _cached_answer(question, ctx):
+    if CACHE_SECONDS <= 0:
+        return generate_answer_result(question, ctx)
+    key = (ctx.tenant_id, ctx.allowed_projects, ctx.jira_account_id, " ".join(question.lower().split()))
+    now = time.monotonic()
+    cached = _answers.get(key)
+    if cached and now - cached[0] < CACHE_SECONDS:
+        return cached[1]
+    result = generate_answer_result(question, ctx)
+    if result["status"] == "ok":
+        if len(_answers) >= CACHE_SIZE:
+            _answers.pop(next(iter(_answers)))
+        _answers[key] = (now, result)
+    return result
 
 
 UNANSWERED = {"no_results", "not_found", "clarify", "search_unavailable"}
@@ -91,7 +114,7 @@ def ask(request: AskRequest, x_internal_api_key: Optional[str] = Header(default=
     ctx = AccessContext(request.company_id, tuple(p.strip().upper() for p in request.allowed_projects if p.strip()),
                         request.jira_account_id)
     try:
-        result = generate_answer_result(question, ctx)
+        result = _cached_answer(question, ctx)
     except Exception as exc:
         log.error("ask failed correlation=%s error=%s", correlation, type(exc).__name__)
         raise HTTPException(503, "assistant is unavailable") from None
@@ -100,7 +123,8 @@ def ask(request: AskRequest, x_internal_api_key: Optional[str] = Header(default=
         log.error("search unavailable correlation=%s", correlation)
         raise HTTPException(503, "assistant is unavailable")
     return AskResponse(status=result["status"], answer=result["answer"], links=result["links"],
-                       correlation_id=correlation)
+                       correlation_id=correlation,
+                       source=result.get("source") or ("ticket" if result["status"] == "ok" else None))
 
 
 @app.get("/health")
