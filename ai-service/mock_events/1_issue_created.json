@@ -1,0 +1,49 @@
+{
+  "webhookEvent": "jira:issue_created",
+  "issue": {
+    "key": "SYNTECH-300",
+    "fields": {
+      "summary": "Test issue for webhook simulation",
+      "issuetype": {
+        "name": "Story",
+        "hierarchyLevel": 0
+      },
+      "status": {
+        "name": "To Do",
+        "statusCategory": {
+          "key": "new"
+        }
+      },
+      "priority": {
+        "name": "Medium"
+      },
+      "created": "2026-10-22T10:00:00.000+0300",
+      "updated": "2026-10-22T10:00:00.000+0300",
+      "labels": [
+        "test-webhook"
+      ],
+      "project": {
+        "key": "SYNTECH",
+        "name": "SYNTECH",
+        "id": "10036"
+      },
+      "description": {
+        "type": "doc",
+        "version": 1,
+        "content": []
+      },
+      "assignee": {
+        "accountId": "test-account-1",
+        "displayName": "Test User",
+        "emailAddress": "test@example.com"
+      },
+      "reporter": {
+        "accountId": "test-account-2",
+        "displayName": "Test Reporter",
+        "emailAddress": "reporter@example.com"
+      }
+    },
+    "id": "10300",
+    "self": "https://syntrace.atlassian.net/rest/api/3/issue/10300"
+  }
+}
