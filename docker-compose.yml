@@ -1,3 +1,41 @@
+# Backend only:   docker compose up -d --build
+# Whole system:   docker compose --profile ai up -d --build
+# Values come from .env next to this file. See .env.example.
+
+x-rabbit-env: &rabbit-env
+  RabbitMQ__HostName: "rabbitmq"
+  RabbitMQ__Port: "5672"
+  RabbitMQ__VirtualHost: "/"
+  RabbitMQ__UserName: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
+  RabbitMQ__Password: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
+
+x-db: &db "Server=sqlserver,1433;Database=SynTraceDB;User Id=sa;Password=${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False"
+
+x-ai: &ai
+  build:
+    context: ./ai-service
+  image: syntrace-ai
+  profiles: [ai]
+
+x-ai-env: &ai-env
+  NEO4J_URI: bolt://neo4j:7687
+  NEO4J_USER: neo4j
+  NEO4J_PASSWORD: ${NEO4J_PASSWORD:-}
+  OLLAMA_URL: http://ollama:11434
+  EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+  EMBED_ON_WEBHOOK: "1"
+  GROQ_API_KEY: ${GROQ_API_KEY:-}
+  GROQ_MODEL: ${GROQ_MODEL:-qwen/qwen3.8-27b}
+  SEMANTIC_K: ${SEMANTIC_K:-5}
+  SEMANTIC_MIN_SCORE: ${SEMANTIC_MIN_SCORE:-0.5}
+  AI_API_KEY: ${AI_API_KEY:-}
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_USER: ${RABBITMQ_USER}
+  RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+  TENANT_ID: ${TENANT_ID:-}
+  ALLOWED_PROJECTS: ${ALLOWED_PROJECTS:-}
+
 services:
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
@@ -6,86 +44,71 @@ services:
       ACCEPT_EULA: "Y"
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env}
     ports:
-      - "1433:1433"
+      - "127.0.0.1:1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
     healthcheck:
       test: ["CMD-SHELL", "if [ -x /opt/mssql-tools18/bin/sqlcmd ]; then /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -C -Q \"SELECT 1\"; elif [ -x /opt/mssql-tools/bin/sqlcmd ]; then /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -Q \"SELECT 1\"; else exit 1; fi"]
       interval: 10s
       timeout: 5s
       retries: 15
       start_period: 40s
+    restart: unless-stopped
 
   backend:
     build:
       context: ./backend/SynTrace.api
       dockerfile: Dockerfile
-
     ports:
       - "127.0.0.1:8081:8080"
-
     environment:
+      <<: *rabbit-env
       ASPNETCORE_ENVIRONMENT: Development
-
-      ConnectionStrings__ConnectionDB: "Server=sqlserver,1433;Database=SynTraceDB;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True;Encrypt=False"
-
-      # JWT
+      ConnectionStrings__ConnectionDB: *db
       jwt__key: ${JWT_KEY:?Set JWT_KEY in .env}
-
-      # Jira OAuth
       JiraOAuth__ClientSecret: ${JIRA_OAUTH_CLIENT_SECRET:?Set JIRA_OAUTH_CLIENT_SECRET in .env}
-
-      # RabbitMQ
-      RabbitMQ__HostName: "rabbitmq"
-      RabbitMQ__Port: "5672"
-      RabbitMQ__VirtualHost: "/"
-      RabbitMQ__UserName: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
-      RabbitMQ__Password: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
       RabbitMQ__ClientProvidedName: "SynTrace.Api"
-
+      AiService__BaseUrl: ${AI_SERVICE_URL:-http://ai-service:8000}
+      AiService__ApiKey: ${AI_API_KEY:?Set AI_API_KEY in .env}
+    volumes:
+      # Jira tokens are encrypted with these keys. Without this volume, a new container cannot read them.
+      - dataprotection_keys:/root/.aspnet/DataProtection-Keys
     depends_on:
       sqlserver:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    restart: unless-stopped
 
   worker:
     build:
       context: ./backend/SynTrace.api
       dockerfile: SynTrace.Worker/Dockerfile
-
     environment:
+      <<: *rabbit-env
       DOTNET_ENVIRONMENT: Development
-
-      RabbitMQ__HostName: "rabbitmq"
-      RabbitMQ__Port: "5672"
-      RabbitMQ__VirtualHost: "/"
-      RabbitMQ__UserName: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
-      RabbitMQ__Password: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
+      ConnectionStrings__ConnectionDB: *db
       RabbitMQ__ClientProvidedName: "SynTrace.Worker"
-
     depends_on:
+      sqlserver:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
-
     restart: unless-stopped
-
-  ai-service:
-    build:
-      context: ./ai-service
-
-  security:
-    build:
-      context: ./security
 
   rabbitmq:
     image: rabbitmq:4.4.0-management
     container_name: syntrace-rabbitmq
     hostname: rabbitmq
-    restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
+    configs:
+      - source: rabbitmq_limits
+        target: /etc/rabbitmq/conf.d/90-syntrace.conf
     ports:
-      - "127.0.0.1:5672:5672"
+      # Set RABBITMQ_BIND_ADDRESS to this machine's Tailscale address when the AI runs on another machine.
+      - "${RABBITMQ_BIND_ADDRESS:-127.0.0.1}:5672:5672"
       - "127.0.0.1:15672:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
@@ -95,6 +118,97 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+    restart: unless-stopped
+
+  # security:
+  #   build:
+  #     context: ./security
+
+  # ---------------- AI: only with --profile ai ----------------
+  neo4j:
+    image: neo4j:5-community
+    profiles: [ai]
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-}
+    ports:
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p \"$${NEO4J_AUTH#neo4j/}\" 'RETURN 1' >/dev/null"]
+      interval: 10s
+      timeout: 10s
+      retries: 18
+      start_period: 20s
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: [ai]
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+    restart: unless-stopped
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    profiles: [ai]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    command: ["pull", "${EMBED_MODEL:-bge-m3}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+  ai-setup:
+    <<: *ai
+    environment: *ai-env
+    command: ["python", "setup_constraints.py"]
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    restart: "no"
+
+  ai-service:
+    <<: *ai
+    environment: *ai-env
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      ai-setup:
+        condition: service_completed_successfully
+      ollama-pull:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  ai-consumer:
+    <<: *ai
+    environment: *ai-env
+    command: ["python", "ai_consumer.py"]
+    depends_on:
+      ai-setup:
+        condition: service_completed_successfully
+      ollama-pull:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+configs:
+  rabbitmq_limits:
+    # Jira webhooks reach 25 MB; the event envelope adds a little.
+    content: |
+      max_message_size = 30000000
 
 volumes:
+  sqlserver_data:
   rabbitmq_data:
+  dataprotection_keys:
+  neo4j_data:
+  ollama_models:
