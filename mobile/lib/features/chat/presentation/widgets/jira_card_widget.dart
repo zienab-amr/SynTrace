@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
 import 'package:syntrace/features/chat/data/models/jira_card_model.dart';
 
@@ -21,7 +22,16 @@ class JiraCardWidget extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: () async {
+            if (onTap != null) {
+              onTap!();
+            } else if (card.url.isNotEmpty) {
+              final Uri url = Uri.parse(card.url);
+              if (await canLaunchUrl(url)) {
+                await launchUrl(url, mode: LaunchMode.externalApplication);
+              }
+            }
+          },
           borderRadius: BorderRadius.circular(12),
           child: Container(
             padding: const EdgeInsets.all(14),
@@ -32,18 +42,14 @@ class JiraCardWidget extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ─── Row 1: Type Icon + Key + Priority ───
                 Row(
                   children: [
-                    // Type Icon
                     Icon(
                       _getTypeIcon(),
                       size: 14,
                       color: _getTypeColor(),
                     ),
                     const SizedBox(width: 6),
-
-                    // Issue Key
                     Text(
                       card.issueKey,
                       style: TextStyle(
@@ -53,17 +59,11 @@ class JiraCardWidget extends StatelessWidget {
                         fontFamily: 'monospace',
                       ),
                     ),
-
                     const Spacer(),
-
-                    // Priority Badge
                     _buildPriorityBadge(theme),
                   ],
                 ),
-
                 const SizedBox(height: 10),
-
-                // ─── Row 2: Summary ───
                 Text(
                   card.summary,
                   maxLines: 2,
@@ -75,18 +75,11 @@ class JiraCardWidget extends StatelessWidget {
                     height: 1.4,
                   ),
                 ),
-
                 const SizedBox(height: 12),
-
-                // ─── Row 3: Status + Assignee ───
                 Row(
                   children: [
-                    // Status
                     _buildStatusBadge(theme),
-
                     const Spacer(),
-
-                    // Assignee
                     if (card.assigneeName != null) ...[
                       Icon(
                         Icons.person_outline,
@@ -102,10 +95,7 @@ class JiraCardWidget extends StatelessWidget {
                         ),
                       ),
                     ],
-
                     const SizedBox(width: 8),
-
-                    // Open Link
                     Icon(
                       Icons.open_in_new,
                       size: 12,
@@ -121,9 +111,6 @@ class JiraCardWidget extends StatelessWidget {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Priority Badge
-  // ═══════════════════════════════════════════════════════
   Widget _buildPriorityBadge(ThemeData theme) {
     final color = _getPriorityColor();
     return Container(
@@ -150,9 +137,6 @@ class JiraCardWidget extends StatelessWidget {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Status Badge
-  // ═══════════════════════════════════════════════════════
   Widget _buildStatusBadge(ThemeData theme) {
     final color = _getStatusColor();
     return Container(
@@ -172,9 +156,6 @@ class JiraCardWidget extends StatelessWidget {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Colors & Icons
-  // ═══════════════════════════════════════════════════════
   Color _getTypeColor() {
     switch (card.issueType.toLowerCase()) {
       case 'bug':

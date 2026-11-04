@@ -213,15 +213,10 @@ class MessageBubble extends StatelessWidget {
           ],
 
           // ─── Jira Cards ───
-          if (message.jiraCards.isNotEmpty) ...[
+            if (message.jiraCards.isNotEmpty) ...[
             const SizedBox(height: 12),
             ...message.jiraCards.map((card) {
-              return JiraCardWidget(
-                card: card,
-                onTap: () {
-                  // TODO: open URL in browser
-                },
-              );
+              return JiraCardWidget(card: card);
             }),
           ],
         ],

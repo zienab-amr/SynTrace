@@ -1,17 +1,14 @@
 import 'package:equatable/equatable.dart';
 
-/// ═══════════════════════════════════════════════════════════
-/// Jira Card Model
-/// ═══════════════════════════════════════════════════════════
 class JiraCardModel extends Equatable {
-  final String issueKey;       // "SYNT-45"
-  final String summary;        // "Fix Customer Table schema"
-  final String status;         // "In Progress"
-  final String statusCategory; // "todo" | "in_progress" | "done" | "blocked"
-  final String priority;       // "High"
-  final String issueType;      // "Task" | "Bug" | "Story"
-  final String? assigneeName;  // "Ahmed Kamal"
-  final String url;            // "https://jira.../SYNT-45"
+  final String issueKey;
+  final String summary;
+  final String status;
+  final String statusCategory;
+  final String priority;
+  final String issueType;
+  final String? assigneeName;
+  final String url;
 
   const JiraCardModel({
     required this.issueKey,
@@ -37,6 +34,19 @@ class JiraCardModel extends Equatable {
     );
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      'issueKey': issueKey,
+      'summary': summary,
+      'status': status,
+      'statusCategory': statusCategory,
+      'priority': priority,
+      'issueType': issueType,
+      'assigneeName': assigneeName,
+      'url': url,
+    };
+  }
+
   @override
   List<Object?> get props => [
         issueKey,
@@ -48,25 +58,4 @@ class JiraCardModel extends Equatable {
         assigneeName,
         url,
       ];
-      JiraCardModel copyWith({
-  String? issueKey,
-  String? summary,
-  String? status,
-  String? statusCategory,
-  String? priority,
-  String? issueType,
-  String? assigneeName,
-  String? url,
-}) {
-  return JiraCardModel(
-    issueKey: issueKey ?? this.issueKey,
-    summary: summary ?? this.summary,
-    status: status ?? this.status,
-    statusCategory: statusCategory ?? this.statusCategory,
-    priority: priority ?? this.priority,
-    issueType: issueType ?? this.issueType,
-    assigneeName: assigneeName ?? this.assigneeName,
-    url: url ?? this.url,
-  );
-}
 }
