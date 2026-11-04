@@ -7,6 +7,7 @@ using SynTrace.Application;
 using SynTrace.Infrastructure;
 using SynTrace.Infrastructure.Identity;
 
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -25,8 +26,21 @@ builder.Services.AddCors(options =>
 });
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer((document, context, cancellationToken) =>
+    {
+        document.Servers =
+        [
+            new Microsoft.OpenApi.OpenApiServer
+            {
+                Url = "/"
+            }
+        ];
 
+        return Task.CompletedTask;
+    });
+});
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
