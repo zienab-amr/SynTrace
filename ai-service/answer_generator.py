@@ -518,7 +518,7 @@ def _open_question_result(question, ctx, search_text=None):
         mentioned = set(KEY_RE.findall(answer.upper()))
         shown = [h for h in hits if h["key"].upper() in mentioned] or hits
     else:
-        shown = [h for h in hits if h.get("score", 1) >= SEMANTIC_STRONG_SCORE]
+        shown = [h for h in hits if h.get("meaning_score", h.get("score", 1)) >= SEMANTIC_STRONG_SCORE]
         if not shown:
             return {"status": "no_results", "answer": _no_results(question), "links": []}
         answer = search_template(shown, _is_arabic(question))

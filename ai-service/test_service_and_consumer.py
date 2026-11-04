@@ -636,6 +636,13 @@ class ProcessorTests(unittest.TestCase):
         with patch.object(ag, "_get_client", lambda: client):
             self.assertEqual(ag._complete("p"), "SYNDATA-3 is with Fatma Saeed")
 
+    def test_without_llm_a_common_word_cannot_make_a_weak_match_look_strong(self):
+        import answer_generator as ag
+        hit = {"key": "AAA-1", "summary": "Today", "status": "To Do", "assignee": "S", "score": 0.5, "meaning_score": 0.38}
+        fake = types.SimpleNamespace(semantic_search=lambda q, c: [hit])
+        with patch.dict(sys.modules, {"semantic_search": fake}), patch.object(ag, "call_llm", lambda *a, **k: None):
+            self.assertEqual(ag._open_question_result("weather today", None)["status"], "no_results")
+
     def test_search_reply_none_means_no_results(self):
         import answer_generator as ag
         hit = {"key": "AAA-1", "summary": "Login", "status": "To Do", "assignee": "S", "score": 0.6}

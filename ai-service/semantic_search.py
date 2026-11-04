@@ -94,19 +94,20 @@ def semantic_search(text, ctx: AccessContext, k=SEMANTIC_K, min_score=SEMANTIC_M
         keywords = {}
     scored = []
     for r, v, norm in items:
-        score = sum(a * b for a, b in zip(q, v)) / (qn * norm)
-        score += KEYWORD_BOOST * keywords.get(r["uid"], 0)
+        meaning = sum(a * b for a, b in zip(q, v)) / (qn * norm)
+        score = meaning + KEYWORD_BOOST * keywords.get(r["uid"], 0)
         if score >= min_score:
-            scored.append((score, r))
+            scored.append((score, r, meaning))
     scored.sort(key=lambda t: t[0], reverse=True)
     candidates = scored[:k * 3]
-    live = _live_uids([r["uid"] for _, r in candidates], ctx) if candidates else set()
+    live = _live_uids([item[1]["uid"] for item in candidates], ctx) if candidates else set()
     allowed = set(ctx.allowed_projects)
     hits = []
-    for score, r in [c for c in candidates if c[1]["uid"] in live][:k]:
+    for score, r, meaning in [c for c in candidates if c[1]["uid"] in live][:k]:
         item = build_item(r["rkey"], r["summary"], r["status"], r["url"],
                           r["assignee"], r["project"], allowed)
         item["score"] = round(score, 3)
+        item["meaning_score"] = round(meaning, 3)
         hits.append(item)
     return hits
 
