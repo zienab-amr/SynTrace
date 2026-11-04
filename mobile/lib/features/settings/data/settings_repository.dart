@@ -4,35 +4,39 @@ import 'package:syntrace/core/network/api_client.dart';
 import 'package:syntrace/core/network/api_endpoints.dart';
 import 'package:syntrace/core/services/current_user_service.dart';
 
-class SettingsRepository
-{
-  // ═══════════════════════════════════════════════════════
-  // Get Profile
-  // ═══════════════════════════════════════════════════════
+class SettingsRepository {
   Future<UserProfileModel?> getProfile() async {
-  final user = CurrentUserService.instance.user;
-  if (user != null) {
-    return UserProfileModel.fromUser(user);
+    final user = CurrentUserService.instance.user;
+    if (user != null) {
+      return UserProfileModel.fromUser(user);
+    }
+    return null;
   }
-  return null;
-}
 
-  // ═══════════════════════════════════════════════════════
-  // Update Profile
-  // ═══════════════════════════════════════════════════════
   Future<bool> updateProfile(UserProfileModel profile) async {
     try {
+      final trimmed = profile.fullName.trim();
+      final spaceIndex = trimmed.indexOf(' ');
+      final firstName = spaceIndex == -1
+          ? trimmed
+          : trimmed.substring(0, spaceIndex).trim();
+      final lastName = spaceIndex == -1
+          ? ''
+          : trimmed.substring(spaceIndex + 1).trim();
+
       final response = await ApiClient.instance.put(
-        ApiEndpoints.me,
+        ApiEndpoints.updateEmployee,
         data: {
-          'request': {
-            'fullName': profile.fullName,
-            'email': profile.email,
-          },
+          'employeeId': profile.id,
+          'firstName': firstName,
+          'lastName': lastName,
+          'email': profile.email,
+          'phoneNumber': '',
         },
       );
 
-      return response.statusCode == 200;
+      final status = response.statusCode ?? 0;
+      return status == 200 || status == 204;
     } on DioException {
       return false;
     }

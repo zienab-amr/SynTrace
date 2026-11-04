@@ -21,7 +21,6 @@ class LoginCubit extends Cubit<LoginState> {
     required String password,
   }) async {
     if (state is LoginLoading) return;
-
     emit(const LoginLoading());
 
     PendingSignupService.instance.save(
@@ -35,7 +34,6 @@ class LoginCubit extends Cubit<LoginState> {
     );
 
     final result = await _repository.sendOtp(email);
-
     if (result.success) {
       emit(OtpSent(email));
     } else {
@@ -49,47 +47,35 @@ class LoginCubit extends Cubit<LoginState> {
     required String otp,
   }) async {
     if (state is LoginLoading) return;
-
     emit(const LoginLoading());
 
-    final verifyResult = await _repository.verifyOtp(
-      email: email,
-      otp: otp,
-    );
-
+    final verifyResult = await _repository.verifyOtp(email: email, otp: otp);
     if (!verifyResult.success || verifyResult.data != true) {
       emit(LoginError(verifyResult.message));
       return;
     }
 
     emit(const OtpVerified());
-
     final pending = PendingSignupService.instance.pendingRequest;
-
     if (pending == null) {
       emit(const LoginError('Signup data lost. Please try again.'));
       return;
     }
 
     final registerResult = await _repository.signup(pending);
-
     if (!registerResult.success || registerResult.data == null) {
       emit(LoginError(registerResult.message));
       return;
     }
 
     final loginResult = await _repository.login(
-      LoginRequest(
-        email: pending.email,
-        password: pending.password,
-      ),
+      LoginRequest(email: pending.email, password: pending.password),
     );
 
     if (loginResult.success && loginResult.data != null) {
       await _saveTokens(loginResult.data!);
-
       final fullName = '${pending.firstName} ${pending.lastName}'.trim();
-
+      
       await SecureStorageService.instance.saveUserName(fullName);
       await SecureStorageService.instance.saveCompanyName(pending.companyName);
 
@@ -99,12 +85,11 @@ class LoginCubit extends Cubit<LoginState> {
         fallbackCompanyName: pending.companyName,
       );
       if (user != null) {
-        CurrentUserService.instance.setUser(user);
+        await CurrentUserService.instance.setUser(user); // await هنا
       }
     }
 
     PendingSignupService.instance.clear();
-
     emit(RegisterSuccess(registerResult.data!));
   }
 
@@ -113,7 +98,6 @@ class LoginCubit extends Cubit<LoginState> {
     required String password,
   }) async {
     if (state is LoginLoading) return;
-
     emit(const LoginLoading());
 
     final result = await _repository.login(
@@ -122,10 +106,8 @@ class LoginCubit extends Cubit<LoginState> {
 
     if (result.success && result.data != null) {
       await _saveTokens(result.data!);
-
       final storedName = await SecureStorageService.instance.getUserName();
-      final storedCompany =
-          await SecureStorageService.instance.getCompanyName();
+      final storedCompany = await SecureStorageService.instance.getCompanyName();
 
       final user = result.data!.extractUser(
         fallbackEmail: email,
@@ -133,9 +115,8 @@ class LoginCubit extends Cubit<LoginState> {
         fallbackCompanyName: storedCompany,
       );
       if (user != null) {
-        CurrentUserService.instance.setUser(user);
+        await CurrentUserService.instance.setUser(user); // await هنا
       }
-
       emit(LoginSuccess(result.data!));
     } else {
       emit(LoginError(result.message));
