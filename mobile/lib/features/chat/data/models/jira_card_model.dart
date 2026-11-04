@@ -47,6 +47,28 @@ class JiraCardModel extends Equatable {
     };
   }
 
+  JiraCardModel copyWith({
+    String? issueKey,
+    String? summary,
+    String? status,
+    String? statusCategory,
+    String? priority,
+    String? issueType,
+    String? assigneeName,
+    String? url,
+  }) {
+    return JiraCardModel(
+      issueKey: issueKey ?? this.issueKey,
+      summary: summary ?? this.summary,
+      status: status ?? this.status,
+      statusCategory: statusCategory ?? this.statusCategory,
+      priority: priority ?? this.priority,
+      issueType: issueType ?? this.issueType,
+      assigneeName: assigneeName ?? this.assigneeName,
+      url: url ?? this.url,
+    );
+  }
+
   @override
   List<Object?> get props => [
         issueKey,
