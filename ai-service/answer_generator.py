@@ -25,6 +25,9 @@ from query_engine import (
 GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
 # Without the LLM to judge relevance, only matches this strong are shown (see calibrate_search.py).
 SEMANTIC_STRONG_SCORE = float(os.getenv("SEMANTIC_STRONG_SCORE", "0.42"))
+# One question stays well under the Groq limit of 8000 tokens per minute.
+DETAILED_SEARCH_HITS = 3
+MAX_CONTEXT_CHARS = int(os.getenv("MAX_CONTEXT_CHARS", "12000"))
 KEY_RE = re.compile(r'\b[A-Z][A-Z0-9_]*-\d+\b')
 
 NO_RESULTS_MESSAGE = ("I couldn't find relevant tickets for this question. "
@@ -33,6 +36,9 @@ NO_RESULTS_MESSAGE = ("I couldn't find relevant tickets for this question. "
 
 NO_RESULTS_MESSAGE_AR = ("مش لاقي تذاكر مرتبطة بالسؤال ده. "
                          "جرب تكتب رقم التذكرة، زي PROJ-123.")
+OUT_OF_SCOPE_MESSAGE = ("This question is outside your Jira project data. "
+                        "Ask about your tickets, or include a Jira ticket key, such as PROJ-123.")
+OUT_OF_SCOPE_MESSAGE_AR = "السؤال ده برا بيانات مشاريع Jira. اسأل عن التذاكر، أو اكتب رقم تذكرة زي PROJ-123."
 NO_DATA_MESSAGE = "I couldn't retrieve any results for this question."
 
 
@@ -86,9 +92,19 @@ def build_ticket_context(card):
         f"Project: {card.get('project')}",
         f"Sprints: {', '.join(card.get('sprints', [])) or 'None'}",
         f"Due date: {card.get('duedate') or 'None'}",
+        f"Reporter: {card.get('reporter') or 'None'}",
+        f"Created: {card.get('created') or 'None'}",
+        f"Updated: {card.get('updated') or 'None'}",
+        f"Resolved: {card.get('resolved') or 'None'}",
+        f"Labels: {', '.join(card.get('labels') or []) or 'None'}",
+        f"Components: {', '.join(card.get('components') or []) or 'None'}",
     ]
     if card.get("parent"):
         lines.append(f"Parent ticket: {card['parent']}")
+    custom = card.get("custom_fields")
+    if custom:
+        lines.append("Other fields:")
+        lines.extend(f"  - {name}: {value}" for name, value in custom.items())
     if card.get("description"):
         lines.append("Description:\n" + card["description"])
 
@@ -111,6 +127,13 @@ def build_ticket_context(card):
             lines.append(f"  - {h['at']}: {h['from']} -> {h['to']}"
                          + (f" (by {h['by']})" if h.get("by") else ""))
 
+    changes = card.get("changes")
+    if changes:
+        lines.append("Change history (latest first):")
+        for change in changes:
+            lines.append(f"  - {change['at']}: {change['field']}: {change['from']} -> {change['to']}"
+                         + (f" (by {change['by']})" if change.get("by") else ""))
+
     logs = card.get("worklogs")
     if logs:
         lines.append(f"Time logged: {_hours(sum(l['seconds'] for l in logs))} total")
@@ -128,7 +151,7 @@ def build_ticket_context(card):
     if com and com.get("total"):
         lines.append(f"Comments: {com['total']} total; latest:")
         for c in com["latest"]:
-            text = (c.get("text") or "").replace("\n", " ")[:200]
+            text = (c.get("text") or "").replace("\n", " ")[:300]
             lines.append(f"  - [{c.get('created')}] {c.get('author')}: {text}")
     else:
         lines.append("Comments: None")
@@ -180,7 +203,12 @@ def build_prompt(question, context, style="short"):
                   "These tickets are only a sample, so never count or total anything from them. "
                   "A bare topic means: which tickets are about this topic. "
                   "Reply with exactly NONE only if no ticket is about the topic or question. "
-                  "Answer in at most four short sentences or a short list.")
+                  "If the question asks for a detail of one ticket, such as its assignee, status, "
+                  "comments or dates, answer it from the full details below and name the ticket key. "
+                  "If several tickets fit and their answers differ, briefly ask which one is meant "
+                  "and name the keys. If it asks which tickets are about a topic, start with one "
+                  "short sentence in the answer language, then list every such ticket, one per line "
+                  "as: KEY: summary. Do not list only keys.")
     else:
         length = ("Answer in one to three short sentences. Always name the ticket key, "
                   "even when the answer is that a value is missing or there are none.")
@@ -200,6 +228,11 @@ data does not provide the answer.
 {length}
 Write the answer in {language}, whatever language the data is in; keep ticket keys, names and
 statuses as written.
+Use plain text with no markdown. In Egyptian Arabic, follow these patterns:
+- Who works on a ticket: "ABC-1 ماسكها Sara." Never "ABC-1 ماسكة Sara."
+- It blocks another ticket: "ABC-1 معطلة ABC-2."
+- Nothing blocks it: "مفيش تذاكر معطلة ABC-1."
+- A missing value: "ABC-1 ملهاش معاد تسليم."
 Do not include URLs; they will be added separately by the application.
 
 Retrieved data:
@@ -266,6 +299,8 @@ def ticket_facts(card):
     facts = [card.get("key"), card.get("summary"), card.get("status"),
              card.get("assignee"), card.get("priority"), card.get("parent"), card.get("duedate")]
     facts.extend(KEY_RE.findall((card.get("description") or "").upper()))
+    for name, value in (card.get("custom_fields") or {}).items():
+        facts.extend([name, value])
     ch = card.get("children") or {}
     for it in ch.get("items", []):
         facts.extend([it.get("key"), it.get("summary"), it.get("status"), it.get("assignee")])
@@ -275,6 +310,11 @@ def ticket_facts(card):
         facts.append(_hours(sum(l["seconds"] for l in card["worklogs"])))
     for a in card.get("attachments") or []:
         facts.extend([a.get("filename"), a.get("author")])
+    facts.extend([card.get("reporter"), card.get("created"), card.get("updated"), card.get("resolved")])
+    facts.extend(card.get("labels") or [])
+    facts.extend(card.get("components") or [])
+    for change in card.get("changes") or []:
+        facts.extend([change.get("field"), change.get("from"), change.get("to"), change.get("by")])
     for h in card.get("assignment_history") or []:
         facts.extend([h.get("from"), h.get("to"), h.get("by")])
     for c in (card.get("comments") or {}).get("latest", []):
@@ -408,6 +448,20 @@ def _links_of(cards):
     return links
 
 
+def _top_ticket_details(hits, ctx):
+    """Full details of the closest tickets, so a question can name a ticket by its meaning."""
+    details = []
+    for hit in hits[:DETAILED_SEARCH_HITS]:
+        try:
+            detail = get_ticket_details(hit["key"], ctx)
+        except Exception as e:
+            log.warning("ticket details unavailable: %s", type(e).__name__)
+            break
+        if detail and not detail.get("incomplete"):
+            details.append(detail)
+    return details
+
+
 def _open_question_result(question, ctx, search_text=None):
     try:
         from semantic_search import semantic_search
@@ -417,11 +471,16 @@ def _open_question_result(question, ctx, search_text=None):
         return {"status": "search_unavailable", "answer": _no_results(question), "links": []}
     if not hits:
         return {"status": "no_results", "answer": _no_results(question), "links": []}
-    answer = call_llm(question, build_search_context(hits), style="search")
+    details = _top_ticket_details(hits, ctx)
+    context = "\n\n".join([build_search_context(hits)] + [build_ticket_context(d) for d in details])
+    answer = call_llm(question, context[:MAX_CONTEXT_CHARS], style="search")
     answer_was_missing = not answer
     if answer and answer.strip().upper().strip(".") == "NONE":
         return {"status": "no_results", "answer": _no_results(question), "links": []}
-    if _accepted(answer, search_facts(hits), question):
+    facts = search_facts(hits)
+    for detail in details:
+        facts.extend(ticket_facts(detail))
+    if _accepted(answer, facts, question):
         # لينكات للتذاكر اللي الإجابة ذكرتها بس (مش كل نتايج البحث)
         mentioned = set(KEY_RE.findall(answer.upper()))
         shown = [h for h in hits if h["key"].upper() in mentioned] or hits
@@ -442,13 +501,14 @@ def _open_question_result(question, ctx, search_text=None):
 def _aggregate_result(question, plan, ctx):
     result = analytics.run_plan(plan, ctx)
     return {"status": "ok", "answer": analytics.format_answer(plan, result, _is_arabic(question)),
-            "links": _links_of(result["tickets"])}
+            "links": _links_of(result["tickets"] + result["records"])}
 
 
 def _keyless_question_result(question, ctx):
     plan = analytics.parse_plan(_complete(analytics.planner_prompt(question, ctx)))
     if plan and plan["kind"] == "out_of_scope":
-        return {"status": "no_results", "answer": _no_results(question), "links": []}
+        message = OUT_OF_SCOPE_MESSAGE_AR if _is_arabic(question) else OUT_OF_SCOPE_MESSAGE
+        return {"status": "no_results", "answer": message, "links": []}
     if plan and plan["kind"] == "aggregate":
         try:
             return _aggregate_result(question, plan, ctx)
@@ -502,7 +562,7 @@ def generate_answer_result(question, ctx):
                 if result["items"]:
                     templates.append(relation_template(card["key"], result, name))
                 related_links.extend({"key": i["key"], "url": i["url"]} for i in result["items"] if i.get("url"))
-        answer = call_llm(question, "\n\n".join(contexts))
+        answer = call_llm(question, "\n\n".join(contexts)[:MAX_CONTEXT_CHARS])
         grounded = _accepted(answer, facts, question)
         final_answer = answer if grounded else "\n".join(templates)
         # Links only for tickets the reply actually names, not everything that was retrieved.

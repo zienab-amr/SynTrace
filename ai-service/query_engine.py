@@ -9,6 +9,7 @@ GraphRAG retrieval layer (no LLM): Cypher templates ثابتة.
 """
 import logging
 import os
+import json
 import re
 from dataclasses import dataclass
 
@@ -23,10 +24,14 @@ if os.getenv("NEO4J_NOTIFICATIONS") != "1":
 
 MAX_KEYS = 5
 MAX_RESULTS = 20
-MAX_CHILD_ITEMS = 10
+MAX_CHILD_ITEMS = 25
 MAX_HISTORY = 5
-MAX_COMMENTS = 3
+MAX_CHANGES = 20
+MAX_COMMENTS = 10
 MAX_DESCRIPTION_CHARS = 1500
+MAX_CUSTOM_FIELDS = 15
+MAX_CUSTOM_FIELD_CHARS = 200
+HIDDEN_FIELD_KINDS = {"sprint", "rank", "json_string", "object", "unknown"}
 
 _driver = None
 
@@ -121,6 +126,31 @@ def _items_from(records, ctx):
 
 # ---------- Retrieval functions ----------
 
+def readable_custom_fields(fields_json, defs_json):
+    """Custom fields worth showing, by display name. Internal fields such as Rank, Sprint and
+    Development and long or structured values are left out to keep the LLM context small."""
+    try:
+        fields = json.loads(fields_json) if fields_json else {}
+        defs = json.loads(defs_json) if defs_json else {}
+    except ValueError:
+        return {}
+    if not isinstance(fields, dict) or not isinstance(defs, dict):
+        return {}
+    hidden = {d.get("name") for d in defs.values() if isinstance(d, dict)
+              and d.get("kind") in HIDDEN_FIELD_KINDS}
+    shown = {}
+    for name, value in fields.items():
+        if name in hidden or value in (None, "", [], {}):
+            continue
+        if isinstance(value, list) and all(isinstance(item, (str, int, float)) for item in value):
+            value = ", ".join(str(item) for item in value)
+        if isinstance(value, (str, int, float, bool)) and len(str(value)) <= MAX_CUSTOM_FIELD_CHARS:
+            shown[name] = value
+        if len(shown) == MAX_CUSTOM_FIELDS:
+            break
+    return shown
+
+
 def get_workitem_card(key, ctx):
     records = run_query(
         """
@@ -130,10 +160,14 @@ def get_workitem_card(key, ctx):
         OPTIONAL MATCH (w)-[:ASSIGNED_TO]->(a:Person)
         OPTIONAL MATCH (w)-[:IN_SPRINT]->(s:Sprint)
         OPTIONAL MATCH (w)-[:CHILD_OF]->(par:WorkItem)
+        OPTIONAL MATCH (w)-[:REPORTED_BY]->(rp:Person)
         RETURN w.key AS key, w.summary AS summary, w.status AS status,
                w.statusCategory AS category, w.priority AS priority,
                w.issuetype AS issuetype, w.project_key AS project, w.url AS url,
-               w.duedate AS duedate, a.displayName AS assignee,
+               w.duedate AS duedate, w.created AS created, w.updated AS updated,
+               w.resolutiondate AS resolved, w.labels AS labels, w.components AS components,
+               rp.displayName AS reporter, w.custom_fields AS custom_fields,
+               w.custom_field_defs AS custom_field_defs, a.displayName AS assignee,
                CASE WHEN par.project_key IN $allowed THEN par.key END AS parent,
                collect(DISTINCT s.name) AS sprints
         """,
@@ -150,7 +184,10 @@ def get_workitem_card(key, ctx):
         "priority": r["priority"] or "None", "issuetype": r["issuetype"],
         "project": r["project"], "assignee": r["assignee"] or "Unassigned",
         "parent": r["parent"], "sprints": r["sprints"] or [], "url": r["url"],
-        "duedate": r.get("duedate"),
+        "duedate": r.get("duedate"), "created": r.get("created"), "updated": r.get("updated"),
+        "resolved": r.get("resolved"), "labels": r.get("labels") or [],
+        "components": r.get("components") or [], "reporter": r.get("reporter"),
+        "custom_fields": readable_custom_fields(r.get("custom_fields"), r.get("custom_field_defs")),
     }
 
 
@@ -221,6 +258,25 @@ def get_assignment_history(key, ctx, limit=MAX_HISTORY):
     )
     return [{"at": r["at"], "from": r["from_name"] or "Unassigned",
              "to": r["to_name"] or "Unassigned", "by": r["by"]} for r in rows]
+
+
+def get_change_history(key, ctx, limit=MAX_CHANGES):
+    """Every field change on one ticket, latest first."""
+    rows = run_query(
+        """
+        MATCH (w:WorkItem {tenant_id: $tenant})
+        WHERE (w.key = $key OR $key IN coalesce(w.key_aliases, []))
+          AND w.project_key IN $allowed
+        MATCH (w)-[:HAD_CHANGE]->(c:ChangeEvent)
+        RETURN c.changed_at AS at, c.field AS field, c.from_name AS from_name,
+               c.to_name AS to_name, c.author AS by
+        ORDER BY c.changed_at DESC
+        LIMIT $limit
+        """,
+        key=key, limit=limit, **_scope(ctx),
+    )
+    return [{"at": r["at"], "field": r["field"], "from": r["from_name"], "to": r["to_name"],
+             "by": r["by"]} for r in rows]
 
 
 def get_recent_comments(key, ctx, limit=MAX_COMMENTS):
@@ -308,6 +364,7 @@ def get_ticket_details(key, ctx):
     card["children"] = get_children(key, ctx) or {"total": 0, "items": [], "more": 0,
                                                   "by_status_category": {}, "by_type": {}}
     card["assignment_history"] = get_assignment_history(key, ctx)
+    card["changes"] = get_change_history(key, ctx)
     card["comments"] = get_recent_comments(key, ctx)
     card["attachments"] = get_attachments(key, ctx)
     card["worklogs"] = get_worklogs(key, ctx)
