@@ -6,18 +6,26 @@ class CurrentUserService {
   CurrentUserService._();
   static final CurrentUserService instance = CurrentUserService._();
 
-  final ValueNotifier<UserModel?> _userNotifier =
-      ValueNotifier<UserModel?>(null);
+  final ValueNotifier<UserModel?> _userNotifier = ValueNotifier<UserModel?>(null);
 
   ValueNotifier<UserModel?> get userNotifier => _userNotifier;
   UserModel? get user => _userNotifier.value;
 
-  void setUser(UserModel user) {
+  Future<void> setUser(UserModel user) async {
     _userNotifier.value = user;
+    
+    final s = SecureStorageService.instance;
+    await s.saveUserId(user.id);
+    await s.saveUserName(user.name);
+    await s.saveUserEmail(user.email);
+    await s.saveUserRole(user.role.name); 
+    if (user.tenantId != null) await s.saveTenantId(user.tenantId!);
+    if (user.companyName != null) await s.saveCompanyName(user.companyName!);
   }
 
-  void updateUser(UserModel user) {
+  Future<void> updateUser(UserModel user) async {
     _userNotifier.value = user;
+    await setUser(user); 
   }
 
   Future<void> clearUser() async {
@@ -27,23 +35,28 @@ class CurrentUserService {
 
   Future<void> loadFromStorage() async {
     try {
-      final userId = await SecureStorageService.instance.getUserId();
-      final userRole = await SecureStorageService.instance.getUserRole();
-      final tenantId = await SecureStorageService.instance.getTenantId();
-      final userName = await SecureStorageService.instance.getUserName();
-      final companyName =
-          await SecureStorageService.instance.getCompanyName();
+      final s = SecureStorageService.instance;
 
-      if (userId != null) {
-        _userNotifier.value = UserModel(
-          id: userId,
-          name: userName ?? 'User',
-          email: '',
-          role: UserRole.fromString(userRole),
-          tenantId: tenantId,
-          companyName: companyName,
-        );
-      }
+      final token = await s.getToken();
+      if (token == null || token.isEmpty) return;
+
+      final userId = await s.getUserId();
+      if (userId == null || userId.isEmpty) return;
+
+      final userRole = await s.getUserRole();
+      final tenantId = await s.getTenantId();
+      final userName = await s.getUserName();
+      final email = await s.getUserEmail();
+      final companyName = await s.getCompanyName();
+
+      _userNotifier.value = UserModel(
+        id: userId,
+        name: userName ?? 'User',
+        email: email ?? '',
+        role: UserRole.fromString(userRole),
+        tenantId: tenantId,
+        companyName: companyName,
+      );
     } catch (e) {
       debugPrint('⚠️ Failed to load user from storage: $e');
     }
