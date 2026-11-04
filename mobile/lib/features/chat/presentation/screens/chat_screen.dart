@@ -21,7 +21,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final _scrollController = ScrollController();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  // ─── للتحكم في فتح/قفل الـ Sidebar على الويب ───
   bool _isSidebarOpen = true;
 
   @override

@@ -1,8 +1,13 @@
+import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:syntrace/features/chat/data/mock_chats.dart';
+import 'package:syntrace/core/network/api_client.dart';
+import 'package:syntrace/core/network/api_endpoints.dart';
+import 'package:syntrace/core/services/chat_local_storage_service.dart';
 import 'package:syntrace/features/chat/data/models/chat_error.dart';
 import 'package:syntrace/features/chat/data/models/chat_message.dart';
 import 'package:syntrace/features/chat/data/models/chat_session.dart';
+import 'package:syntrace/features/chat/data/models/jira_card_model.dart';
 import 'chat_state.dart';
 
 class ChatCubit extends Cubit<ChatState> {
@@ -14,9 +19,13 @@ class ChatCubit extends Cubit<ChatState> {
     emit(const ChatLoading());
 
     try {
-      await Future.delayed(const Duration(milliseconds: 300));
-      final sessions = MockChats.sessions;
-      emit(ChatLoaded(sessions: sessions));
+      final cachedSessions = await ChatLocalStorageService.instance.loadSessions();
+      
+      if (cachedSessions != null && cachedSessions.isNotEmpty) {
+        emit(ChatLoaded(sessions: cachedSessions));
+      } else {
+        emit(const ChatLoaded(sessions: []));
+      }
     } catch (e) {
       _emitError(ChatErrorType.unknown);
     }
@@ -27,14 +36,11 @@ class ChatCubit extends Cubit<ChatState> {
     final current = state as ChatLoaded;
 
     try {
-      await Future.delayed(const Duration(milliseconds: 200));
-      final messages = session.id == '1'
-          ? MockChats.messages
-          : MockChats.messages.take(2).toList();
+      final cachedMessages = await ChatLocalStorageService.instance.loadMessages(session.id);
 
       emit(current.copyWith(
         currentSessionId: session.id,
-        messages: messages,
+        messages: cachedMessages ?? [],
         isSending: false,
         isStreaming: false,
         clearError: true,
@@ -61,68 +67,106 @@ class ChatCubit extends Cubit<ChatState> {
     if (state is! ChatLoaded) return;
     final current = state as ChatLoaded;
 
-    final shouldFail = text.toLowerCase().contains('error');
+    String sessionId = current.currentSessionId ?? DateTime.now().millisecondsSinceEpoch.toString();
+    List<ChatSession> updatedSessions = List.from(current.sessions);
+
+    if (current.currentSessionId == null) {
+      final newSession = ChatSession(
+        id: sessionId,
+        title: text.length > 20 ? '${text.substring(0, 20)}...' : text,
+        lastMessageAt: DateTime.now(),
+      );
+      updatedSessions.insert(0, newSession);
+      await ChatLocalStorageService.instance.saveSessions(updatedSessions);
+    }
 
     final userMessage = ChatMessage(
       id: 'user-${DateTime.now().millisecondsSinceEpoch}',
       role: ChatRole.user,
       content: text,
       timestamp: DateTime.now(),
-      hasError: shouldFail,
     );
 
     emit(current.copyWith(
+      sessions: updatedSessions,
+      currentSessionId: sessionId,
       messages: [...current.messages, userMessage],
-      isSending: !shouldFail,
+      isSending: true,
       clearError: true,
     ));
 
     _lastFailedMessage = text;
 
-    if (shouldFail) {
-      emit((state as ChatLoaded).copyWith(
-        isSending: false,
-        error: ChatError.fromType(
-          ChatErrorType.network,
-          failedText: text,
-        ),
-      ));
-      return;
-    }
-
     try {
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      final aiMessageId = 'ai-${DateTime.now().millisecondsSinceEpoch}';
-      final fullResponse =
-          'This is a mock response.\n\nYou asked: **"$text"**\n\nThe real AI will be connected soon.';
-
-      final aiMessage = ChatMessage(
-        id: aiMessageId,
-        role: ChatRole.ai,
-        content: '',
-        timestamp: DateTime.now(),
-        isStreaming: true,
+      final response = await ApiClient.instance.post(
+        ApiEndpoints.askAssistant,
+        data: {'question': text},
       );
 
-      final currentState = state as ChatLoaded;
+      if (response.statusCode == 200) {
+        final dynamic data = response.data;
+        String aiResponseText = '';
+        List<JiraCardModel> jiraCards = [];
 
-      emit(currentState.copyWith(
-        messages: [...currentState.messages, aiMessage],
-        isSending: false,
-        isStreaming: true,
-      ));
+        if (data is Map) {
+          aiResponseText = data['answer']?.toString() ?? 'No response received.';
+          if (aiResponseText.contains('links: [')) {
+            aiResponseText = aiResponseText.split('links: [').first.trim();
+          }
+          if (data['links'] is List) {
+            final links = data['links'] as List;
+            for (var link in links) {
+              if (link is Map) {
+                jiraCards.add(JiraCardModel(
+                  issueKey: link['key']?.toString() ?? 'LINK',
+                  summary: 'Jira Ticket Reference', 
+                  status: 'Open',
+                  statusCategory: 'todo',
+                  priority: 'Medium',
+                  issueType: 'Task',
+                  url: link['url']?.toString() ?? '',
+                ));
+              }
+            }
+          }
+        } else {
+          aiResponseText = data.toString();
+        }
 
-      await _streamResponse(
-        messageId: aiMessageId,
-        fullText: fullResponse,
-      );
+        final aiMessageId = 'ai-${DateTime.now().millisecondsSinceEpoch}';
+        final aiMessage = ChatMessage(
+          id: aiMessageId,
+          role: ChatRole.ai,
+          content: '',
+          timestamp: DateTime.now(),
+          isStreaming: true,
+          jiraCards: jiraCards,
+        );
+
+        final currentState = state as ChatLoaded;
+        emit(currentState.copyWith(
+          messages: [...currentState.messages, aiMessage],
+          isSending: false,
+          isStreaming: true,
+        ));
+
+        await _streamResponse(
+          sessionId: sessionId,
+          messageId: aiMessageId,
+          fullText: aiResponseText,
+        );
+      } else {
+        throw Exception('Server returned ${response.statusCode}');
+      }
+    } on DioException catch (e) {
+      _emitError(ChatErrorType.network, failedText: text);
     } catch (e) {
-      _emitError(ChatErrorType.unknown);
+      _emitError(ChatErrorType.unknown, failedText: text);
     }
   }
 
   Future<void> _streamResponse({
+    required String sessionId,
     required String messageId,
     required String fullText,
   }) async {
@@ -130,7 +174,7 @@ class ChatCubit extends Cubit<ChatState> {
     String accumulated = '';
 
     for (final chunk in chunks) {
-      await Future.delayed(const Duration(milliseconds: 30));
+      await Future.delayed(const Duration(milliseconds: 20));
 
       accumulated += chunk;
 
@@ -152,13 +196,12 @@ class ChatCubit extends Cubit<ChatState> {
 
     final completedMessages = finalState.messages.map((m) {
       if (m.id == messageId) {
-        return m.copyWith(
-          content: fullText,
-          isStreaming: false,
-        );
+        return m.copyWith(content: fullText, isStreaming: false);
       }
       return m;
     }).toList();
+
+    await ChatLocalStorageService.instance.saveMessages(sessionId, completedMessages);
 
     emit(finalState.copyWith(
       messages: completedMessages,
@@ -202,12 +245,7 @@ class ChatCubit extends Cubit<ChatState> {
       messages.removeLast();
     }
 
-    emit(current.copyWith(
-      messages: messages,
-      clearError: true,
-      isSending: false,
-    ));
-
+    emit(current.copyWith(messages: messages, clearError: true, isSending: false));
     await sendMessage(failedText);
   }
 
@@ -219,12 +257,12 @@ class ChatCubit extends Cubit<ChatState> {
     if (messages.isNotEmpty && messages.last.hasError) {
       messages.removeLast();
     }
+    
+    if (current.currentSessionId != null) {
+      ChatLocalStorageService.instance.saveMessages(current.currentSessionId!, messages);
+    }
 
-    emit(current.copyWith(
-      messages: messages,
-      clearError: true,
-    ));
-
+    emit(current.copyWith(messages: messages, clearError: true));
     _lastFailedMessage = null;
   }
 
@@ -236,20 +274,20 @@ class ChatCubit extends Cubit<ChatState> {
   void clearChat() {
     if (state is! ChatLoaded) return;
     final current = state as ChatLoaded;
+    if (current.currentSessionId != null) {
+      ChatLocalStorageService.instance.saveMessages(current.currentSessionId!, []);
+    }
     emit(current.copyWith(messages: [], clearError: true));
   }
 
-  void _emitError(ChatErrorType type) {
+  void _emitError(ChatErrorType type, {String? failedText}) {
     if (state is! ChatLoaded) {
       emit(ChatErrorState(ChatError.fromType(type).message));
       return;
     }
     final current = state as ChatLoaded;
     emit(current.copyWith(
-      error: ChatError.fromType(
-        type,
-        failedText: _lastFailedMessage,
-      ),
+      error: ChatError.fromType(type, failedText: failedText ?? _lastFailedMessage),
       isSending: false,
       isStreaming: false,
     ));
