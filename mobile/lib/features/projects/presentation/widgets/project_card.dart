@@ -8,8 +8,6 @@ import 'package:syntrace/shared/widgets/team_avatars.dart';
 
 /// ═══════════════════════════════════════════════════════════
 /// ProjectCard
-/// 
-/// كارد المشروع — مع Hover Effect على الويب
 /// ═══════════════════════════════════════════════════════════
 class ProjectCard extends StatefulWidget {
   final ProjectModel project;
@@ -173,8 +171,8 @@ class _ProjectCardState extends State<ProjectCard> {
                           color: stats.healthPercent > 80
                               ? AppColors.secondary
                               : stats.healthPercent > 60
-                                  ? AppColors.warning
-                                  : AppColors.error,
+                              ? AppColors.warning
+                              : AppColors.error,
                         ),
                         _StatItem(
                           label: 'Tasks',
@@ -200,11 +198,7 @@ class _ProjectCardState extends State<ProjectCard> {
                   Row(
                     children: [
                       if (members.isNotEmpty)
-                        TeamAvatars(
-                          users: members,
-                          maxVisible: 3,
-                          size: 32,
-                        ),
+                        TeamAvatars(users: members, maxVisible: 3, size: 32),
                       const Spacer(),
                       if (stats != null)
                         Text(
@@ -236,8 +230,18 @@ class _ProjectCardState extends State<ProjectCard> {
   String _formatDate(DateTime? date) {
     if (date == null) return '-';
     final months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return 'ends ${date.day} ${months[date.month - 1]}';
   }
