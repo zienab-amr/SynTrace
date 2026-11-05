@@ -9,6 +9,11 @@ class OnboardingInitial extends OnboardingState {
   const OnboardingInitial();
 }
 
+// ═══ ضفنا اللودينج هنا ═══
+class OnboardingLoading extends OnboardingState {
+  const OnboardingLoading();
+}
+
 class OnboardingInProgress extends OnboardingState {
   final int currentStep;
   final OnboardingData data;
@@ -24,7 +29,6 @@ class OnboardingInProgress extends OnboardingState {
 
   bool get isFirstStep => currentStep == 0;
   bool get isLastStep => currentStep == totalSteps - 1;
-
   double get progress => (currentStep + 1) / totalSteps;
 
   OnboardingInProgress copyWith({
@@ -49,4 +53,12 @@ class OnboardingCompleted extends OnboardingState {
 
   @override
   List<Object?> get props => [data];
+}
+
+class OnboardingError extends OnboardingState {
+  final String message;
+  const OnboardingError(this.message);
+
+  @override
+  List<Object?> get props => [message];
 }
