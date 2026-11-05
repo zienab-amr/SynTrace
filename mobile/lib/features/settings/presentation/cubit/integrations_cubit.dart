@@ -1,7 +1,9 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:syntrace/core/models/user_model.dart';
 import 'package:syntrace/core/network/api_client.dart';
 import 'package:syntrace/core/network/api_endpoints.dart';
+import 'package:syntrace/core/services/current_user_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:syntrace/features/settings/data/models/integration_model.dart';
 import 'integrations_state.dart';
@@ -36,7 +38,9 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
 
   Future<void> _checkJiraStatus() async {
     try {
-      final response = await ApiClient.instance.get(ApiEndpoints.jiraSyncStatus);
+      final response = await ApiClient.instance.get(
+        ApiEndpoints.jiraSyncStatus,
+      );
 
       if (response.statusCode == 200 && response.data is Map) {
         final data = response.data as Map<String, dynamic>;
@@ -44,7 +48,9 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
         _updateStatus(
           IntegrationType.jira,
           IntegrationStatus.connected,
-          accountName: (site != null && site.isNotEmpty) ? site : 'Jira Workspace',
+          accountName: (site != null && site.isNotEmpty)
+              ? site
+              : 'Jira Workspace',
         );
       } else {
         _updateStatus(IntegrationType.jira, IntegrationStatus.disconnected);
@@ -58,8 +64,19 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
     emit(const IntegrationsLoading());
 
     try {
+      final user = CurrentUserService.instance.user;
+      final isAdmin = user?.role == UserRole.admin;
+
+      final endpoint = isAdmin
+          ? ApiEndpoints.jiraConnect
+          : ApiEndpoints.jiraConnectEmployee;
+
+      print(
+        'Connecting Jira via endpoint: $endpoint',
+      ); 
+
       final response = await ApiClient.instance.get(
-        ApiEndpoints.jiraConnect,
+        endpoint,
         options: Options(
           followRedirects: false,
           validateStatus: (status) => status != null && status < 400,
@@ -85,13 +102,16 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
       if (data is String && data.startsWith('http')) {
         authUrl = data.trim();
       } else if (data is Map) {
-        authUrl = data['url']?.toString() ??
+        authUrl =
+            data['url']?.toString() ??
             data['authorizeUrl']?.toString() ??
             data['authUrl']?.toString();
       }
 
       if (authUrl == null || !authUrl.startsWith('http')) {
-        emit(const IntegrationsError('Server did not return a valid Jira URL.'));
+        emit(
+          const IntegrationsError('Server did not return a valid Jira URL.'),
+        );
         emit(IntegrationsLoaded(List.from(_current)));
         return;
       }
@@ -133,12 +153,21 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
         if (data is List) {
           rawSites = data;
         } else if (data is Map) {
-          rawSites = data['data'] as List? ?? data['items'] as List? ?? data['sites'] as List? ?? [];
+          rawSites =
+              data['data'] as List? ??
+              data['items'] as List? ??
+              data['sites'] as List? ??
+              [];
         }
 
         if (rawSites.isNotEmpty) {
           final sites = rawSites.map((e) => e as Map<String, dynamic>).toList();
-          emit(IntegrationsSiteSelectionRequired(sites: sites, pendingId: pendingId));
+          emit(
+            IntegrationsSiteSelectionRequired(
+              sites: sites,
+              pendingId: pendingId,
+            ),
+          );
         } else {
           emit(const IntegrationsError('No sites found for this account.'));
           emit(IntegrationsLoaded(List.from(_current)));
@@ -158,14 +187,8 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
     try {
       final response = await ApiClient.instance.post(
         ApiEndpoints.jiraCompleteConnection,
-        queryParameters: {
-          'pendingId': pendingId,
-          'cloudId': cloudId,
-        },
-        data: {
-          'pendingId': pendingId,
-          'cloudId': cloudId,
-        },
+        queryParameters: {'pendingId': pendingId, 'cloudId': cloudId},
+        data: {'pendingId': pendingId, 'cloudId': cloudId},
       );
 
       if (response.statusCode == 200 || response.statusCode == 204) {
@@ -183,7 +206,9 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
   Future<void> disconnectJira() async {
     emit(const IntegrationsLoading());
     try {
-      final response = await ApiClient.instance.delete(ApiEndpoints.jiraDisconnect);
+      final response = await ApiClient.instance.delete(
+        ApiEndpoints.jiraDisconnect,
+      );
 
       if (response.statusCode == 200) {
         _updateStatus(IntegrationType.jira, IntegrationStatus.disconnected);
@@ -205,7 +230,11 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
     }
     _updateStatus(type, IntegrationStatus.connecting);
     await Future.delayed(const Duration(milliseconds: 800));
-    _updateStatus(type, IntegrationStatus.connected, accountName: 'GitHub Account');
+    _updateStatus(
+      type,
+      IntegrationStatus.connected,
+      accountName: 'GitHub Account',
+    );
   }
 
   Future<void> disconnect(IntegrationType type) async {

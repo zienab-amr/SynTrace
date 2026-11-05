@@ -18,8 +18,10 @@ class LocalStorageService {
             'date': m.date.toIso8601String(),
             'participants': m.participants,
             'content': m.content,
-            'isProcessed': m.isProcessed,
             'isDraft': m.isDraft,
+            'projectId': m.projectId,
+            'projectName': m.projectName,
+            'keyPoints': m.keyPoints.map((p) => p.toJson()).toList(),
           },
         )
         .toList();
@@ -41,18 +43,19 @@ class LocalStorageService {
               date: DateTime.parse(json['date']),
               participants: List<String>.from(json['participants']),
               content: json['content'],
-              isProcessed: json['isProcessed'] ?? false,
               isDraft: json['isDraft'] ?? false,
+              projectId: json['projectId'],
+              projectName: json['projectName'],
+              keyPoints:
+                  (json['keyPoints'] as List<dynamic>?)
+                      ?.map((p) => MeetingPoint.fromJson(p))
+                      .toList() ??
+                  [],
             ),
           )
           .toList();
     } catch (e) {
       return null;
     }
-  }
-
-  Future<void> clearMeetings() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_keyMeetings);
   }
 }

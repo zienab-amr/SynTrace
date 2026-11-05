@@ -1,18 +1,14 @@
 import 'package:equatable/equatable.dart';
 
-/// ═══════════════════════════════════════════════════════════
-/// User Model
-/// 
-/// بيمثل المستخدم في النظام
-/// ═══════════════════════════════════════════════════════════
 class UserModel extends Equatable {
   final String id;
   final String name;
   final String email;
   final String? avatarUrl;
   final UserRole role;
-  final String? tenantId;   
-  final String? companyName;      // ← للـ Multi-Tenancy
+  final String? tenantId;
+  final String? companyName;
+  final String? phoneNumber;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -24,13 +20,11 @@ class UserModel extends Equatable {
     required this.role,
     this.tenantId,
     this.companyName,
+    this.phoneNumber,
     this.createdAt,
     this.updatedAt,
   });
 
-  /// ═══════════════════════════════════════════════════════
-  /// من JSON
-  /// ═══════════════════════════════════════════════════════
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
       id: json['id'] as String? ?? '',
@@ -40,6 +34,7 @@ class UserModel extends Equatable {
       role: UserRole.fromString(json['role'] as String?),
       tenantId: json['tenantId'] as String?,
       companyName: json['companyName'] as String?,
+      phoneNumber: json['phoneNumber'] as String?,
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'] as String)
           : null,
@@ -49,9 +44,6 @@ class UserModel extends Equatable {
     );
   }
 
-  /// ═══════════════════════════════════════════════════════
-  /// إلى JSON
-  /// ═══════════════════════════════════════════════════════
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -61,14 +53,12 @@ class UserModel extends Equatable {
       'role': role.value,
       'tenantId': tenantId,
       'companyName': companyName,
+      'phoneNumber': phoneNumber,
       'createdAt': createdAt?.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
     };
   }
 
-  /// ═══════════════════════════════════════════════════════
-  /// copyWith — لتعديل نسخة من الـ Object
-  /// ═══════════════════════════════════════════════════════
   UserModel copyWith({
     String? id,
     String? name,
@@ -77,6 +67,7 @@ class UserModel extends Equatable {
     UserRole? role,
     String? tenantId,
     String? companyName,
+    String? phoneNumber,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -88,19 +79,16 @@ class UserModel extends Equatable {
       role: role ?? this.role,
       tenantId: tenantId ?? this.tenantId,
       companyName: companyName ?? this.companyName,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
-  /// ═══════════════════════════════════════════════════════
-  /// Helpers
-  /// ═══════════════════════════════════════════════════════
   bool get isAdmin => role == UserRole.admin;
   bool get isManager => role == UserRole.manager;
   bool get isDeveloper => role == UserRole.developer;
 
-  /// أول حرف من الاسم (للـ Avatar)
   String get initials {
     if (name.isEmpty) return '?';
     final parts = name.trim().split(' ');
@@ -108,26 +96,21 @@ class UserModel extends Equatable {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   }
 
-  /// ═══════════════════════════════════════════════════════
-  /// Equatable
-  /// ═══════════════════════════════════════════════════════
   @override
   List<Object?> get props => [
-        id,
-        name,
-        email,
-        avatarUrl,
-        role,
-        tenantId,
-        companyName,
-        createdAt,
-        updatedAt,
-      ];
+    id,
+    name,
+    email,
+    avatarUrl,
+    role,
+    tenantId,
+    companyName,
+    phoneNumber,
+    createdAt,
+    updatedAt,
+  ];
 }
 
-/// ═══════════════════════════════════════════════════════════
-/// User Role Enum
-/// ═══════════════════════════════════════════════════════════
 enum UserRole {
   admin('admin'),
   manager('manager'),

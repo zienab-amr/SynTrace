@@ -1,7 +1,7 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:syntrace/core/models/user_model.dart';
+import 'package:syntrace/core/network/api_client.dart';
+import 'package:syntrace/core/network/api_endpoints.dart';
 import 'package:syntrace/core/services/current_user_service.dart';
 import 'package:syntrace/core/services/secure_storage_service.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
@@ -22,7 +22,6 @@ class _ProfileTabState extends State<ProfileTab> {
   bool _isSaving = false;
   bool _isAdmin = false;
   String _role = 'Admin';
-  Uint8List? _avatarBytes;
   List<String> _permissions = const [];
 
   @override
@@ -44,20 +43,20 @@ class _ProfileTabState extends State<ProfileTab> {
     if (user == null) return;
 
     final storedName = await SecureStorageService.instance.getUserName();
-    final storedCompany =
-        await SecureStorageService.instance.getCompanyName();
-    final storedAvatar = await SecureStorageService.instance.getAvatarBytes();
+    final storedCompany = await SecureStorageService.instance.getCompanyName();
 
     if (!mounted) return;
 
     setState(() {
       _nameController.text = storedName ?? user.name;
       _emailController.text = user.email;
-      _companyController.text =
-          storedCompany ?? user.companyName ?? 'My Organization';
+      String company = storedCompany ?? user.companyName ?? '';
+      if (company.isEmpty || company == 'My Organization') {
+        company = user.companyName ?? 'My Organization';
+      }
+      _companyController.text = company;
       _role = _capitalize(user.role.value);
       _isAdmin = user.role == UserRole.admin;
-      _avatarBytes = storedAvatar;
       _permissions = const [
         'Projects',
         'Reports',
@@ -71,89 +70,66 @@ class _ProfileTabState extends State<ProfileTab> {
   Future<void> _onSave() async {
     setState(() => _isSaving = true);
 
-    await SecureStorageService.instance.saveUserName(_nameController.text);
-    await SecureStorageService.instance
-        .saveCompanyName(_companyController.text);
-
     final user = CurrentUserService.instance.user;
-    if (user != null) {
-      CurrentUserService.instance.setUser(
-        user.copyWith(
-          name: _nameController.text,
-          email: _emailController.text,
-          companyName: _companyController.text,
-        ),
-      );
-    }
+    if (user == null) return;
 
-    if (!mounted) return;
-    setState(() {
-      _isSaving = false;
-      _isEditing = false;
-    });
+    final trimmed = _nameController.text.trim();
+    final spaceIndex = trimmed.indexOf(' ');
+    final firstName = spaceIndex == -1
+        ? trimmed
+        : trimmed.substring(0, spaceIndex).trim();
+    final lastName = spaceIndex == -1
+        ? ''
+        : trimmed.substring(spaceIndex + 1).trim();
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.white),
-            SizedBox(width: 12),
-            Text('Profile updated successfully'),
-          ],
-        ),
-        backgroundColor: AppColors.secondary,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-      ),
-    );
-  }
-
-  void _onCancel() {
-    _loadData();
-    setState(() => _isEditing = false);
-  }
-
-  Future<void> _pickAvatar() async {
     try {
-      final picker = ImagePicker();
-      final picked = await picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 80,
-        maxWidth: 400,
+      final response = await ApiClient.instance.put(
+        ApiEndpoints.updateEmployee,
+        data: {
+          'employeeId': user.id,
+          'firstName': firstName,
+          'lastName': lastName,
+          'email': _emailController.text.trim(),
+          'phoneNumber': user.phoneNumber ?? '',
+        },
       );
 
-      if (picked == null) return;
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        await SecureStorageService.instance.saveUserName(_nameController.text);
+        await SecureStorageService.instance.saveCompanyName(
+          _companyController.text,
+        );
 
-      final bytes = await picked.readAsBytes();
-
-      await SecureStorageService.instance.saveAvatarBytes(bytes);
-
-      if (!mounted) return;
-      setState(() => _avatarBytes = bytes);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.white),
-              SizedBox(width: 12),
-              Text('Avatar updated'),
-            ],
+        await CurrentUserService.instance.setUser(
+          user.copyWith(
+            name: _nameController.text,
+            email: _emailController.text,
+            companyName: _companyController.text,
           ),
-          backgroundColor: AppColors.secondary,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+        );
+
+        if (!mounted) return;
+        setState(() {
+          _isSaving = false;
+          _isEditing = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile updated successfully'),
+            backgroundColor: AppColors.secondary,
+            behavior: SnackBarBehavior.floating,
           ),
-        ),
-      );
+        );
+      } else {
+        throw Exception('Server returned ${response.statusCode}');
+      }
     } catch (e) {
       if (!mounted) return;
+      setState(() => _isSaving = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to pick image: $e'),
+          content: Text('Failed to update: $e'),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
         ),
@@ -161,10 +137,9 @@ class _ProfileTabState extends State<ProfileTab> {
     }
   }
 
-  Future<void> _removeAvatar() async {
-    await SecureStorageService.instance.deleteAvatarBytes();
-    if (!mounted) return;
-    setState(() => _avatarBytes = null);
+  void _onCancel() {
+    _loadData();
+    setState(() => _isEditing = false);
   }
 
   @override
@@ -216,16 +191,31 @@ class _ProfileTabState extends State<ProfileTab> {
   Widget _buildAvatarRow(ThemeData theme) {
     return Row(
       children: [
-        _buildAvatar(theme),
+        Container(
+          width: 72,
+          height: 72,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.primary,
+          ),
+          child: Center(
+            child: Text(
+              _initials(_nameController.text),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
         const SizedBox(width: 16),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                _nameController.text.isEmpty
-                    ? 'User'
-                    : _nameController.text,
+                _nameController.text.isEmpty ? 'User' : _nameController.text,
                 style: TextStyle(
                   color: theme.colorScheme.onSurface,
                   fontSize: 20,
@@ -243,82 +233,7 @@ class _ProfileTabState extends State<ProfileTab> {
             ],
           ),
         ),
-        if (_isEditing) ...[
-          TextButton.icon(
-            onPressed: _pickAvatar,
-            icon: const Icon(Icons.photo_camera_outlined, size: 18),
-            label: const Text('Change Avatar'),
-            style: TextButton.styleFrom(
-              foregroundColor: AppColors.primary,
-            ),
-          ),
-          if (_avatarBytes != null)
-            IconButton(
-              onPressed: _removeAvatar,
-              icon: const Icon(Icons.delete_outline, size: 18),
-              color: AppColors.error,
-              tooltip: 'Remove avatar',
-            ),
-        ],
       ],
-    );
-  }
-
-  Widget _buildAvatar(ThemeData theme) {
-    return GestureDetector(
-      onTap: _isEditing ? _pickAvatar : null,
-      child: Stack(
-        children: [
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.primary,
-              image: _avatarBytes != null
-                  ? DecorationImage(
-                      image: MemoryImage(_avatarBytes!),
-                      fit: BoxFit.cover,
-                    )
-                  : null,
-            ),
-            child: _avatarBytes != null
-                ? null
-                : Center(
-                    child: Text(
-                      _initials(_nameController.text),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-          ),
-          if (_isEditing)
-            Positioned(
-              right: 0,
-              bottom: 0,
-              child: Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.primary,
-                  border: Border.all(
-                    color: theme.colorScheme.surface,
-                    width: 2,
-                  ),
-                ),
-                child: const Icon(
-                  Icons.edit,
-                  color: Colors.white,
-                  size: 12,
-                ),
-              ),
-            ),
-        ],
-      ),
     );
   }
 
@@ -393,10 +308,7 @@ class _ProfileTabState extends State<ProfileTab> {
           controller: controller,
           enabled: enabled,
           onChanged: (_) => setState(() {}),
-          style: TextStyle(
-            color: theme.colorScheme.onSurface,
-            fontSize: 14,
-          ),
+          style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 14),
           decoration: InputDecoration(
             filled: true,
             fillColor: enabled
@@ -506,10 +418,7 @@ class _ProfileTabState extends State<ProfileTab> {
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(
-              horizontal: 32,
-              vertical: 16,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),
@@ -529,10 +438,7 @@ class _ProfileTabState extends State<ProfileTab> {
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(
-              horizontal: 32,
-              vertical: 16,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),
@@ -556,10 +462,7 @@ class _ProfileTabState extends State<ProfileTab> {
           onPressed: _isSaving ? null : _onCancel,
           style: OutlinedButton.styleFrom(
             foregroundColor: Theme.of(context).colorScheme.onSurface,
-            padding: const EdgeInsets.symmetric(
-              horizontal: 32,
-              vertical: 16,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
             side: BorderSide(
               color: Theme.of(context).dividerColor.withOpacity(0.3),
             ),

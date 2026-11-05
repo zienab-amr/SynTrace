@@ -1,4 +1,3 @@
-
 import 'package:syntrace/features/notifications/data/models/jira_event_model.dart';
 
 class MockJiraEvents {

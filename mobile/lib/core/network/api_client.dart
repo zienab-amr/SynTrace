@@ -10,9 +10,6 @@ import 'package:syntrace/core/network/interceptors/retry_interceptor.dart';
 
 /// ═══════════════════════════════════════════════════════════
 /// ApiClient
-/// 
-/// نقطة الاتصال الوحيدة بالسيرفر
-/// بيجمع Dio + كل الـ Interceptors
 /// ═══════════════════════════════════════════════════════════
 class ApiClient {
   // ─── Singleton ───
@@ -23,13 +20,10 @@ class ApiClient {
   late final Dio _dio;
   Dio get dio => _dio;
 
-  // ─── هل تم التهيئة؟ ───
   bool _isInitialized = false;
 
   // ═══════════════════════════════════════════════════════
   // init()
-  // 
-  // لازم تتنادى مرة واحدة في main.dart
   // ═══════════════════════════════════════════════════════
   void init() {
     if (_isInitialized) return;
@@ -42,23 +36,19 @@ class ApiClient {
         sendTimeout: const Duration(seconds: 30),
         headers: {
           'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
           'Accept': 'application/json',
         },
-        // ─── نتعامل مع كل الأخطاء بنفسنا ───
         validateStatus: (status) {
           return status != null && status < 500;
         },
       ),
     );
-
-    // ═══════════════════════════════════════════════════
-    // ترتيب الـ Interceptors مهم جداً!
-    // ═══════════════════════════════════════════════════
     _dio.interceptors.addAll([
-      AuthInterceptor(),                    // 1. يضيف Token
-      LoggerInterceptor(),                  // 2. يطبع (Debug فقط)
-      ErrorInterceptor(),                   // 3. يحول الأخطاء
-      RetryInterceptor(dio: _dio),          // 4. يعيد المحاولة
+      AuthInterceptor(),
+      LoggerInterceptor(),
+      ErrorInterceptor(),
+      RetryInterceptor(dio: _dio),
     ]);
 
     _isInitialized = true;
@@ -77,11 +67,7 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) {
-    return _dio.get(
-      path,
-      queryParameters: queryParameters,
-      options: options,
-    );
+    return _dio.get(path, queryParameters: queryParameters, options: options);
   }
 
   // ═══════════════════════════════════════════════════════
@@ -154,9 +140,6 @@ class ApiClient {
 
   // ═══════════════════════════════════════════════════════
   // safeRequest<T>
-  // 
-  // Helper ذكي: بيرجع ApiResponse<T> مباشرة
-  // بيتعامل مع كل الأخطاء تلقائياً
   // ═══════════════════════════════════════════════════════
   Future<ApiResponse<T>> safeRequest<T>({
     required Future<Response> Function() request,
@@ -164,8 +147,7 @@ class ApiClient {
   }) async {
     try {
       final response = await request();
-      
-      // ─── نجح؟ ───
+
       if (response.statusCode != null &&
           response.statusCode! >= 200 &&
           response.statusCode! < 300) {
@@ -176,13 +158,11 @@ class ApiClient {
         );
       }
 
-      // ─── رجع Status Code غريب ───
       return ApiResponse.failure(
         message: 'Unexpected status: ${response.statusCode}',
         statusCode: response.statusCode,
       );
     } on DioException catch (e) {
-      // ─── استخرج ApiException من جوه DioException ───
       final apiException = e.error is ApiException
           ? e.error as ApiException
           : UnknownException(message: e.message);
@@ -192,10 +172,7 @@ class ApiClient {
         statusCode: apiException.statusCode,
       );
     } catch (e) {
-
-      return ApiResponse.failure(
-        message: 'Unexpected error: $e',
-      );
+      return ApiResponse.failure(message: 'Unexpected error: $e');
     }
   }
 }

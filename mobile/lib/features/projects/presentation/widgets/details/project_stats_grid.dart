@@ -42,8 +42,8 @@ class ProjectStatsGrid extends StatelessWidget {
               color: stats.healthPercent > 80
                   ? AppColors.secondary
                   : stats.healthPercent > 60
-                      ? AppColors.warning
-                      : AppColors.error,
+                  ? AppColors.warning
+                  : AppColors.error,
               icon: Icons.favorite_outline,
               onTap: onHealthTap,
             ),

@@ -9,11 +9,8 @@ class LoginRequest extends Equatable {
   const LoginRequest({required this.email, required this.password});
 
   Map<String, dynamic> toJson() => {
-        'request': {
-          'email': email,
-          'password': password,
-        },
-      };
+    'request': {'email': email, 'password': password},
+  };
 
   @override
   List<Object?> get props => [email, password];
@@ -37,25 +34,25 @@ class SignupRequest extends Equatable {
   });
 
   Map<String, dynamic> toJson() => {
-        'request': {
-          'companyName': companyName,
-          'firstName': firstName,
-          'lastName': lastName,
-          'email': email,
-          'phoneNumber': phoneNumber,
-          'password': password,
-        },
-      };
+    'request': {
+      'companyName': companyName,
+      'firstName': firstName,
+      'lastName': lastName,
+      'email': email,
+      'phoneNumber': phoneNumber,
+      'password': password,
+    },
+  };
 
   @override
   List<Object?> get props => [
-        companyName,
-        firstName,
-        lastName,
-        email,
-        phoneNumber,
-        password,
-      ];
+    companyName,
+    firstName,
+    lastName,
+    email,
+    phoneNumber,
+    password,
+  ];
 }
 
 class AuthResponse extends Equatable {
@@ -98,20 +95,27 @@ class AuthResponse extends Equatable {
       );
       final claims = jsonDecode(payload) as Map<String, dynamic>;
 
-      final userId = claims[
-              'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier']
-          as String? ?? claims['sub'] as String? ?? '';
+      final userId =
+          claims['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier']
+              as String? ??
+          claims['sub'] as String? ??
+          '';
       final companyId = claims['CompanyId'] as String? ?? '';
-      final role = claims[
-              'http://schemas.microsoft.com/ws/2008/06/identity/claims/role']
-          as String? ?? claims['role'] as String? ?? 'Employee';
-      final email = claims[
-              'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress']
-          as String? ?? claims['email'] as String? ?? fallbackEmail ?? '';
+      final role =
+          claims['http://schemas.microsoft.com/ws/2008/06/identity/claims/role']
+              as String? ??
+          claims['role'] as String? ??
+          'Employee';
+      final email =
+          claims['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress']
+              as String? ??
+          claims['email'] as String? ??
+          fallbackEmail ??
+          '';
 
-      final name = claims['name'] as String? ??
-          fallbackName ??
-          _nameFromEmail(email);
+      final name = (fallbackName != null && fallbackName.trim().isNotEmpty)
+          ? fallbackName.trim()
+          : (claims['name'] as String? ?? _nameFromEmail(email));
 
       return UserModel(
         id: userId,
@@ -138,11 +142,11 @@ class AuthResponse extends Equatable {
 
   @override
   List<Object?> get props => [
-        accessToken,
-        accessTokenExpiration,
-        refreshToken,
-        refreshTokenExpiration,
-      ];
+    accessToken,
+    accessTokenExpiration,
+    refreshToken,
+    refreshTokenExpiration,
+  ];
 }
 
 class RegisterResponse extends Equatable {

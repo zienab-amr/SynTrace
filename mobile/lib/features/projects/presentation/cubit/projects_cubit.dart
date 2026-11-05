@@ -92,11 +92,13 @@ class ProjectsCubit extends Cubit<ProjectsState> {
       }).toList();
     }
 
-    emit(ProjectsLoaded(
-      projects: filtered,
-      searchQuery: _searchQuery,
-      statusFilter: _statusFilter,
-      riskFilter: _riskFilter,
-    ));
+    emit(
+      ProjectsLoaded(
+        projects: filtered,
+        searchQuery: _searchQuery,
+        statusFilter: _statusFilter,
+        riskFilter: _riskFilter,
+      ),
+    );
   }
 }

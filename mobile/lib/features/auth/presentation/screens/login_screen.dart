@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:syntrace/core/models/user_model.dart';
 import 'package:syntrace/core/router/routes.dart';
+import 'package:syntrace/core/services/current_user_service.dart';
 import 'package:syntrace/core/services/secure_storage_service.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
 import 'package:syntrace/features/auth/presentation/cubit/login_cubit.dart';
@@ -38,21 +40,23 @@ class _LoginScreenState extends State<LoginScreen> {
     if (currentState is LoginLoading) return;
 
     context.read<LoginCubit>().login(
-          email: _emailController.text.trim(),
-          password: _passwordController.text,
-        );
+      email: _emailController.text.trim(),
+      password: _passwordController.text,
+    );
   }
 
-  Future<void> _handleLoginSuccess() async {
-    final completed =
-        await SecureStorageService.instance.isOnboardingCompleted();
+  Future<void> _handleLoginSuccess(BuildContext context) async {
+    final user = CurrentUserService.instance.user;
+    final isAdmin = user?.role == UserRole.admin;
+    final completed = await SecureStorageService.instance
+        .isOnboardingCompleted();
 
-    if (!mounted) return;
+    if (!context.mounted) return;
 
-    if (completed) {
-      context.go(AppRoutes.dashboard);
-    } else {
+    if (isAdmin && !completed) {
       context.go(AppRoutes.onboarding);
+    } else {
+      context.go(AppRoutes.dashboard);
     }
   }
 
@@ -64,7 +68,7 @@ class _LoginScreenState extends State<LoginScreen> {
           _showSuccessMessage(context, state);
           Future.delayed(
             const Duration(milliseconds: 600),
-            _handleLoginSuccess,
+            () => _handleLoginSuccess(context),
           );
         }
         if (state is LoginError) {
@@ -123,10 +127,7 @@ class _LoginScreenState extends State<LoginScreen> {
               onPressed: () {},
               child: const Text(
                 'Forgot password?',
-                style: TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 13,
-                ),
+                style: TextStyle(color: AppColors.primary, fontSize: 13),
               ),
             ),
           ),
@@ -166,9 +167,7 @@ class _LoginScreenState extends State<LoginScreen> {
         backgroundColor: AppColors.secondary,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
@@ -185,9 +184,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         backgroundColor: AppColors.error,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }

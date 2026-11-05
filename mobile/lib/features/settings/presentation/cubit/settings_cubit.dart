@@ -4,6 +4,7 @@ import 'package:syntrace/core/network/api_client.dart';
 import 'package:syntrace/core/network/api_endpoints.dart';
 import 'package:syntrace/core/services/current_user_service.dart';
 import 'package:syntrace/core/services/secure_storage_service.dart';
+import 'package:syntrace/features/onboarding/data/onboarding_service.dart';
 import 'settings_state.dart';
 
 class SettingsCubit extends Cubit<SettingsState> {
@@ -22,7 +23,16 @@ class SettingsCubit extends Cubit<SettingsState> {
     }
 
     final storedName = await SecureStorageService.instance.getUserName();
-    final storedCompany = await SecureStorageService.instance.getCompanyName();
+    var storedCompany = await SecureStorageService.instance.getCompanyName();
+
+    if (storedCompany == null || storedCompany.isEmpty) {
+      final onboardingData = await OnboardingService.instance.loadData();
+      if (onboardingData != null &&
+          onboardingData.organizationName.isNotEmpty) {
+        storedCompany = onboardingData.organizationName;
+        await SecureStorageService.instance.saveCompanyName(storedCompany);
+      }
+    }
 
     final profile = UserProfileModel(
       id: user.id,
@@ -32,6 +42,7 @@ class SettingsCubit extends Cubit<SettingsState> {
       organizationName: storedCompany ?? user.companyName ?? 'Organization',
       organizationId: user.tenantId ?? '',
       avatarUrl: user.avatarUrl,
+      phoneNumber: user.phoneNumber,
       permissions: const [
         'Projects',
         'Reports',
@@ -61,10 +72,7 @@ class SettingsCubit extends Cubit<SettingsState> {
     if (state is! SettingsLoaded) return;
 
     final current = state as SettingsLoaded;
-    final updated = current.profile.copyWith(
-      fullName: fullName,
-      email: email,
-    );
+    final updated = current.profile.copyWith(fullName: fullName, email: email);
 
     emit(current.copyWith(profile: updated));
   }
@@ -76,10 +84,12 @@ class SettingsCubit extends Cubit<SettingsState> {
 
     final trimmed = current.profile.fullName.trim();
     final spaceIndex = trimmed.indexOf(' ');
-    final firstName =
-        spaceIndex == -1 ? trimmed : trimmed.substring(0, spaceIndex).trim();
-    final lastName =
-        spaceIndex == -1 ? '' : trimmed.substring(spaceIndex + 1).trim();
+    final firstName = spaceIndex == -1
+        ? trimmed
+        : trimmed.substring(0, spaceIndex).trim();
+    final lastName = spaceIndex == -1
+        ? ''
+        : trimmed.substring(spaceIndex + 1).trim();
 
     emit(current.copyWith(isSaving: true));
 
@@ -91,17 +101,19 @@ class SettingsCubit extends Cubit<SettingsState> {
           'firstName': firstName,
           'lastName': lastName,
           'email': current.profile.email,
-          'phoneNumber': '',
+          'phoneNumber': current.profile.phoneNumber ?? '',
         },
       );
 
       final status = response.statusCode ?? 0;
 
       if (status == 200 || status == 204) {
-        await SecureStorageService.instance
-            .saveUserName(current.profile.fullName);
-        await SecureStorageService.instance
-            .saveCompanyName(current.profile.organizationName);
+        await SecureStorageService.instance.saveUserName(
+          current.profile.fullName,
+        );
+        await SecureStorageService.instance.saveCompanyName(
+          current.profile.organizationName,
+        );
 
         final user = CurrentUserService.instance.user;
         if (user != null) {

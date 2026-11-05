@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
 
-class OnboardingProgress extends StatelessWidget
-{
+class OnboardingProgress extends StatelessWidget {
   final int currentStep;
   final int totalSteps;
 

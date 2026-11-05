@@ -10,6 +10,7 @@ class UserProfileModel extends Equatable
   final String organizationName;
   final String organizationId;
   final String? avatarUrl;
+  final String? phoneNumber;
   final List<String> permissions;
 
   const UserProfileModel({
@@ -20,75 +21,63 @@ class UserProfileModel extends Equatable
     required this.organizationName,
     required this.organizationId,
     this.avatarUrl,
+    this.phoneNumber,
     this.permissions = const [],
   });
 
-  factory UserProfileModel.fromJson(Map<String, dynamic> json)
-  {
-    return UserProfileModel(
-      id: json['id'] as String? ?? '',
-      fullName: json['fullName'] as String? ?? '',
-      email: json['email'] as String? ?? '',
-      role: json['role'] as String? ?? 'Employee',
-      organizationName: json['organizationName'] as String? ?? '',
-      organizationId: json['organizationId'] as String? ?? '',
-      avatarUrl: json['avatarUrl'] as String?,
-      permissions: (json['permissions'] as List?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          const [],
-    );
-  }
-
-  factory UserProfileModel.fromUser(UserModel user, {String? companyName})
-  {
+  factory UserProfileModel.fromUser(UserModel user) {
     return UserProfileModel(
       id: user.id,
       fullName: user.name,
       email: user.email,
-      role: user.role.value,
-      organizationName: companyName ?? user.companyName ?? 'Organization',
+      role: _capitalize(user.role.value),
+      organizationName: user.companyName ?? 'Organization',
       organizationId: user.tenantId ?? '',
       avatarUrl: user.avatarUrl,
-      permissions: const [
-        'Projects',
-        'Reports',
-        'Knowledge Graph',
-        'AI Assistant',
-        'Security Center',
-      ],
+      phoneNumber: user.phoneNumber,
     );
   }
 
+  static String _capitalize(String value) {
+    if (value.isEmpty) return value;
+    return '${value[0].toUpperCase()}${value.substring(1)}';
+  }
+
   UserProfileModel copyWith({
+    String? id,
     String? fullName,
     String? email,
     String? role,
     String? organizationName,
+    String? organizationId,
     String? avatarUrl,
+    String? phoneNumber,
+    List<String>? permissions,
   }) {
     return UserProfileModel(
-      id: id,
+      id: id ?? this.id,
       fullName: fullName ?? this.fullName,
       email: email ?? this.email,
       role: role ?? this.role,
       organizationName: organizationName ?? this.organizationName,
-      organizationId: organizationId,
+      organizationId: organizationId ?? this.organizationId,
       avatarUrl: avatarUrl ?? this.avatarUrl,
-      permissions: permissions,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
+      permissions: permissions ?? this.permissions,
     );
   }
 
   @override
-  List<Object?> get props =>
+  List<Object?> get props => 
   [
-        id,
-        fullName,
-        email,
-        role,
-        organizationName,
-        organizationId,
-        avatarUrl,
-        permissions,
-      ];
+    id,
+    fullName,
+    email,
+    role,
+    organizationName,
+    organizationId,
+    avatarUrl,
+    phoneNumber,
+    permissions,
+  ];
 }

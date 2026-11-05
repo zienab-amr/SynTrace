@@ -29,7 +29,9 @@ class _JiraActivityScreenState extends State<JiraActivityScreen> {
       child: BlocBuilder<JiraEventsCubit, JiraEventsState>(
         builder: (context, state) {
           if (state is JiraEventsLoading) {
-            return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+            return const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            );
           }
 
           if (state is JiraEventsLoaded) {
@@ -113,21 +115,40 @@ class _TimelineItem extends StatelessWidget {
                     children: [
                       Text(
                         event.actorName,
-                        style: TextStyle(color: theme.colorScheme.onSurface, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          color: theme.colorScheme.onSurface,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       Text(
                         timeStr,
-                        style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5), fontSize: 11),
+                        style: TextStyle(
+                          color: theme.colorScheme.onSurface.withOpacity(0.5),
+                          fontSize: 11,
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   RichText(
                     text: TextSpan(
-                      style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.8), fontSize: 14, height: 1.4),
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface.withOpacity(0.8),
+                        fontSize: 14,
+                        height: 1.4,
+                      ),
                       children: [
-                        TextSpan(text: '${event.action} ', style: const TextStyle(fontWeight: FontWeight.w600)),
-                        TextSpan(text: '${event.title} ', style: TextStyle(color: event.color, fontWeight: FontWeight.bold)),
+                        TextSpan(
+                          text: '${event.action} ',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        TextSpan(
+                          text: '${event.title} ',
+                          style: TextStyle(
+                            color: event.color,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                         TextSpan(text: '- ${event.description}'),
                       ],
                     ),

@@ -1,4 +1,3 @@
-
 class ApiResponse<T>
 {
   final bool success;
@@ -15,9 +14,6 @@ class ApiResponse<T>
     this.statusCode,
   });
 
-  /// ═══════════════════════════════════════════════════════
-  /// من JSON
-  /// ═══════════════════════════════════════════════════════
   factory ApiResponse.fromJson(
     Map<String, dynamic> json, {
     T Function(dynamic)? fromData,
@@ -36,9 +32,6 @@ class ApiResponse<T>
     );
   }
 
-  /// ═══════════════════════════════════════════════════════
-  /// Helper: نجاح
-  /// ═══════════════════════════════════════════════════════
   factory ApiResponse.success({
     required T data,
     String message = 'Success',
@@ -52,9 +45,6 @@ class ApiResponse<T>
     );
   }
 
-  /// ═══════════════════════════════════════════════════════
-  /// Helper: فشل
-  /// ═══════════════════════════════════════════════════════
   factory ApiResponse.failure({
     required String message,
     List<String>? errors,
@@ -68,14 +58,8 @@ class ApiResponse<T>
     );
   }
 
-  /// ═══════════════════════════════════════════════════════
-  /// هل فيه داتا؟
-  /// ═══════════════════════════════════════════════════════
   bool get hasData => data != null;
 
-  /// ═══════════════════════════════════════════════════════
-  /// هل فيه أخطاء؟
-  /// ═══════════════════════════════════════════════════════
   bool get hasErrors => errors != null && errors!.isNotEmpty;
 
   @override

@@ -15,17 +15,20 @@ class AppRoutes {
   static const String profile = '/profile';
   static const String settings = '/settings';
   static const String reports = '/reports';
-  static const String notifications = '/notifications';
   static const String projects = '/projects';
   static const String tasks = '/tasks';
   static const String meetings = '/meetings';
+  static const String jiraCallback = '/settings/jira-callback';
+    
+  static const String jiraActivity = '/jira-activity';
 
-  // Roles 
-  static const String roles = '/roles'; 
 
-   static const String employees = '/employees';
+  // Roles
+  static const String roles = '/roles';
+
+  static const String employees = '/employees';
   static const String addEmployee = '/employees/add';
-  
+
   static String profileDetailsById(String id) => '/profile/$id';
   static String projectDetailsById(String id) => '/projects/$id';
   static const String team = '/team';
