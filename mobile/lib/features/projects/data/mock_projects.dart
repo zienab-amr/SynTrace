@@ -128,17 +128,26 @@ enum ProjectRisk { high, medium, low }
 class MockUsers {
   MockUsers._();
 
+  static UserModel? getUserById(String id) {
+    try {
+      return users.firstWhere((u) => u.id == id);
+    } catch (e) {
+      return null;
+    }
+  }
+
   static const List<UserModel> users = [
     UserModel(
-      id: 'user-1',
-      name: 'Ahmed Kamal',
-      email: 'ahmed@syntrace.com',
+      id: 'sara-1',
+      name: 'Sara Ali',
+      email: 'sara@syntrace.com',
       role: UserRole.developer,
+      tenantId: 'tenant-1',
     ),
     UserModel(
-      id: 'user-2',
-      name: 'Sara Mohamed',
-      email: 'sara@syntrace.com',
+      id: 'user-6',
+      name: 'Rodaina Mohamed',
+      email: 'Rodaina@syntrace.com',
       role: UserRole.developer,
     ),
     UserModel(
@@ -1190,16 +1199,18 @@ class MockProjectStats {
 
     // ─── Health ───
     final doneRatio = totalTasks > 0 ? doneTasks / totalTasks : 0.0;
-    final blockedPenalty =
-        totalTasks > 0 ? (blockedTasks / totalTasks) * 0.25 : 0.0;
+    final blockedPenalty = totalTasks > 0
+        ? (blockedTasks / totalTasks) * 0.25
+        : 0.0;
     final bugsPenalty = (openBugs / 10).clamp(0.0, 0.15);
     final commitBonus = (commits / 10).clamp(0.0, 0.10);
 
-    final health = ((doneRatio * 0.5) +
-            (0.25 - blockedPenalty) +
-            (0.15 - bugsPenalty) +
-            commitBonus)
-        .clamp(0.0, 1.0);
+    final health =
+        ((doneRatio * 0.5) +
+                (0.25 - blockedPenalty) +
+                (0.15 - bugsPenalty) +
+                commitBonus)
+            .clamp(0.0, 1.0);
 
     // ─── Risk ───
     final ProjectRisk risk;
@@ -1233,8 +1244,6 @@ class MockProjectStats {
   }
 
   static Map<String, ProjectStats> get stats {
-    return {
-      for (final p in MockProjects.projects) p.id: forProject(p.id),
-    };
+    return {for (final p in MockProjects.projects) p.id: forProject(p.id)};
   }
 }

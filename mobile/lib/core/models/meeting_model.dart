@@ -109,9 +109,19 @@ class MeetingModel extends Equatable {
 
   @override
   List<Object?> get props => [
-        id, title, transcript, summary, scheduledAt, durationMinutes,
-        participantIds, keyDecisions, projectId, status, createdAt, updatedAt,
-      ];
+    id,
+    title,
+    transcript,
+    summary,
+    scheduledAt,
+    durationMinutes,
+    participantIds,
+    keyDecisions,
+    projectId,
+    status,
+    createdAt,
+    updatedAt,
+  ];
 }
 
 enum MeetingStatus {

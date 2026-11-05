@@ -27,9 +27,7 @@ class ProjectsLoaded extends ProjectsState {
   });
 
   bool get hasActiveFilters =>
-      searchQuery.isNotEmpty ||
-      statusFilter != null ||
-      riskFilter != null;
+      searchQuery.isNotEmpty || statusFilter != null || riskFilter != null;
 
   ProjectsLoaded copyWith({
     List<ProjectModel>? projects,
@@ -48,12 +46,7 @@ class ProjectsLoaded extends ProjectsState {
   }
 
   @override
-  List<Object?> get props => [
-        projects,
-        searchQuery,
-        statusFilter,
-        riskFilter,
-      ];
+  List<Object?> get props => [projects, searchQuery, statusFilter, riskFilter];
 }
 
 class ProjectsError extends ProjectsState {
