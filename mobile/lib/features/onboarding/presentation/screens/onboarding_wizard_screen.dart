@@ -59,8 +59,28 @@ class _OnboardingWizardScreenState extends State<OnboardingWizardScreen> {
         if (state is OnboardingCompleted) {
           context.go(AppRoutes.dashboard);
         }
+
+        if (state is OnboardingError) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+          context.read<OnboardingCubit>().previousStep();
+        }
       },
       builder: (context, state) {
+        if (state is OnboardingLoading) {
+          return Scaffold(
+            backgroundColor: theme.scaffoldBackgroundColor,
+            body: const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            ),
+          );
+        }
+
         if (state is! OnboardingInProgress) {
           return Scaffold(
             backgroundColor: theme.scaffoldBackgroundColor,
@@ -74,15 +94,9 @@ class _OnboardingWizardScreenState extends State<OnboardingWizardScreen> {
           backgroundColor: theme.scaffoldBackgroundColor,
           body: Stack(
             children: [
-              // ═══════ 1. Background (نفس الـ Splash) ═══════
               const Positioned.fill(
-                child: Opacity(
-                  opacity: 0.35,
-                  child: SplashBackground(),
-                ),
+                child: Opacity(opacity: 0.35, child: SplashBackground()),
               ),
-
-              // ═══════ 2. Vignette ═══════
               Positioned.fill(
                 child: IgnorePointer(
                   child: DecoratedBox(
@@ -100,15 +114,12 @@ class _OnboardingWizardScreenState extends State<OnboardingWizardScreen> {
                   ),
                 ),
               ),
-
-              // ═══════ 3. Content ═══════
               SafeArea(
                 child: Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 720),
                     child: Column(
                       children: [
-                        // ─── Pages ───
                         Expanded(
                           child: PageView(
                             controller: _pageController,
@@ -151,13 +162,13 @@ class _OnboardingWizardScreenState extends State<OnboardingWizardScreen> {
                               ),
                               _StepWrapper(
                                 child: TeamSetupStep(
-                                  emails: state.data.teamEmails,
-                                  onAdd: (e) => context
+                                  teamMembers: state.data.teamMembers,
+                                  onAdd: (member) => context
                                       .read<OnboardingCubit>()
-                                      .addTeamEmail(e),
-                                  onRemove: (e) => context
+                                      .addTeamMember(member),
+                                  onRemove: (email) => context
                                       .read<OnboardingCubit>()
-                                      .removeTeamEmail(e),
+                                      .removeTeamMember(email),
                                 ),
                               ),
                               _StepWrapper(
@@ -173,14 +184,10 @@ class _OnboardingWizardScreenState extends State<OnboardingWizardScreen> {
                                       .updateNotifications(v),
                                 ),
                               ),
-                              _StepWrapper(
-                                child: FinishStep(data: state.data),
-                              ),
+                              _StepWrapper(child: FinishStep(data: state.data)),
                             ],
                           ),
                         ),
-
-                        // ─── Progress ───
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           child: OnboardingProgress(
@@ -188,8 +195,6 @@ class _OnboardingWizardScreenState extends State<OnboardingWizardScreen> {
                             totalSteps: OnboardingInProgress.totalSteps,
                           ),
                         ),
-
-                        // ─── Navigation ───
                         OnboardingNavigation(
                           canGoBack: !state.isFirstStep,
                           canGoNext: state.canGoNext,
@@ -199,8 +204,7 @@ class _OnboardingWizardScreenState extends State<OnboardingWizardScreen> {
                           onNext: () =>
                               context.read<OnboardingCubit>().nextStep(),
                           onSkip: state.currentStep == 2
-                              ? () =>
-                                  context.read<OnboardingCubit>().nextStep()
+                              ? () => context.read<OnboardingCubit>().nextStep()
                               : null,
                         ),
                       ],
@@ -216,12 +220,8 @@ class _OnboardingWizardScreenState extends State<OnboardingWizardScreen> {
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// Step Wrapper
-// ═══════════════════════════════════════════════════════════
 class _StepWrapper extends StatelessWidget {
   final Widget child;
-
   const _StepWrapper({required this.child});
 
   @override

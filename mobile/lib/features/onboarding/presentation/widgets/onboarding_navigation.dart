@@ -34,8 +34,7 @@ class OnboardingNavigation extends StatelessWidget {
               icon: const Icon(Icons.arrow_back, size: 18),
               label: const Text('Back'),
               style: TextButton.styleFrom(
-                foregroundColor:
-                    theme.colorScheme.onSurface.withOpacity(0.7),
+                foregroundColor: theme.colorScheme.onSurface.withOpacity(0.7),
               ),
             ),
 
@@ -46,8 +45,7 @@ class OnboardingNavigation extends StatelessWidget {
             TextButton(
               onPressed: onSkip,
               style: TextButton.styleFrom(
-                foregroundColor:
-                    theme.colorScheme.onSurface.withOpacity(0.5),
+                foregroundColor: theme.colorScheme.onSurface.withOpacity(0.5),
               ),
               child: const Text('Skip'),
             ),
@@ -60,10 +58,7 @@ class OnboardingNavigation extends StatelessWidget {
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 28,
-                vertical: 14,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -79,10 +74,7 @@ class OnboardingNavigation extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 6),
-                Icon(
-                  isLastStep ? Icons.check : Icons.arrow_forward,
-                  size: 18,
-                ),
+                Icon(isLastStep ? Icons.check : Icons.arrow_forward, size: 18),
               ],
             ),
           ),
