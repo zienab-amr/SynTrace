@@ -2,6 +2,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:syntrace/core/router/routes.dart';
 import 'package:syntrace/features/auth/presentation/cubit/login_cubit.dart';
+import 'package:syntrace/features/auth/presentation/cubit/signup_cubit.dart';
 import 'package:syntrace/features/auth/presentation/screens/login_screen.dart';
 import 'package:syntrace/features/auth/presentation/screens/otp_screen.dart';
 import 'package:syntrace/features/auth/presentation/screens/signup_screen.dart';
@@ -29,6 +30,7 @@ import 'package:syntrace/features/settings/presentation/screens/settings_screen.
 import 'package:syntrace/features/splash/presentation/screens/splash_screen.dart';
 import 'package:syntrace/features/onboarding/presentation/cubit/onboarding_cubit.dart';
 import 'package:syntrace/features/onboarding/presentation/screens/onboarding_wizard_screen.dart';
+import 'package:syntrace/features/tasks/presentation/screens/tasks_screen.dart';
 import 'package:syntrace/shared/widgets/app_shell.dart';
 
 final appRouter = GoRouter(
@@ -58,7 +60,7 @@ final appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.signup,
       builder: (context, state) => BlocProvider(
-        create: (context) => LoginCubit(),
+        create: (context) => SignupCubit(),
         child: const SignupScreen(),
       ),
     ),
@@ -67,7 +69,7 @@ final appRouter = GoRouter(
       builder: (context, state) {
         final email = state.extra as String? ?? '';
         return BlocProvider(
-          create: (context) => LoginCubit(),
+          create: (context) => SignupCubit(),
           child: OtpScreen(email: email),
         );
       },
@@ -94,9 +96,16 @@ final appRouter = GoRouter(
             child: const DashboardScreen(),
           ),
         ),
+        GoRoute(
+          path: AppRoutes.jiraActivity,
+          builder: (context, state) => BlocProvider(
+            create: (context) => JiraEventsCubit()..loadEvents(),
+            child: const JiraActivityScreen(),
+          ),
+        ),
 
         GoRoute(
-          path: '/jira/callback',
+          path: AppRoutes.jiraCallback, // '/settings/jira-callback'
           builder: (context, state) {
             final status = state.uri.queryParameters['status'] ?? '';
             final pendingId = state.uri.queryParameters['pendingId'];
@@ -120,6 +129,15 @@ final appRouter = GoRouter(
         GoRoute(
           path: AppRoutes.graph,
           builder: (context, state) => const GraphScreen(),
+        ),
+
+        GoRoute(
+          path: AppRoutes.tasks,
+          builder: (context, state) => const TasksScreen(),
+        ),
+        GoRoute(
+          path: AppRoutes.projects,
+          builder: (context, state) => const ProjectsScreen(),
         ),
 
         // Projects

@@ -1,42 +1,38 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:syntrace/core/network/api_client.dart';
 import 'package:syntrace/core/router/app_router.dart';
 import 'package:syntrace/core/services/current_user_service.dart';
 import 'package:syntrace/core/theme/app_theme.dart';
 import 'package:syntrace/core/theme/theme_controller.dart';
 
-Future<void> main()
-async {
+Future<void> main() async {
+  usePathUrlStrategy();
   WidgetsFlutterBinding.ensureInitialized();
   ApiClient.instance.init();
-    await CurrentUserService.instance.loadFromStorage();
 
+  await CurrentUserService.instance.loadFromStorage();
 
   runApp(const SynTraceApp());
 }
 
-class SynTraceApp extends StatelessWidget
-{
+class SynTraceApp extends StatelessWidget {
   const SynTraceApp({super.key});
 
   @override
-  Widget build(BuildContext context)
-  {
-    return ValueListenableBuilder<ThemeMode>
-    (
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<ThemeMode>(
       valueListenable: ThemeController.themeMode,
-      builder: (context, mode, _)
-      {
+      builder: (context, mode, _) {
         return MaterialApp.router(
           title: 'SynTrace',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
-          themeMode: mode, 
-          routerConfig: appRouter, 
+          themeMode: mode,
+          routerConfig: appRouter,
         );
       },
     );
   }
 }
-       
