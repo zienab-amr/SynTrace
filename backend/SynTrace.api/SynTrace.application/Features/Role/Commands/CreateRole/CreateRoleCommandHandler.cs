@@ -20,12 +20,6 @@ namespace SynTrace.Application.Features.Role.Commands.CreateRole
             CreateRoleCommand request,
             CancellationToken cancellationToken)
         {
-            var existingRole = await _roleService
-                .GetRoleByNameAsync(request.Role);
-
-            if (existingRole != null)
-                throw new Exception("This role already exists");
-
             var result = await _roleService
                 .CreateRoleAsync(request.Role);
 

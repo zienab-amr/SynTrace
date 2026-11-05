@@ -40,7 +40,7 @@ namespace SynTrace.Infrastructure
             );
 
             // Identity
-            services.AddIdentity<Employee, IdentityRole>()
+            services.AddIdentity<Employee, Role>()
                 .AddEntityFrameworkStores<SynTraceDbContext>()
                 .AddDefaultTokenProviders();
 
@@ -99,6 +99,7 @@ namespace SynTrace.Infrastructure
             services.AddScoped<ICurrentTenant, CurrentTenant>();
             services.AddScoped<ICurrentEmployee, CurrentEmployee>();
             services.AddScoped<ICurrentRole, CurrentRole>();
+            services.AddScoped<ITenantValidator, TenantValidator>();
 
             //Repositories
             services.AddScoped<IEmployeeRepository, EmployeeRepository>();

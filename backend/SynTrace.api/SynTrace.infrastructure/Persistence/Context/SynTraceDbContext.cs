@@ -7,7 +7,7 @@ using SynTrace.Domain.Enums;
 
 namespace SynTrace.Infrastructure.Persistence.Context
 {
-    public class SynTraceDbContext : IdentityDbContext
+    public class SynTraceDbContext : IdentityDbContext<Employee, Role, string>
     {
         private readonly ICurrentTenant? _currentTenant;
 
@@ -24,6 +24,19 @@ namespace SynTrace.Infrastructure.Persistence.Context
         {
             base.OnModelCreating(modelBuilder);
 
+            modelBuilder.Entity<Role>(entity =>
+            {
+                entity.HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasIndex(x => x.NormalizedName)
+                    .HasDatabaseName("RoleNameIndex")
+                    .IsUnique(false);
+
+                entity.HasIndex(x => new { x.CompanyId, x.NormalizedName })
+                    .IsUnique()
+                    .HasDatabaseName("Role_Company_NormalizedName");
+            });
+                
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(SynTraceDbContext).Assembly);
 
             modelBuilder.Entity<JiraConnection>()
@@ -54,6 +67,7 @@ namespace SynTrace.Infrastructure.Persistence.Context
             ConfigureTenantOwned<JiraSprint>(modelBuilder);
             ConfigureTenantOwned<JiraUser>(modelBuilder);
             ConfigureTenantOwned<ProcessedJiraEvent>(modelBuilder);
+
 
             modelBuilder.Entity<JiraProject>(b =>
             {
@@ -134,6 +148,7 @@ namespace SynTrace.Infrastructure.Persistence.Context
 
         public DbSet<Company> Companies { get; set; }
         public DbSet<Employee> Employees { get; set; }
+        public DbSet<Role> Roles { get; set; }
 
         public DbSet<RefreshToken> RefreshTokens { get; set; }
         public DbSet<JiraOAuthState> JiraOAuthStates { get; set; }

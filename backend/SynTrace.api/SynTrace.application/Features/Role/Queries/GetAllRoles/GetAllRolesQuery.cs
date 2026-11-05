@@ -6,6 +6,6 @@ using Microsoft.AspNetCore.Identity;
 
 namespace SynTrace.Application.Features.Role.Queries.GetAllRoles
 {
-    public class GetAllRolesQuery : IRequest<List<IdentityRole>>;
+    public class GetAllRolesQuery : IRequest<List<SynTrace.Domain.Entities.Role>> { }
 
 }

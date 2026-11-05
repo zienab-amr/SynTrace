@@ -6,6 +6,7 @@ using Scalar.AspNetCore;
 using SynTrace.Application;
 using SynTrace.Infrastructure;
 using SynTrace.Infrastructure.Identity;
+using SynTrace.Domain.Entities;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -53,14 +54,14 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
-{
-    var roleManager =
-        scope.ServiceProvider
-            .GetRequiredService<RoleManager<IdentityRole>>();
+//using (var scope = app.Services.CreateScope())
+//{
+//    var roleManager =
+//        scope.ServiceProvider
+//            .GetRequiredService<RoleManager<Role>>();
 
-    await RoleSeeder.SeedRolesAsync(roleManager);
-}
+//    await RoleSeeder.SeedRolesAsync(roleManager);
+//}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

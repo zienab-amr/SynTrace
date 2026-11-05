@@ -8,24 +8,22 @@ using SynTrace.Application.Features.Role.Queries.GetAllRoles;
 
 namespace SynTrace.Application.Features.Role.Queries.GetRoleByName
 {
-    internal class GetRoleByNameQueryHandler : IRequestHandler<GetRoleByNameQuery, IdentityRole>
+    public class GetRoleByNameQueryHandler : IRequestHandler<GetRoleByNameQuery, SynTrace.Domain.Entities.Role?>
     {
         private readonly IRoleService _roleService;
-        private readonly RoleManager<IdentityRole> _roleManager;
-        public GetRoleByNameQueryHandler(IRoleService roleService, RoleManager<IdentityRole> roleManager)
+        public GetRoleByNameQueryHandler(IRoleService roleService)
         {
             _roleService = roleService;
-            _roleManager = roleManager;
         }
 
-        public async Task<IdentityRole?> Handle(GetRoleByNameQuery request, CancellationToken cancellationToken)
+        public async Task<SynTrace.Domain.Entities.Role?> Handle(GetRoleByNameQuery request, CancellationToken cancellationToken)
         {
-            var roleExisting = await _roleManager.RoleExistsAsync(request.RoleName);
+            var role = await _roleService.GetRoleByNameAsync(request.RoleName);
 
-            if (!roleExisting)
-                throw new Exception("This Role not exist");
+            if (role == null)
+                throw new Exception("This Role does not exist.");
 
-            return await _roleService.GetRoleByNameAsync(request.RoleName);
+            return role;
         }
     }
 }
