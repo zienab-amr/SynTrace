@@ -3,15 +3,14 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:syntrace/core/router/routes.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
-import 'package:syntrace/features/auth/presentation/cubit/login_cubit.dart';
-import 'package:syntrace/features/auth/presentation/cubit/login_state.dart';
+import 'package:syntrace/features/auth/presentation/cubit/signup_cubit.dart';
+import 'package:syntrace/features/auth/presentation/cubit/signup_state.dart';
 import 'package:syntrace/features/auth/presentation/widgets/auth_button.dart';
 import 'package:syntrace/features/auth/presentation/widgets/auth_screen_layout.dart';
 import 'package:syntrace/features/auth/presentation/widgets/auth_text_field.dart';
 
 class OtpScreen extends StatefulWidget {
   final String email;
-
   const OtpScreen({super.key, required this.email});
 
   @override
@@ -30,29 +29,26 @@ class _OtpScreenState extends State<OtpScreen> {
 
   void _onVerify() {
     if (!_formKey.currentState!.validate()) return;
+    final currentState = context.read<SignupCubit>().state;
+    if (currentState is SignupLoading) return;
 
-    final currentState = context.read<LoginCubit>().state;
-    if (currentState is LoginLoading) return;
-
-    context.read<LoginCubit>().verifyOtp(
-          email: widget.email,
-          otp: _otpController.text.trim(),
-        );
+    context.read<SignupCubit>().verifyOtp(
+      email: widget.email,
+      otp: _otpController.text.trim(),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return BlocListener<LoginCubit, LoginState>(
+    return BlocListener<SignupCubit, SignupState>(
       listener: (context, state) {
-        if (state is RegisterSuccess) {
-          _showSuccess(
-            'Account created! Welcome, ${state.registerResponse.email}',
-          );
+        if (state is SignupSuccess) {
+          _showSuccess('Account created! Please sign in.');
           Future.delayed(const Duration(milliseconds: 600), () {
             if (mounted) context.go(AppRoutes.login);
           });
         }
-        if (state is LoginError) {
+        if (state is SignupError) {
           _showError(state.message);
         }
       },
@@ -73,12 +69,9 @@ class _OtpScreenState extends State<OtpScreen> {
                   keyboardType: TextInputType.number,
                   textInputAction: TextInputAction.done,
                   validator: (value) {
-                    if (value == null || value.isEmpty) {
+                    if (value == null || value.isEmpty)
                       return 'OTP is required';
-                    }
-                    if (value.length < 4) {
-                      return 'Enter the full code';
-                    }
+                    if (value.length < 4) return 'Enter the full code';
                     return null;
                   },
                 ),
@@ -86,9 +79,9 @@ class _OtpScreenState extends State<OtpScreen> {
             ),
           ),
         ],
-        submitButton: BlocBuilder<LoginCubit, LoginState>(
+        submitButton: BlocBuilder<SignupCubit, SignupState>(
           builder: (context, state) {
-            final isLoading = state is LoginLoading;
+            final isLoading = state is SignupLoading;
             return AuthButton(
               label: 'Verify & Create Account',
               isLoading: isLoading,
@@ -96,66 +89,23 @@ class _OtpScreenState extends State<OtpScreen> {
             );
           },
         ),
-        footer: _buildFooter(context),
-      ),
-    );
-  }
-
-  Widget _buildFooter(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return TextButton(
-      onPressed: () => context.go(AppRoutes.signup),
-      child: Text(
-        "Didn't receive the code? Go back",
-        style: TextStyle(
-          color: theme.colorScheme.primary,
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
+        footer: TextButton(
+          onPressed: () => context.go(AppRoutes.signup),
+          child: const Text("Didn't receive the code? Go back"),
         ),
       ),
     );
   }
 
   void _showSuccess(String message) {
-    final theme = Theme.of(context);
-
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle, color: Colors.white),
-            const SizedBox(width: 12),
-            Expanded(child: Text(message)),
-          ],
-        ),
-        backgroundColor: theme.brightness == Brightness.dark
-            ? AppColors.secondary
-            : AppColors.secondaryDark,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-      ),
+      SnackBar(content: Text(message), backgroundColor: AppColors.secondary),
     );
   }
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.error_outline, color: Colors.white),
-            const SizedBox(width: 12),
-            Expanded(child: Text(message)),
-          ],
-        ),
-        backgroundColor: AppColors.error,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-      ),
+      SnackBar(content: Text(message), backgroundColor: AppColors.error),
     );
   }
 }
