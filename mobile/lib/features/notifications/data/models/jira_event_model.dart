@@ -2,14 +2,23 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
 
-enum JiraEventCategory { issue, comment, sprint, worklog, project, user, issueType, board }
+enum JiraEventCategory {
+  issue,
+  comment,
+  sprint,
+  worklog,
+  project,
+  user,
+  issueType,
+  board,
+}
 
 class JiraEventModel extends Equatable {
   final String id;
-  final String action; 
+  final String action;
   final JiraEventCategory category;
-  final String title; 
-  final String description; 
+  final String title;
+  final String description;
   final String actorName;
   final DateTime timestamp;
 
@@ -66,5 +75,13 @@ class JiraEventModel extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, action, category, title, description, actorName, timestamp];
+  List<Object?> get props => [
+    id,
+    action,
+    category,
+    title,
+    description,
+    actorName,
+    timestamp,
+  ];
 }
