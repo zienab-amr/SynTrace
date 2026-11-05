@@ -89,7 +89,7 @@ class _AppSidebarState extends State<AppSidebar> {
                 SidebarItem(
                   icon: Icons.notifications_active_outlined,
                   label: 'Activity Feed',
-                  route: AppRoutes.notifications,
+                  route: AppRoutes.jiraActivity,
                   isCollapsed: _isCollapsed,
                 ),
                 SidebarItem(
