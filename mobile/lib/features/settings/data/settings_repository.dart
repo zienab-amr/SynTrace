@@ -31,7 +31,7 @@ class SettingsRepository {
           'firstName': firstName,
           'lastName': lastName,
           'email': profile.email,
-          'phoneNumber': '',
+          'phoneNumber': profile.phoneNumber ?? '', // ═══ التعديل هنا ═══
         },
       );
 
