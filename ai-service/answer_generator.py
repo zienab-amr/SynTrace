@@ -17,12 +17,12 @@ import analytics
 from query_engine import (
     answer_key_question,
     get_blockers,
-    get_blocked_by_me,
+    get_all_relations, get_blocked_by_me,
     get_related,
     get_ticket_details,
 )
 
-GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 # Without the LLM to judge relevance, only matches this strong are shown (see calibrate_search.py).
 SEMANTIC_STRONG_SCORE = float(os.getenv("SEMANTIC_STRONG_SCORE", "0.42"))
 # One question stays well under the Groq limit of 8000 tokens per minute.
@@ -269,12 +269,30 @@ _TYPOGRAPHY = str.maketrans({"\u2010": "-", "\u2011": "-", "\u2012": "-", "\u201
                              "\u00a0": " ", "\u202f": " ", "\u2009": " "})
 
 
+TOKENS_USED = 0   # for measuring what a question costs
+QUOTED_TEXT_RE = re.compile(r'["“”«»][^"“”«»]{8,}["“”«»]')
+
+
+TOKENS_BY_STAGE = {}   # where the tokens went, for measuring only
+
+
+def count_tokens(completion, stage="answer"):
+    global TOKENS_USED
+    used = getattr(getattr(completion, "usage", None), "total_tokens", 0) or 0
+    TOKENS_USED += used
+    TOKENS_BY_STAGE[stage] = TOKENS_BY_STAGE.get(stage, 0) + used
+
+
+_STAGE = "answer"   # which step is calling the model, for measuring only
+
+
 def _complete(prompt):
     """The answer text, or None. A rate limit moves on to GROQ_FALLBACK_MODEL when one is set."""
     for model in filter(None, (GROQ_MODEL, os.getenv("GROQ_FALLBACK_MODEL"))):
         try:
             completion = _get_client().chat.completions.create(
                 model=model, messages=[{"role": "user", "content": prompt}], temperature=0)
+            count_tokens(completion, _STAGE)
             return (completion.choices[0].message.content or "").translate(_TYPOGRAPHY)
         except Exception as e:
             log.warning("LLM call failed: %s", type(e).__name__)
@@ -494,6 +512,16 @@ def _top_ticket_details(hits, ctx):
     return contexts, facts
 
 
+def _ticket_in_scope(key, ctx):
+    """A ticket the answer named outside the search results, only if this user can see it."""
+    try:
+        detail = get_ticket_details(key, ctx)
+    except Exception as e:
+        log.warning("ticket details unavailable: %s", type(e).__name__)
+        return None
+    return {"key": key, "url": detail.get("url")} if detail and not detail.get("incomplete") else None
+
+
 def _open_question_result(question, ctx, search_text=None):
     try:
         from semantic_search import semantic_search
@@ -509,8 +537,10 @@ def _open_question_result(question, ctx, search_text=None):
     # The LLM may pick a ticket beyond the closest ones, whose details it has not seen yet.
     detailed = {hit["key"].upper() for hit in hits[:DETAILED_SEARCH_HITS]}
     known = {hit["key"].upper(): hit for hit in hits}
-    named = [known[key] for key in dict.fromkeys(KEY_RE.findall((answer or "").upper()))
-             if key in known and key not in detailed]
+    # It may also pick a ticket it only saw as a relation of another one, such as a subtask.
+    named = [known.get(key) or _ticket_in_scope(key, ctx)
+             for key in dict.fromkeys(KEY_RE.findall((answer or "").upper())) if key not in detailed]
+    named = [ticket for ticket in named if ticket]
     if details and named and len(named) <= DETAILED_SEARCH_HITS:
         more, more_facts = _top_ticket_details(named, ctx)
         detail_facts = detail_facts + more_facts
@@ -524,7 +554,9 @@ def _open_question_result(question, ctx, search_text=None):
     if _accepted(answer, facts, question):
         # لينكات للتذاكر اللي الإجابة ذكرتها بس (مش كل نتايج البحث)
         mentioned = set(KEY_RE.findall(answer.upper()))
-        shown = [h for h in hits if h["key"].upper() in mentioned] or hits
+        shown = [h for h in hits if h["key"].upper() in mentioned]
+        shown += [t for t in named if t["key"] not in known and t["key"] in mentioned]
+        shown = shown or hits
     else:
         shown = [h for h in hits if h.get("meaning_score", h.get("score", 1)) >= SEMANTIC_STRONG_SCORE]
         if not shown:
@@ -544,12 +576,28 @@ def _aggregate_result(question, plan, ctx):
     if clarification:
         return {"status": "clarify", "answer": clarification, "links": []}
     result = analytics.run_plan(plan, ctx)
+    if plan["text"] and plan["metric"] == "tickets" and result["total"] <= 1:
+        # One match may mean the question is about that ticket and not a count. No match may only mean
+        # different words, and search by meaning can still find it, so never answer "none" from words.
+        agent = _agent_result(question, ctx)
+        if agent:
+            return agent
+        if result["total"] == 0 and _agent_on():
+            return _open_question_result(question, ctx, plan["text"])
     source = {"comments": "comments", "changes": "change_history", "time_logged": "worklogs"}.get(
         plan["metric"], "graph_query")
+    if plan["read_comments"] and not result["records"] and plan["text"]:
+        agent = _agent_result(question, ctx)   # no comment has these words, but a ticket about them may
+        if agent:
+            return agent
     if plan["read_comments"] and result["records"]:
         picked = analytics.parse_comment_pick(
             _complete(analytics.comment_pick_prompt(question, result["records"])), result["records"])
         if picked == []:
+            # The words may describe a ticket rather than what a comment says, so let the agent find it.
+            agent = _agent_result(question, ctx) if plan["text"] else None
+            if agent:
+                return agent
             message = ("مفيش كومنت بيجاوب على السؤال ده." if _is_arabic(question)
                        else "No comment answers this question.")
             return {"status": "ok", "answer": message, "source": source, "links": []}
@@ -595,7 +643,16 @@ def _compound_result(questions, ctx):
 def _keyless_question_result(question, ctx, allow_compound=True):
     if not allow_compound and analytics.is_key_question(question):   # a part naming a ticket
         return generate_answer_result(question, ctx)
-    plan = analytics.parse_plan(_complete(analytics.planner_prompt(question, ctx)))
+    if QUOTED_TEXT_RE.search(question):   # it names one ticket, so skip the planner's tokens
+        agent = _agent_result(question, ctx)
+        if agent:
+            return agent
+    global _STAGE
+    _STAGE = "planner"
+    try:
+        plan = analytics.parse_plan(_complete(analytics.planner_prompt(question, ctx)))
+    finally:
+        _STAGE = "answer"
     if plan and plan["kind"] == "compound":
         if allow_compound:
             return _compound_result(plan["questions"], ctx)
@@ -611,6 +668,9 @@ def _keyless_question_result(question, ctx, allow_compound=True):
             message = ("مش قادر أحسب ده دلوقتي، جرب تاني." if _is_arabic(question)
                        else "I can't calculate that right now. Please try again.")
             return {"status": "search_unavailable", "answer": message, "links": []}
+    agent = _agent_result(question, ctx)
+    if agent:
+        return agent
     return _open_question_result(question, ctx, plan.get("search_text") if plan else None)
 
 
@@ -621,9 +681,52 @@ def answer_open_question(question, ctx):
 
 # ---------- 10. Main ----------
 
+def relation_lines(key, items):
+    """One line per link, with the direction written out so the model can't reverse it."""
+    lines = []
+    for item in items:
+        name = item["relation"].replace("_", " ")
+        pair = f"{key} {name} {item['key']}" if item["outgoing"] else f"{item['key']} {name} {key}"
+        lines.append(f"{pair} | {item['key']}: {item.get('summary')} | Status: {item.get('status')} "
+                     f"| Assignee: {item.get('assignee')}")
+    return lines
+
+
+def _all_links_context(key, ctx):
+    try:
+        items = get_all_relations(key, ctx)
+    except Exception as e:
+        log.warning("ticket links unavailable: %s", type(e).__name__)
+        return None
+    if not items:
+        return None
+    facts = [key]
+    for item in items:
+        facts.extend([item["key"], item.get("summary"), item.get("status"), item.get("assignee")])
+    links = [{"key": i["key"], "url": i["url"]} for i in items if i.get("url")]
+    return "All links of this ticket:\n" + "\n".join(relation_lines(key, items)), facts, links
+
+
+def _agent_on():
+    """The multi-hop agent answers by default. GRAPH_AGENT=0 turns it off."""
+    return os.getenv("GRAPH_AGENT", "1") == "1"
+
+
+def _agent_result(question, ctx):
+    """The multi-hop answer when GRAPH_AGENT is on, else None so the normal path answers."""
+    if not _agent_on():
+        return None
+    import graph_agent
+    return graph_agent.answer(question, ctx)
+
+
 def generate_answer_result(question, ctx):
     """-> {"status": ok|not_found|no_results|search_unavailable, "answer": str, "links": [...]}."""
     results = answer_key_question(question, ctx)
+    if results and any(r.get("type") == "found" for r in results):
+        agent = _agent_result(question, ctx)
+        if agent:
+            return agent
     if not results:
         return {"status": "no_results", "answer": NO_DATA_MESSAGE, "links": []}
     if results[0].get("type") == "no_key_found":
@@ -650,6 +753,11 @@ def generate_answer_result(question, ctx):
             contexts.append(build_ticket_context(details))
             facts.extend(ticket_facts(details))
             templates.append(ticket_template_ar(details) if arabic else ticket_template(details))
+            links_context = _all_links_context(card["key"], ctx)
+            if links_context:
+                contexts.append(links_context[0])
+                facts.extend(links_context[1])
+                related_links.extend(links_context[2])
             for name, result in relations.items():
                 contexts.append(build_relation_context(card["key"], result, name))
                 facts.extend(relation_facts(card["key"], result))
