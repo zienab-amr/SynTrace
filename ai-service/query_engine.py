@@ -267,8 +267,8 @@ def get_assignment_history(key, ctx, limit=MAX_HISTORY):
              "to": r["to_name"] or "Unassigned", "by": r["by"]} for r in rows]
 
 
-def get_change_history(key, ctx, limit=MAX_CHANGES):
-    """Every field change on one ticket, latest first."""
+def get_change_history(key, ctx, limit=MAX_CHANGES, oldest_first=False):
+    """Every field change on one ticket, latest first unless asked for the oldest first."""
     rows = run_query(
         """
         MATCH (w:WorkItem {tenant_id: $tenant})
@@ -277,7 +277,7 @@ def get_change_history(key, ctx, limit=MAX_CHANGES):
         MATCH (w)-[:HAD_CHANGE]->(c:ChangeEvent)
         RETURN c.changed_at AS at, c.field AS field, c.from_name AS from_name,
                c.to_name AS to_name, c.author AS by
-        ORDER BY c.changed_at DESC
+        ORDER BY c.changed_at """ + ("ASC" if oldest_first else "DESC") + """
         LIMIT $limit
         """,
         key=key, limit=limit, **_scope(ctx),
@@ -414,6 +414,124 @@ def get_related(key, ctx):
     """RELATES_TO في الاتجاهين."""
     return _get_relation(key, ctx,
                          "OPTIONAL MATCH (w)-[:RELATES_TO]-(r:WorkItem {tenant_id: $tenant})")
+
+
+def get_all_relations(key, ctx):
+    """Every link of this ticket, of any type and in both directions. Link types come from each
+    Jira site, so none is named here. CHILD_OF is hierarchy and comes with the ticket details."""
+    records = run_query(
+        """
+        MATCH (w:WorkItem {tenant_id: $tenant})
+        WHERE (w.key = $key OR $key IN coalesce(w.key_aliases, [])) AND w.project_key IN $allowed
+        MATCH (w)-[link]-(r:WorkItem {tenant_id: $tenant})
+        WHERE type(link) <> 'CHILD_OF'
+        OPTIONAL MATCH (r)-[:ASSIGNED_TO]->(p:Person)
+        RETURN type(link) AS relation, startNode(link) = w AS outgoing, r.key AS rkey,
+               r.summary AS summary, r.status AS status, r.url AS url,
+               r.project_key AS project, p.displayName AS assignee
+        ORDER BY relation, r.key
+        LIMIT $limit
+        """,
+        key=key, limit=MAX_RESULTS, **_scope(ctx))
+    allowed = set(ctx.allowed_projects)
+    return [{**build_item(r["rkey"], r["summary"], r["status"], r["url"], r["assignee"], r["project"], allowed),
+             "relation": r["relation"], "outgoing": r["outgoing"]} for r in records if r["rkey"]]
+
+
+INTERNAL_PROPERTIES = {"uid", "tenant_id", "jira_site_id", "jira_id", "key_aliases", "last_changelog_id",
+                       "reconcile_needed", "custom_fields", "custom_field_defs", "embedding", "url"}
+
+
+def _shown(name):
+    return (name not in INTERNAL_PROPERTIES and not name.startswith("embedding")
+            and not name.endswith(("_hash", "_raw", "_account_id")))
+
+
+def get_everything(key, ctx):
+    """Every stored field of one ticket, whatever fields its Jira site has, plus its people, parent,
+    sprints and how many comments, worklogs, attachments, changes and child tickets it has."""
+    rows = run_query(
+        """
+        MATCH (w:WorkItem {tenant_id: $tenant})
+        WHERE (w.key = $key OR $key IN coalesce(w.key_aliases, [])) AND w.project_key IN $allowed
+        OPTIONAL MATCH (w)-[:ASSIGNED_TO]->(a:Person)
+        OPTIONAL MATCH (w)-[:REPORTED_BY]->(r:Person)
+        OPTIONAL MATCH (w)-[:CHILD_OF]->(par:WorkItem)
+        WITH w, a, r, CASE WHEN par.project_key IN $allowed THEN par END AS par
+        OPTIONAL MATCH (w)-[:IN_SPRINT]->(s:Sprint)
+        WITH w, a, r, par, collect(DISTINCT {name: s.name, state: s.state, start: s.startDate, end: s.endDate}) AS sprints
+        RETURN properties(w) AS props, a.displayName AS assignee, r.displayName AS reporter,
+               par.key AS parent, par.summary AS parent_summary, par.issuetype AS parent_type, sprints,
+               COUNT { (w)-[:HAS_COMMENT]->() } AS comments, COUNT { (w)-[:HAS_WORKLOG]->() } AS worklogs,
+               COUNT { (w)-[:HAS_ATTACHMENT]->() } AS attachments, COUNT { (w)-[:HAD_CHANGE]->() } AS changes,
+               COUNT { (w)<-[:CHILD_OF]-() } AS children
+        """,
+        key=key, **_scope(ctx))
+    if not rows or not rows[0]["props"].get("summary"):
+        return None
+    r = rows[0]
+    props = r["props"]
+    fields = {k: v for k, v in sorted(props.items()) if _shown(k) and v not in (None, "", [])}
+    fields.update(readable_custom_fields(props.get("custom_fields"), props.get("custom_field_defs")) or {})
+    fields["assignee"] = r["assignee"] or "Unassigned"
+    if r["reporter"]:
+        fields["reporter"] = r["reporter"]
+    if r["parent"]:
+        fields["parent"] = f"{r['parent']} ({r['parent_type']}): {r['parent_summary']}"
+    sprints = [s for s in r["sprints"] if s.get("name")]
+    if sprints:
+        fields["sprints"] = "; ".join(f"{s['name']} ({s.get('state')}, {s.get('start')} to {s.get('end')})" for s in sprints)
+    for name in ("comments", "worklogs", "attachments", "changes", "children"):
+        fields[f"number of {name}"] = r[name]
+    return {"key": props.get("key"), "url": props.get("url"), "fields": fields}
+
+
+def find_comments(key, ctx, author=None, contains=None, oldest_first=False, limit=MAX_COMMENTS):
+    """One ticket's comments with their full text, filtered in the graph by author or words."""
+    order = "ASC" if oldest_first else "DESC"
+    rows = run_query(
+        """
+        MATCH (w:WorkItem {tenant_id: $tenant})
+        WHERE (w.key = $key OR $key IN coalesce(w.key_aliases, [])) AND w.project_key IN $allowed
+        MATCH (w)-[:HAS_COMMENT]->(c:Comment)
+        OPTIONAL MATCH (c)-[:WRITTEN_BY]->(p:Person)
+        WITH c, p WHERE ($author IS NULL OR toLower(p.displayName) CONTAINS $author)
+                    AND ($contains IS NULL OR toLower(c.text) CONTAINS $contains)
+        RETURN c.text AS text, c.created AS created, p.displayName AS author
+        ORDER BY c.created """ + order + """
+        LIMIT $limit
+        """,
+        key=key, author=(author or "").lower() or None, contains=(contains or "").lower() or None,
+        limit=limit, **_scope(ctx))
+    return [dict(r) for r in rows]
+
+
+def find_tickets(ctx, project=None, issuetype=None, status=None, assignee=None, parent=None,
+                 sprint=None, text=None, limit=MAX_RESULTS):
+    """Tickets that match every filter given, with the total. The graph does the filtering."""
+    low = {k: (v or "").strip().lower() or None for k, v in
+           {"project": project, "issuetype": issuetype, "status": status, "assignee": assignee,
+            "sprint": sprint, "text": text}.items()}
+    rows = run_query(
+        """
+        MATCH (w:WorkItem {tenant_id: $tenant})
+        WHERE w.project_key IN $allowed AND w.summary IS NOT NULL
+          AND ($project IS NULL OR toLower(w.project_key) = $project)
+          AND ($issuetype IS NULL OR toLower(w.issuetype) CONTAINS $issuetype)
+          AND ($status IS NULL OR toLower(w.status) CONTAINS $status OR toLower(w.statusCategory) = $status)
+          AND ($text IS NULL OR toLower(w.summary) CONTAINS $text)
+          AND ($parent IS NULL OR EXISTS { MATCH (w)-[:CHILD_OF]->(p:WorkItem) WHERE p.key = $parent })
+          AND ($sprint IS NULL OR EXISTS { MATCH (w)-[:IN_SPRINT]->(s:Sprint)
+                                           WHERE toLower(s.name) CONTAINS $sprint OR toLower(s.state) = $sprint })
+        OPTIONAL MATCH (w)-[:ASSIGNED_TO]->(a:Person)
+        WITH w, a WHERE $assignee IS NULL OR toLower(a.displayName) CONTAINS $assignee
+        WITH w, a ORDER BY w.key
+        WITH collect({key: w.key, summary: w.summary, type: w.issuetype, status: w.status,
+                      assignee: coalesce(a.displayName, 'Unassigned'), url: w.url}) AS items
+        RETURN size(items) AS total, items[0..$limit] AS items
+        """,
+        parent=(parent or "").strip().upper() or None, limit=limit, **low, **_scope(ctx))
+    return rows[0] if rows else {"total": 0, "items": []}
 
 
 # ---------- Entry point ----------
