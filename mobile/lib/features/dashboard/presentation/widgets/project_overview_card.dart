@@ -31,19 +31,37 @@ class ProjectOverviewCard extends StatelessWidget {
               ),
               const Text(
                 'View all →',
-                style: TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 12,
-                ),
+                style: TextStyle(color: AppColors.primary, fontSize: 12),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          _buildProjectRow(context, 'ERP Platform v3.0', 'Sprint 14 · 6d remaining', 0.57, 'High', AppColors.error),
+          _buildProjectRow(
+            context,
+            'ERP Platform v3.0',
+            'Sprint 14 · 6d remaining',
+            0.57,
+            'High',
+            AppColors.error,
+          ),
           const SizedBox(height: 16),
-          _buildProjectRow(context, 'Mobile Customer App', 'Sprint 8 · 4d remaining', 0.74, 'Medium', AppColors.warning),
+          _buildProjectRow(
+            context,
+            'Mobile Customer App',
+            'Sprint 8 · 4d remaining',
+            0.74,
+            'Medium',
+            AppColors.warning,
+          ),
           const SizedBox(height: 16),
-          _buildProjectRow(context, 'API Gateway Rewrite', 'Sprint 3 · 9d remaining', 0.32, 'Low', AppColors.secondary),
+          _buildProjectRow(
+            context,
+            'API Gateway Rewrite',
+            'Sprint 3 · 9d remaining',
+            0.32,
+            'Low',
+            AppColors.secondary,
+          ),
         ],
       ),
     );
@@ -75,7 +93,11 @@ class ProjectOverviewCard extends StatelessWidget {
             ),
             Text(
               risk,
-              style: TextStyle(color: riskColor, fontSize: 11, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: riskColor,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
         ),
@@ -90,7 +112,9 @@ class ProjectOverviewCard extends StatelessWidget {
                   minHeight: 4,
                   backgroundColor: theme.dividerColor.withOpacity(0.2),
                   valueColor: AlwaysStoppedAnimation<Color>(
-                    riskColor == AppColors.error ? AppColors.error : AppColors.primary,
+                    riskColor == AppColors.error
+                        ? AppColors.error
+                        : AppColors.primary,
                   ),
                 ),
               ),

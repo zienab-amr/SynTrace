@@ -28,54 +28,59 @@ class ProjectStatsGrid extends StatelessWidget {
         final width = constraints.maxWidth;
         final crossAxisCount = width < 600 ? 2 : (width < 1024 ? 3 : 5);
 
-        return GridView.count(
-          crossAxisCount: crossAxisCount,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
+        final cards = [
+          StatCard(
+            label: 'Health',
+            value: '${stats.healthPercent}%',
+            color: stats.healthPercent > 80
+                ? AppColors.secondary
+                : stats.healthPercent > 60
+                    ? AppColors.warning
+                    : AppColors.error,
+            icon: Icons.favorite_outline,
+            onTap: onHealthTap,
+          ),
+          StatCard(
+            label: 'Open Tasks',
+            value: '${stats.openTasks}',
+            color: AppColors.primary,
+            icon: Icons.task_alt,
+            onTap: onTasksTap,
+          ),
+          StatCard(
+            label: 'Blocked',
+            value: '${stats.blockedTasks}',
+            color: AppColors.error,
+            icon: Icons.block,
+            onTap: onBlockedTap,
+          ),
+          StatCard(
+            label: 'PRs',
+            value: '${stats.pullRequests}',
+            color: AppColors.primaryLight,
+            icon: Icons.merge,
+            onTap: onPRsTap,
+          ),
+          StatCard(
+            label: 'Commits',
+            value: '${stats.commitsCount}',
+            color: AppColors.secondary,
+            icon: Icons.commit,
+            onTap: onCommitsTap,
+          ),
+        ];
+
+        return GridView.builder(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            mainAxisExtent: 110, 
+          ),
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          childAspectRatio: 1.6,
-          children: [
-            StatCard(
-              label: 'Health',
-              value: '${stats.healthPercent}%',
-              color: stats.healthPercent > 80
-                  ? AppColors.secondary
-                  : stats.healthPercent > 60
-                  ? AppColors.warning
-                  : AppColors.error,
-              icon: Icons.favorite_outline,
-              onTap: onHealthTap,
-            ),
-            StatCard(
-              label: 'Open Tasks',
-              value: '${stats.openTasks}',
-              color: AppColors.primary,
-              icon: Icons.task_alt,
-              onTap: onTasksTap,
-            ),
-            StatCard(
-              label: 'Blocked',
-              value: '${stats.blockedTasks}',
-              color: AppColors.error,
-              icon: Icons.block,
-              onTap: onBlockedTap,
-            ),
-            StatCard(
-              label: 'PRs',
-              value: '${stats.pullRequests}',
-              color: AppColors.primaryLight,
-              icon: Icons.merge,
-              onTap: onPRsTap,
-            ),
-            StatCard(
-              label: 'Commits',
-              value: '${stats.commitsCount}',
-              color: AppColors.secondary,
-              icon: Icons.commit,
-              onTap: onCommitsTap,
-            ),
-          ],
+          itemCount: cards.length,
+          itemBuilder: (context, index) => cards[index],
         );
       },
     );

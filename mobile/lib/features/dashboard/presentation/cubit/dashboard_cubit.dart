@@ -7,12 +7,12 @@ class DashboardCubit extends Cubit<DashboardState> {
 
   Future<void> loadDashboard() async {
     emit(DashboardLoading());
-    
+
     await Future.delayed(const Duration(milliseconds: 800));
-    
+
     final stats = MockDashboardData.getStats();
     final activities = MockDashboardData.getRecentActivities();
-    
+
     emit(DashboardLoaded(stats, activities));
   }
 }

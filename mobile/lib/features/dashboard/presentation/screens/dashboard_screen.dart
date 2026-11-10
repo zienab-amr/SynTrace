@@ -31,7 +31,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: BlocBuilder<DashboardCubit, DashboardState>(
         builder: (context, state) {
           if (state is DashboardLoading) {
-            return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+            return const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            );
           }
 
           if (state is DashboardLoaded) {
@@ -42,58 +44,69 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ═══ Stats Grid ═══
                       LayoutBuilder(
                         builder: (context, constraints) {
                           final crossAxisCount = constraints.maxWidth > 800 ? 4 : 2;
-                          return GridView.count(
-                            crossAxisCount: crossAxisCount,
-                            crossAxisSpacing: 16,
-                            mainAxisSpacing: 16,
+                          
+                          return GridView.builder(
+                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: crossAxisCount,
+                              crossAxisSpacing: 16,
+                              mainAxisSpacing: 16,
+                              mainAxisExtent: 135,
+                            ),
+                            itemCount: 4,
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
-                            childAspectRatio: 1.5,
-                            children: [
-                              _buildStatCard(
-                                context, 
-                                'Active Projects', 
-                                '${state.stats.activeProjects}', 
-                                Icons.folder_open, 
-                                Colors.blue,
-                                onTap: () => context.go(AppRoutes.projects),
-                              ),
-                              _buildStatCard(
-                                context, 
-                                'Open Tasks', 
-                                '${state.stats.openTasks}', 
-                                Icons.task_alt, 
-                                Colors.orange,
-                                onTap: () => context.go(AppRoutes.tasks),
-                              ),
-                              _buildStatCard(
-                                context, 
-                                'Total Commits', 
-                                '${state.stats.totalCommits}', 
-                                Icons.commit, 
-                                Colors.green,
-                                onTap: () => context.go(AppRoutes.projects), 
-                              ),
-                              _buildStatCard(
-                                context, 
-                                'Team Members', 
-                                '${state.stats.teamMembers}', 
-                                Icons.people, 
-                                Colors.purple,
-                                onTap: () => context.go(AppRoutes.team), 
-                              ),
-                            ],
+                            itemBuilder: (context, index) {
+                              final stats = [
+                                {
+                                  'title': 'Active Projects',
+                                  'value': '${state.stats.activeProjects}',
+                                  'icon': Icons.folder_open,
+                                  'color': Colors.blue,
+                                  'route': AppRoutes.projects,
+                                },
+                                {
+                                  'title': 'Open Tasks',
+                                  'value': '${state.stats.openTasks}',
+                                  'icon': Icons.task_alt,
+                                  'color': Colors.orange,
+                                  'route': AppRoutes.tasks,
+                                },
+                                {
+                                  'title': 'Total Commits',
+                                  'value': '${state.stats.totalCommits}',
+                                  'icon': Icons.commit,
+                                  'color': Colors.green,
+                                  'route': AppRoutes.projects,
+                                },
+                                {
+                                  'title': 'Team Members',
+                                  'value': '${state.stats.teamMembers}',
+                                  'icon': Icons.people,
+                                  'color': Colors.purple,
+                                  'route': AppRoutes.team,
+                                },
+                              ];
+
+                              final stat = stats[index];
+
+                              return _buildStatCard(
+                                context,
+                                stat['title'] as String,
+                                stat['value'] as String,
+                                stat['icon'] as IconData,
+                                stat['color'] as Color,
+                                onTap: () => context.go(stat['route'] as String),
+                              );
+                            },
                           );
                         },
                       ),
-                      
+
                       const SizedBox(height: 32),
-                      
-                      // ═══ Recent Activity ═══
+
                       Text(
                         'Recent Activity',
                         style: TextStyle(
@@ -103,8 +116,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      
-                      ...state.activities.map((activity) => _buildActivityCard(context, activity)),
+
+                      ...state.activities.map(
+                        (activity) => _buildActivityCard(context, activity),
+                      ),
                     ],
                   ),
                 ),
@@ -119,10 +134,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildStatCard(
-    BuildContext context, 
-    String title, 
-    String value, 
-    IconData icon, 
+    BuildContext context,
+    String title,
+    String value,
+    IconData icon,
     Color color, {
     VoidCallback? onTap,
   }) {
@@ -139,15 +154,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: theme.dividerColor.withOpacity(0.3)),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: color, size: 28),
-              const SizedBox(height: 12),
-              Text(value, style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 24, fontWeight: FontWeight.bold)),
-              Text(title, style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6), fontSize: 13)),
-            ],
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: color, size: 28),
+                const SizedBox(height: 12),
+                Text(
+                  value,
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -157,7 +189,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildActivityCard(BuildContext context, RecentActivity activity) {
     final theme = Theme.of(context);
     final timeStr = DateFormat('hh:mm a').format(activity.timestamp);
-    
+
     IconData icon;
     Color color;
     VoidCallback? onTap;
@@ -200,7 +232,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               Container(
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
                 child: Icon(icon, color: color, size: 24),
               ),
               const SizedBox(width: 16),
@@ -208,13 +243,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(activity.title, style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 15, fontWeight: FontWeight.w600)),
+                    Text(
+                      activity.title,
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     const SizedBox(height: 4),
-                    Text(activity.description, style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6), fontSize: 13)),
+                    Text(
+                      activity.description,
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface.withOpacity(0.6),
+                        fontSize: 13,
+                      ),
+                    ),
                   ],
                 ),
               ),
-              Text(timeStr, style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.4), fontSize: 12)),
+              Text(
+                timeStr,
+                style: TextStyle(
+                  color: theme.colorScheme.onSurface.withOpacity(0.4),
+                  fontSize: 12,
+                ),
+              ),
             ],
           ),
         ),
