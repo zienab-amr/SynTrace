@@ -55,7 +55,7 @@ class SettingsCubit extends Cubit<SettingsState> {
     _original = profile;
     emit(SettingsLoaded(profile: profile));
   }
-
+    
   void startEditing() {
     if (state is SettingsLoaded) {
       emit((state as SettingsLoaded).copyWith(isEditing: true));
@@ -133,6 +133,26 @@ class SettingsCubit extends Cubit<SettingsState> {
       }
     } catch (e) {
       emit(SettingsError('Error: $e'));
+    }
+  }
+
+ Future<void> logout() async {
+    try {
+      final refreshToken = await SecureStorageService.instance.getRefreshToken();
+
+      if (refreshToken != null && refreshToken.isNotEmpty) {
+        await ApiClient.instance.post(
+          ApiEndpoints.logout,
+          data: {'refreshToken': refreshToken},
+        );
+      }
+    } catch (e) {
+      print('Logout API failed: $e');
+    } finally {
+      await CurrentUserService.instance.clearUser();
+      await SecureStorageService.instance.clearAll(); // مسح كل حاجة بالكامل
+      
+      emit(const SettingsLoggedOut());
     }
   }
 

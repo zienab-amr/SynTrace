@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:syntrace/core/models/user_model.dart';
 import 'package:syntrace/core/network/api_client.dart';
 import 'package:syntrace/core/network/api_endpoints.dart';
 import 'package:syntrace/core/services/current_user_service.dart';
 import 'package:syntrace/core/services/secure_storage_service.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
+import 'package:syntrace/features/settings/presentation/cubit/settings_cubit.dart';
 
 class ProfileTab extends StatefulWidget {
   const ProfileTab({super.key});
@@ -142,6 +144,35 @@ class _ProfileTabState extends State<ProfileTab> {
     setState(() => _isEditing = false);
   }
 
+  void _showLogoutDialog() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Log Out'),
+          content: const Text('Are you sure you want to log out of SynTrace?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                context.read<SettingsCubit>().logout();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.error,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Log Out'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -154,6 +185,31 @@ class _ProfileTabState extends State<ProfileTab> {
         _buildPermissionsCard(theme),
         const SizedBox(height: 24),
         _buildActions(),
+        
+        const SizedBox(height: 48),
+        Divider(color: theme.dividerColor.withOpacity(0.3)),
+        const SizedBox(height: 16),
+        
+        // Logout Button
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _showLogoutDialog,
+            icon: const Icon(Icons.logout, color: AppColors.error, size: 20),
+            label: const Text(
+              'Log Out',
+              style: TextStyle(
+                color: AppColors.error,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
       ],
     );
   }

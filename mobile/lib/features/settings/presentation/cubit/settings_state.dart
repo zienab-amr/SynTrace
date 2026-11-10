@@ -1,5 +1,5 @@
-import 'package:syntrace/core/models/user_profile_model.dart';
 import 'package:syntrace/core/state/base_state.dart';
+import 'package:syntrace/core/models/user_profile_model.dart';
 
 abstract class SettingsState extends BaseState {
   const SettingsState();
@@ -15,29 +15,29 @@ class SettingsLoading extends SettingsState {
 
 class SettingsLoaded extends SettingsState {
   final UserProfileModel profile;
-  final bool isSaving;
   final bool isEditing;
+  final bool isSaving;
 
   const SettingsLoaded({
     required this.profile,
-    this.isSaving = false,
     this.isEditing = false,
+    this.isSaving = false,
   });
 
   SettingsLoaded copyWith({
     UserProfileModel? profile,
-    bool? isSaving,
     bool? isEditing,
+    bool? isSaving,
   }) {
     return SettingsLoaded(
       profile: profile ?? this.profile,
-      isSaving: isSaving ?? this.isSaving,
       isEditing: isEditing ?? this.isEditing,
+      isSaving: isSaving ?? this.isSaving,
     );
   }
 
   @override
-  List<Object?> get props => [profile, isSaving, isEditing];
+  List<Object?> get props => [profile, isEditing, isSaving];
 }
 
 class SettingsError extends SettingsState {
@@ -46,4 +46,8 @@ class SettingsError extends SettingsState {
 
   @override
   List<Object?> get props => [message];
+}
+
+class SettingsLoggedOut extends SettingsState {
+  const SettingsLoggedOut();
 }
