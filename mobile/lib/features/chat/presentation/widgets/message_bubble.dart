@@ -28,7 +28,6 @@ class MessageBubble extends StatelessWidget {
           crossAxisAlignment:
               isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
-            // ─── Progress Steps (AI Only) ───
             if (!isUser && message.steps.isNotEmpty) ...[
               ConstrainedBox(
                 constraints: BoxConstraints(
@@ -38,20 +37,15 @@ class MessageBubble extends StatelessWidget {
               ),
               const SizedBox(height: 10),
             ],
-
-            // ─── Message Row ───
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment:
                   isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
               children: [
-                // ─── Failed Icon (User Message) ───
                 if (isUser && message.hasError && onRetry != null) ...[
                   _buildFailedIcon(context),
                   const SizedBox(width: 8),
                 ],
-
-                // ─── Bubble ───
                 Flexible(
                   child: ConstrainedBox(
                     constraints: BoxConstraints(
@@ -70,9 +64,6 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Failed Icon (Retry / Delete Menu)
-  // ═══════════════════════════════════════════════════════
   Widget _buildFailedIcon(BuildContext context) {
     return PopupMenuButton<String>(
       tooltip: 'Options',
@@ -118,9 +109,6 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // User Bubble
-  // ═══════════════════════════════════════════════════════
   Widget _buildUserBubble(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -146,13 +134,9 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // AI Bubble
-  // ═══════════════════════════════════════════════════════
   Widget _buildAiBubble(BuildContext context) {
     final theme = Theme.of(context);
 
-    // ─── Error Message ───
     if (message.hasError) {
       return Container(
         padding: const EdgeInsets.all(14),
@@ -183,7 +167,6 @@ class MessageBubble extends StatelessWidget {
       );
     }
 
-    // ─── Normal Message ───
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -200,10 +183,14 @@ class MessageBubble extends StatelessWidget {
               ],
             )
           else if (message.content.isNotEmpty)
-            MarkdownBody(
-              data: message.content,
-              selectable: true, // تفعيل النسخ
-              styleSheet: _markdownStyle(theme),
+            Directionality(
+              textDirection: TextDirection.rtl,
+              child: MarkdownBody(
+                data: message.content,
+                selectable: true,
+                softLineBreak: true,
+                styleSheet: _markdownStyle(theme),
+              ),
             ),
 
           if (message.isStreaming && message.content.isNotEmpty) ...[
@@ -211,7 +198,6 @@ class MessageBubble extends StatelessWidget {
             _BlinkingCursor(color: theme.colorScheme.onSurface),
           ],
 
-          // ─── Jira Cards ───
           if (message.jiraCards.isNotEmpty) ...[
             const SizedBox(height: 12),
             ...message.jiraCards.map((card) {
@@ -223,11 +209,13 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Markdown Style
-  // ═══════════════════════════════════════════════════════
   MarkdownStyleSheet _markdownStyle(ThemeData theme) {
     return MarkdownStyleSheet(
+      textAlign: WrapAlignment.start,
+      h1Align: WrapAlignment.start,
+      h2Align: WrapAlignment.start,
+      h3Align: WrapAlignment.start,
+      listBulletPadding: const EdgeInsets.only(left: 0, right: 8),
       h2: TextStyle(
         color: theme.colorScheme.onSurface,
         fontSize: 17,
@@ -250,9 +238,10 @@ class MessageBubble extends StatelessWidget {
         fontWeight: FontWeight.bold,
       ),
       listBullet: TextStyle(
-        color: theme.colorScheme.onSurface.withOpacity(0.85),
+        color: AppColors.primary,
         fontSize: 14,
         height: 1.6,
+        fontWeight: FontWeight.bold,
       ),
       code: TextStyle(
         color: AppColors.secondary,
@@ -267,17 +256,14 @@ class MessageBubble extends StatelessWidget {
       blockquoteDecoration: BoxDecoration(
         color: AppColors.primary.withOpacity(0.08),
         borderRadius: BorderRadius.circular(8),
-        border: Border(
-          left: BorderSide(color: AppColors.primary, width: 3),
+        border: const Border(
+          right: BorderSide(color: AppColors.primary, width: 3),
         ),
       ),
     );
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// Blinking Cursor
-// ═══════════════════════════════════════════════════════════
 class _BlinkingCursor extends StatefulWidget {
   final Color color;
   const _BlinkingCursor({required this.color});
