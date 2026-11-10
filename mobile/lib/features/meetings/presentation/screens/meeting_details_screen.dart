@@ -10,6 +10,36 @@ class MeetingDetailsScreen extends StatelessWidget {
 
   const MeetingDetailsScreen({super.key, required this.note});
 
+  void _showDeleteDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete Note'),
+          content: const Text('Are you sure you want to delete this meeting note?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                context.read<MeetingNotesCubit>().deleteMeeting(note.id);
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -20,6 +50,11 @@ class MeetingDetailsScreen extends StatelessWidget {
         title: Text(note.title),
         backgroundColor: theme.scaffoldBackgroundColor,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            tooltip: 'Delete Note',
+            onPressed: () => _showDeleteDialog(context),
+          ),
           IconButton(
             icon: const Icon(Icons.edit_outlined),
             tooltip: 'Edit Note',
@@ -33,8 +68,7 @@ class MeetingDetailsScreen extends StatelessWidget {
                   ),
                 ),
               ).then((_) {
-                if (context.mounted)
-                  Navigator.pop(context); // نرجع للقائمة عشان نشوف التعديل
+                if (context.mounted) Navigator.pop(context);
               });
             },
           ),
@@ -78,7 +112,6 @@ class MeetingDetailsScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 24),
-
             if (note.participants.isNotEmpty) ...[
               Text(
                 'Participants',
@@ -97,8 +130,8 @@ class MeetingDetailsScreen extends StatelessWidget {
                       (p) => Chip(
                         avatar: CircleAvatar(
                           child: Text(p[0].toUpperCase()),
-                          backgroundColor: theme.colorScheme.primary
-                              .withOpacity(0.3),
+                          backgroundColor:
+                              theme.colorScheme.primary.withOpacity(0.3),
                         ),
                         label: Text(p),
                       ),
@@ -107,7 +140,6 @@ class MeetingDetailsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
             ],
-
             if (note.keyPoints.isNotEmpty) ...[
               Text(
                 'Meeting Highlights',
@@ -152,7 +184,6 @@ class MeetingDetailsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
             ],
-
             Text(
               'Full Transcript',
               style: TextStyle(

@@ -131,6 +131,35 @@ class _MeetingCard extends StatelessWidget {
 
   const _MeetingCard({required this.note});
 
+  void _showDeleteDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete Note'),
+          content: const Text('Are you sure you want to delete this note?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                context.read<MeetingNotesCubit>().deleteMeeting(note.id);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -207,10 +236,14 @@ class _MeetingCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, size: 20, color: Colors.red),
+                  onPressed: () => _showDeleteDialog(context),
+                ),
               ],
             ),
             const SizedBox(height: 4),
-
             if (note.projectName != null)
               Row(
                 children: [
@@ -230,7 +263,6 @@ class _MeetingCard extends StatelessWidget {
                   ),
                 ],
               ),
-
             const SizedBox(height: 8),
             Text(
               dateFormat.format(note.date),
@@ -240,7 +272,6 @@ class _MeetingCard extends StatelessWidget {
               ),
             ),
             const Spacer(),
-
             Row(
               children: [
                 ...note.participants
