@@ -38,13 +38,13 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   Widget build(BuildContext context) {
     return AppPageScaffold(
       title: 'Projects',
-      subtitle: 'roudiiiii',
       actions: const [CreateButton()],
       searchBar: _buildSearchBar(),
       filterBar: BlocBuilder<ProjectsCubit, ProjectsState>(
         builder: (context, state) {
-          final statusFilter =
-              state is ProjectsLoaded ? state.statusFilter : null;
+          final statusFilter = state is ProjectsLoaded
+              ? state.statusFilter
+              : null;
           final hasActiveFilters =
               state is ProjectsLoaded && state.hasActiveFilters;
 
@@ -91,8 +91,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                 message: state.hasActiveFilters
                     ? 'Try adjusting your search or filters'
                     : 'Create your first project to get started',
-                actionLabel:
-                    state.hasActiveFilters ? 'Clear filters' : null,
+                actionLabel: state.hasActiveFilters ? 'Clear filters' : null,
                 onAction: state.hasActiveFilters
                     ? () {
                         _searchController.clear();
@@ -125,9 +124,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.dividerColor.withOpacity(0.5),
-        ),
+        border: Border.all(color: theme.dividerColor.withOpacity(0.5)),
       ),
       child: Row(
         children: [
