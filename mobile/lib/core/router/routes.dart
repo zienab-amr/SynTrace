@@ -31,6 +31,7 @@ class AppRoutes {
 
   static String profileDetailsById(String id) => '/profile/$id';
   static String projectDetailsById(String id) => '/projects/$id';
+    static const String createProject = '/projects/create';
   static const String team = '/team';
   static const String developers = '/developers';
 }

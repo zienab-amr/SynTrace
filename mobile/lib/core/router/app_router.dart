@@ -19,6 +19,7 @@ import 'package:syntrace/features/notifications/presentation/cubit/jira_events_c
 import 'package:syntrace/features/notifications/presentation/screens/jira_activity_screen.dart';
 import 'package:syntrace/features/profile/presentation/screens/employee_profile_screen.dart';
 import 'package:syntrace/features/projects/presentation/cubit/projects_cubit.dart';
+import 'package:syntrace/features/projects/presentation/screens/CreateProjectScreen.dart';
 import 'package:syntrace/features/projects/presentation/screens/project_details_screen.dart';
 import 'package:syntrace/features/projects/presentation/screens/projects_screen.dart';
 import 'package:syntrace/features/role/presentation/cubit/roles_cubit.dart';
@@ -30,6 +31,7 @@ import 'package:syntrace/features/settings/presentation/screens/settings_screen.
 import 'package:syntrace/features/splash/presentation/screens/splash_screen.dart';
 import 'package:syntrace/features/onboarding/presentation/cubit/onboarding_cubit.dart';
 import 'package:syntrace/features/onboarding/presentation/screens/onboarding_wizard_screen.dart';
+import 'package:syntrace/features/tasks/presentation/cubit/tasks_cubit.dart';
 import 'package:syntrace/features/tasks/presentation/screens/tasks_screen.dart';
 import 'package:syntrace/shared/widgets/app_shell.dart';
 
@@ -131,15 +133,6 @@ final appRouter = GoRouter(
           builder: (context, state) => const GraphScreen(),
         ),
 
-        GoRoute(
-          path: AppRoutes.tasks,
-          builder: (context, state) => const TasksScreen(),
-        ),
-        GoRoute(
-          path: AppRoutes.projects,
-          builder: (context, state) => const ProjectsScreen(),
-        ),
-
         // Projects
         GoRoute(
           path: AppRoutes.projects,
@@ -147,6 +140,12 @@ final appRouter = GoRouter(
             create: (context) => ProjectsCubit(),
             child: const ProjectsScreen(),
           ),
+        ),
+
+         // Create Project Screen
+        GoRoute(
+          path: AppRoutes.createProject,
+          builder: (context, state) => const CreateProjectScreen(),
         ),
 
         // Project Details
@@ -165,6 +164,13 @@ final appRouter = GoRouter(
             child: const DevelopersScreen(),
           ),
         ),
+        GoRoute(
+          path: AppRoutes.tasks,
+          builder: (context, state) => BlocProvider(
+            create: (context) => TasksCubit(),
+            child: const TasksScreen(),
+          ),
+        ),
 
         GoRoute(
           path: '/profile/:id',
@@ -181,19 +187,6 @@ final appRouter = GoRouter(
             create: (context) => MeetingNotesCubit(),
             child: const MeetingNotesScreen(),
           ),
-        ),
-
-        // Activity Feed
-        GoRoute(
-          path: '/jira-callback',
-          builder: (context, state) {
-            final status = state.uri.queryParameters['status'] ?? '';
-            final pendingId = state.uri.queryParameters['pendingId'];
-            return BlocProvider(
-              create: (context) => IntegrationsCubit(),
-              child: JiraCallbackScreen(status: status, pendingId: pendingId),
-            );
-          },
         ),
         GoRoute(
           path: AppRoutes.roles,
