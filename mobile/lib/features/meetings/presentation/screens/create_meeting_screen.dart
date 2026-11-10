@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import 'package:syntrace/core/router/routes.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
 import 'package:syntrace/features/projects/data/mock_projects.dart';
 import '../../data/models/meeting_note_model.dart';
@@ -85,8 +87,7 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
         );
 
         final draft = MeetingNote(
-          id:
-              widget.existingDraft?.id ??
+          id: widget.existingDraft?.id ??
               DateTime.now().millisecondsSinceEpoch.toString(),
           title: _titleController.text.trim().isEmpty
               ? 'Untitled Draft'
@@ -107,7 +108,6 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
       }
     }
 
-    // لو النوتة محفوظة (Published)، الخروج من غير حفظ بيلغي التعديلات
     Navigator.pop(context);
   }
 
@@ -128,8 +128,7 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
     );
 
     final newNote = MeetingNote(
-      id:
-          widget.existingDraft?.id ??
+      id: widget.existingDraft?.id ??
           DateTime.now().millisecondsSinceEpoch.toString(),
       title: _titleController.text.trim(),
       date: DateTime.now(),
@@ -179,28 +178,58 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            DropdownButtonFormField<String>(
-              value: _selectedProjectId,
-              dropdownColor: theme.colorScheme.surface,
-              decoration: InputDecoration(
-                labelText: 'Assign to Project',
-                border: const OutlineInputBorder(),
-                filled: true,
-                fillColor: theme.colorScheme.surface,
-              ),
-              items: [
-                const DropdownMenuItem<String>(
-                  value: null,
-                  child: Text('No Project (Unassigned)'),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _selectedProjectId,
+                    isExpanded: true,
+                    dropdownColor: theme.colorScheme.surface,
+                    decoration: InputDecoration(
+                      labelText: 'Assign to Project',
+                      border: const OutlineInputBorder(),
+                      filled: true,
+                      fillColor: theme.colorScheme.surface,
+                    ),
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: null,
+                        child: Text('No Project (Unassigned)'),
+                      ),
+                      ...MockProjects.projects.map(
+                        (p) => DropdownMenuItem<String>(
+                          value: p.id,
+                          child: Text(
+                            p.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ],
+                    onChanged: (val) =>
+                        setState(() => _selectedProjectId = val),
+                  ),
                 ),
-                ...MockProjects.projects.map(
-                  (p) => DropdownMenuItem<String>(
-                    value: p.id,
-                    child: Text(p.name),
+                const SizedBox(width: 8),
+                SizedBox(
+                  height: 56,
+                  child: OutlinedButton(
+                    onPressed: () {
+                      context.push(AppRoutes.createProject);
+                    },
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      side: BorderSide(color: theme.dividerColor),
+                    ),
+                    child: const Icon(Icons.add),
                   ),
                 ),
               ],
-              onChanged: (val) => setState(() => _selectedProjectId = val),
             ),
             const SizedBox(height: 16),
             TextField(
@@ -221,7 +250,6 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
               ),
             ),
             const SizedBox(height: 24),
-
             Text(
               'Key Discussion Points',
               style: TextStyle(
@@ -231,7 +259,6 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
               ),
             ),
             const SizedBox(height: 12),
-
             Wrap(
               spacing: 8,
               children: MeetingPointType.values.map((type) {
@@ -250,7 +277,6 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
               }).toList(),
             ),
             const SizedBox(height: 12),
-
             Row(
               children: [
                 Expanded(
@@ -280,7 +306,6 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
               ],
             ),
             const SizedBox(height: 12),
-
             ..._keyPoints.asMap().entries.map((entry) {
               final index = entry.key;
               final point = entry.value;
@@ -320,9 +345,7 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
                 ),
               );
             }),
-
             const SizedBox(height: 24),
-
             Text(
               'Full Transcript',
               style: TextStyle(
@@ -343,7 +366,6 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
               ),
             ),
             const SizedBox(height: 24),
-
             SizedBox(
               width: double.infinity,
               height: 50,
