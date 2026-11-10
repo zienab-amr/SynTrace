@@ -17,10 +17,8 @@ class ChatCubit extends Cubit<ChatState> {
 
   Future<void> loadChat() async {
     emit(const ChatLoading());
-
     try {
       final cachedSessions = await ChatLocalStorageService.instance.loadSessions();
-      
       if (cachedSessions != null && cachedSessions.isNotEmpty) {
         emit(ChatLoaded(sessions: cachedSessions));
       } else {
@@ -34,10 +32,8 @@ class ChatCubit extends Cubit<ChatState> {
   Future<void> openSession(ChatSession session) async {
     if (state is! ChatLoaded) return;
     final current = state as ChatLoaded;
-
     try {
       final cachedMessages = await ChatLocalStorageService.instance.loadMessages(session.id);
-
       emit(current.copyWith(
         currentSessionId: session.id,
         messages: cachedMessages ?? [],
@@ -53,7 +49,6 @@ class ChatCubit extends Cubit<ChatState> {
   void newChat() {
     if (state is! ChatLoaded) return;
     final current = state as ChatLoaded;
-
     emit(current.copyWith(
       messages: [],
       clearSession: true,
@@ -113,17 +108,62 @@ class ChatCubit extends Cubit<ChatState> {
           if (aiResponseText.contains('links: [')) {
             aiResponseText = aiResponseText.split('links: [').first.trim();
           }
+          
           if (data['links'] is List) {
             final links = data['links'] as List;
             for (var link in links) {
               if (link is Map) {
+                var fields = link['fields'] is Map ? link['fields'] as Map : {};
+
+                String key = link['key']?.toString() ?? link['issueKey']?.toString() ?? 'KEY';
+                
+                String summary = link['summary']?.toString() ?? 
+                                 fields['summary']?.toString() ?? 
+                                 'No Summary';
+
+                var statusObj = link['status'] ?? fields['status'];
+                String status = 'Unknown';
+                String statusCategory = 'todo';
+                if (statusObj is Map) {
+                  status = statusObj['name']?.toString() ?? 'Unknown';
+                  statusCategory = statusObj['statusCategory']?['name']?.toString() ?? 
+                                   statusObj['statusCategory']?['key']?.toString() ?? 'todo';
+                } else if (statusObj != null) {
+                  status = statusObj.toString();
+                }
+
+                var priorityObj = link['priority'] ?? fields['priority'];
+                String priority = 'None';
+                if (priorityObj is Map) {
+                  priority = priorityObj['name']?.toString() ?? 'None';
+                } else if (priorityObj != null) {
+                  priority = priorityObj.toString();
+                }
+
+                var typeObj = link['type'] ?? link['issueType'] ?? fields['issuetype'] ?? fields['issueType'];
+                String issueType = 'Task';
+                if (typeObj is Map) {
+                  issueType = typeObj['name']?.toString() ?? 'Task';
+                } else if (typeObj != null) {
+                  issueType = typeObj.toString();
+                }
+
+                String assignee = '';
+                var assigneeObj = link['assignee'] ?? fields['assignee'];
+                if (assigneeObj is Map) {
+                  assignee = assigneeObj['displayName']?.toString() ?? assigneeObj['name']?.toString() ?? '';
+                } else if (assigneeObj != null) {
+                  assignee = assigneeObj.toString();
+                }
+
                 jiraCards.add(JiraCardModel(
-                  issueKey: link['key']?.toString() ?? 'LINK',
-                  summary: 'Jira Ticket Reference', 
-                  status: 'Open',
-                  statusCategory: 'todo',
-                  priority: 'Medium',
-                  issueType: 'Task',
+                  issueKey: key,
+                  summary: summary,
+                  status: status,
+                  statusCategory: statusCategory,
+                  priority: priority,
+                  issueType: issueType,
+                  assigneeName: assignee.isNotEmpty ? assignee : null,
                   url: link['url']?.toString() ?? '',
                 ));
               }
@@ -175,9 +215,7 @@ class ChatCubit extends Cubit<ChatState> {
 
     for (final chunk in chunks) {
       await Future.delayed(const Duration(milliseconds: 20));
-
       accumulated += chunk;
-
       if (state is! ChatLoaded) return;
       final current = state as ChatLoaded;
 
@@ -216,20 +254,16 @@ class ChatCubit extends Cubit<ChatState> {
     for (int i = 0; i < text.length; i++) {
       final char = text[i];
       buffer.write(char);
-
       final isBreakChar = char == ' ' || char == '\n';
       final isChunkFull = buffer.length >= 3;
-
       if (isBreakChar || isChunkFull) {
         chunks.add(buffer.toString());
         buffer.clear();
       }
     }
-
     if (buffer.isNotEmpty) {
       chunks.add(buffer.toString());
     }
-
     return chunks;
   }
 
