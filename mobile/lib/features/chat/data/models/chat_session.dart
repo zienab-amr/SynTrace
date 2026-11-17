@@ -15,10 +15,14 @@ class ChatSession extends Equatable {
 
   factory ChatSession.fromJson(Map<String, dynamic> json) {
     return ChatSession(
-      id: json['id'] as String,
-      title: json['title'] as String,
-      lastMessageAt: DateTime.parse(json['lastMessageAt'] as String),
-      preview: json['preview'] as String?,
+      id: json['id']?.toString() ?? json['conversationId']?.toString() ?? '',
+      title: json['title']?.toString() ?? 'New Chat',
+      lastMessageAt: json['updatedAt'] != null 
+          ? DateTime.parse(json['updatedAt'].toString()) 
+          : (json['lastMessageAt'] != null 
+              ? DateTime.parse(json['lastMessageAt'].toString()) 
+              : DateTime.now()),
+      preview: json['preview']?.toString(),
     );
   }
 
