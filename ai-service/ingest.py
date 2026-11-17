@@ -602,6 +602,12 @@ def normalize_issue(issue, tenant_id=DEFAULT_TENANT, field_meta=None,
                          for c in (fields.get("comment") or {}).get("comments") or []]
     model["worklogs"] = [normalize_worklog(w, tenant_id, key, project_key, site)
                         for w in (fields.get("worklog") or {}).get("worklogs") or []]
+    # Jira sends at most 20 worklogs (and a limited number of comments) inside an issue. The totals
+    # say how many exist, so an answer can tell when some are missing.
+    for prop, name in (("worklog_total", "worklog"), ("comment_total", "comment")):
+        block = fields.get(name)
+        if isinstance(block, dict) and isinstance(block.get("total"), int):
+            props[prop] = block["total"]
     model["attachments"] = [normalize_attachment(a, tenant_id, key, project_key, site)
                             for a in fields.get("attachment") or []]
     histories = _histories(issue, changelog, actor, event_time)

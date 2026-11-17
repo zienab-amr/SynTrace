@@ -52,7 +52,8 @@ def _no_results(question):
 
 def _not_found_message(result, question):
     if result.get("type") == "not_found" and _is_arabic(question):
-        return f"مفيش تذكرة بالرقم {result.get('key')}."
+        hint = f" تقصد {result['suggestion']}؟" if result.get("suggestion") else ""
+        return f"مفيش تذكرة بالرقم {result.get('key')}.{hint}"
     return result.get("message", "Could not retrieve ticket.")
 
 
@@ -288,7 +289,9 @@ _STAGE = "answer"   # which step is calling the model, for measuring only
 
 def _complete(prompt):
     """The answer text, or None. A rate limit moves on to GROQ_FALLBACK_MODEL when one is set."""
+    import cancel
     for model in filter(None, (GROQ_MODEL, os.getenv("GROQ_FALLBACK_MODEL"))):
+        cancel.check()   # a cancelled question must not spend more tokens
         try:
             completion = _get_client().chat.completions.create(
                 model=model, messages=[{"role": "user", "content": prompt}], temperature=0)
@@ -657,9 +660,17 @@ def _keyless_question_result(question, ctx, allow_compound=True):
         if allow_compound:
             return _compound_result(plan["questions"], ctx)
         plan = None
-    if plan and plan["kind"] == "out_of_scope":
-        message = OUT_OF_SCOPE_MESSAGE_AR if _is_arabic(question) else OUT_OF_SCOPE_MESSAGE
-        return {"status": "no_results", "answer": message, "links": []}
+    if plan and plan["kind"] in ("chat", "thanks", "action", "general"):
+        import general
+        arabic = _is_arabic(question)
+        if plan["kind"] in ("chat", "thanks"):
+            return general.chat_result(arabic, thanks=plan["kind"] == "thanks")
+        if plan["kind"] == "action":
+            return general.action_result(arabic)
+        answer = general.general_result(question, plan, ctx, arabic)
+        if answer:
+            return answer
+        plan = None   # the answer named the team's tickets, so the graph answers instead
     if plan and plan["kind"] == "aggregate":
         try:
             return _aggregate_result(question, plan, ctx)
@@ -722,6 +733,11 @@ def _agent_result(question, ctx):
 
 def generate_answer_result(question, ctx):
     """-> {"status": ok|not_found|no_results|search_unavailable, "answer": str, "links": [...]}."""
+    import general
+    import intent
+    wanted = intent.route(question)   # by meaning, before any model call or ticket lookup
+    if wanted in ("chat", "thanks"):   # a greeting never reaches the planner or the ticket search
+        return general.chat_result(_is_arabic(question), thanks=wanted == "thanks")
     results = answer_key_question(question, ctx)
     if results and any(r.get("type") == "found" for r in results):
         agent = _agent_result(question, ctx)

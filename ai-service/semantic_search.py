@@ -6,6 +6,7 @@ semantic_search.py
   python semantic_search.py "tickets about login"     # بيطبع أعلى النتايج بالـ scores (للمعايرة)
 """
 import logging
+import functools
 import math
 import os
 import re
@@ -80,12 +81,23 @@ def _keyword_scores(text, ctx):
     return {r["uid"]: r["found"] / len(words) for r in rows}
 
 
+@functools.lru_cache(maxsize=512)
+def _cached_vector(text):
+    return tuple(embed_texts([text])[0])
+
+
+def _query_vector(text):
+    """A question's embedding. The same text gives the same vector, so it is computed once.
+    Ticket vectors are not cached here; they come from the graph."""
+    return _cached_vector(" ".join(text.split()))
+
+
 def semantic_search(text, ctx: AccessContext, k=SEMANTIC_K, min_score=SEMANTIC_MIN_SCORE):
     """بترجّع list من الـ items (نفس شكل build_item) + score، الأعلى الأول."""
     items = _load_vectors(ctx)
     if not items:
         return []
-    q = embed_texts([text])[0]
+    q = _query_vector(text)
     qn = math.sqrt(sum(x * x for x in q)) or 1.0
     try:
         keywords = _keyword_scores(text, ctx)

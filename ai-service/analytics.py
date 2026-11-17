@@ -53,11 +53,24 @@ kind:
 - "search": finding tickets by topic or meaning, and any question about one ticket that is
   described instead of named by key, such as its comments, status or owner. A bare work topic with no verb, such as
   "meeting transcripts" or "login", is a search.
+  So are questions about what one person did on a day or in a period (their activity), the time
+  logged on one ticket with dates, and tickets that took longer than their estimate.
+  So are questions about a team's or area's tickets, such as backend, Flutter or AI tasks or
+  subtasks, and comparisons between teams or areas.
+  So are questions about tickets that are not ready or miss a description, assignee, estimate or
+  acceptance criteria, stuck tickets or bottlenecks, a summary of a sprint or release notes.
 - "compound": two or three different questions in one. Set questions to a list where each one
   makes sense alone, in the user's language, with names repeated instead of pronouns. When a later
   part means the person or thing an earlier part will find, write TOP_RESULT in its place.
-- "out_of_scope": clearly not about work or software, such as weather, food or sports.
-  A question about a person's tickets is never out of scope, even if the name is not in the list.
+- "chat": a greeting, small talk, or asking what the assistant is or can do.
+- "thanks": thanking the assistant, with nothing else asked.
+- "action": asking the assistant to change Jira: create, edit, move, assign, close, delete or
+  comment on tickets, or log time. Asking how to do it yourself is "general", not "action".
+- "general": anything that does not need the team's Jira data: general knowledge, software, Agile
+  or Scrum concepts, how Jira works, writing, rewording or translating text the user gives,
+  brainstorming, and topics such as weather, food or sports.
+  A question about the team's tickets, people, sprints or projects is never "general", even if a
+  name is not in the list. Writing about a ticket, such as an email about the login bug, is "search".
 
 For "search", also set search_text: the topic as short English keywords, because tickets may be
 in English. Example: "شاشات الموبايل" -> "mobile app screens".
@@ -70,13 +83,16 @@ For "aggregate", also use these fields. Use null or false when a field is not as
   Workload or "most work" means tickets assigned, unless the question asks about hours or time.
 - order: desc for most, asc for least
 - project: one of {projects} | null
-- status_category: open | to_do | in_progress | done | null ("open" means not done)
-- assignee: person name exactly as in the people list, matching Arabic spellings to it. For
+- status_category: open | to_do | in_progress | done | null. "open", "مفتوحة", "not finished",
+  "remaining" and "لسه ما خلصتش" mean every status that is not done (To Do, In Progress, In Review
+  and the rest): use open. Use to_do only when the question says To Do or not started.
+- assignee: the person's name exactly as the question writes it, in the same letters and spelling,
+  even when the people list has a similar name: the service matches it to the right person. For
   time_logged, comments and changes it is who logged, wrote or changed.
 - me: true when the person asking means themselves, such as "my tickets" or "تذاكري"
-- reporter: person name | null
+- reporter: person name as the question writes it | null
 - text: words to find in tickets or, for comments, in comment text | null
-- label: label name | null
+- label: label, or a tag written in titles such as "Backend:" or "(Flutter)" | null
 - component: component name | null
 - parent: epic or parent ticket name or key, to get the tickets under it | null
 - change_field: for changes, the field such as status or assignee | null
@@ -89,16 +105,21 @@ For "aggregate", also use these fields. Use null or false when a field is not as
   {today}. Use them for yesterday, last week, this month or a named month or day.
 - date_field: created | updated | resolved, the ticket date since_days applies to | null
 - unassigned: true | false
-- priority: priority name | null
+- priority: priority name exactly as in the priorities list | null. Several names separated by
+  commas are allowed. The list can give each project its own names. For the highest, most urgent
+  or top priority, use the highest name used by the project the question asks about; with no
+  project, the highest name of each list, for example "Highest, Blocker". For the lowest, the same
+  with the lowest names. Use only names that the asked project actually has.
 - issuetype: type name | null
 - sprint: "current" | sprint name | null
 - overdue: true | false
 - list_tickets: true when the user wants the tickets listed. False for "كام" and "how many".
 
 People: {people}
+Priorities: {priorities}
 
 Examples:
-"تذاكر فاطمة" when the list has Fatma Ali -> {{"kind":"aggregate","assignee":"Fatma Ali","list_tickets":true}}
+"تذاكر فاطمة" -> {{"kind":"aggregate","assignee":"فاطمة","list_tickets":true}}
 "إيه تذاكري؟" -> {{"kind":"aggregate","me":true,"list_tickets":true}}
 "تذاكر أحمد" when the list has no Ahmed -> {{"kind":"aggregate","assignee":"أحمد","list_tickets":true}}
 "مين عنده أكتر تذاكر؟" -> {{"kind":"aggregate","group_by":"assignee","order":"desc"}}
@@ -126,7 +147,16 @@ Examples:
 "ايه التذاكر اللي في السبرنت الحالي؟" -> {{"kind":"aggregate","sprint":"current","list_tickets":true}}
 "Which tickets are overdue?" -> {{"kind":"aggregate","overdue":true,"list_tickets":true}}
 "Tickets about login?" -> {{"kind":"search","search_text":"login sign-in"}}
-"How is the weather?" -> {{"kind":"out_of_scope"}}
+"How is the weather?" -> {{"kind":"general"}}
+"hi" -> {{"kind":"chat"}}
+"شكرا" -> {{"kind":"thanks"}}
+"تقدر تعمل إيه؟" -> {{"kind":"chat"}}
+"يعني إيه story points؟" -> {{"kind":"general"}}
+"Write a polite email asking for a deadline extension" -> {{"kind":"general"}}
+"ازاي أعمل subtask في Jira؟" -> {{"kind":"general"}}
+"اعمل تذكرة جديدة للـ login bug" -> {{"kind":"action"}}
+"حرك التذكرة بتاعة الـ login لـ Done" -> {{"kind":"action"}}
+"اكتب email للدكتور عن تذاكر الـ login المتأخرة" -> {{"kind":"search","search_text":"login"}}
 
 Question:
 {question}
@@ -156,7 +186,11 @@ def matching_people(name, ctx):
         "WHERE w.project_key IN $allowed AND toLower(p.displayName) CONTAINS $name "
         "RETURN DISTINCT p.displayName AS name",
         name=name.lower(), **_scope(ctx))
-    return sorted({r.get("name") for r in rows if r.get("name")})
+    found = sorted({r.get("name") for r in rows if r.get("name")})
+    if found:
+        return found
+    import names   # another spelling, such as Arabic letters for a Latin name
+    return names.match(name, names.people(ctx))
 
 
 def active_people(ctx):
@@ -169,12 +203,62 @@ def active_people(ctx):
     return [r["name"] for r in rows if r.get("name")]
 
 
+def priority_names(ctx):
+    """The priority names each allowed project uses, for the planner: Jira's order (highest first)
+    when the backend sent the priority list, otherwise the names alone, because priority ids and
+    names differ per company and none is assumed here. Per project, because projects of one company
+    can use different scales."""
+    rows = run_query(
+        "MATCH (c:PriorityCatalog {tenant_id: $tenant}) RETURN c.names AS names ORDER BY c.updated_at DESC LIMIT 1",
+        **_scope(ctx))
+    used = run_query(
+        "MATCH (w:WorkItem {tenant_id: $tenant}) WHERE w.project_key IN $allowed AND w.priority IS NOT NULL "
+        "RETURN w.project_key AS project, w.priority AS name, count(*) AS n ORDER BY project, n DESC", **_scope(ctx))
+    ordered = rows[0]["names"] if rows and rows[0]["names"] else None
+    by_project = {}
+    for r in used:
+        by_project.setdefault(r["project"], []).append(r["name"])
+    if not by_project:
+        return "unknown"
+
+    def arrange(names):
+        if not ordered:
+            return names
+        return [n for n in ordered if n in names] + [n for n in names if n not in ordered]
+
+    note = " (Jira's order, highest first)" if ordered else " (order not given: judge it from the names)"
+    scales = {}
+    for project, names in by_project.items():
+        scales.setdefault(tuple(sorted(names)), []).append(project)
+    if len(scales) == 1:
+        return ", ".join(arrange(next(iter(by_project.values())))) + note
+    groups = sorted(scales.items(), key=lambda kv: kv[1])[:30]
+    return "; ".join(f"{', '.join(projects)}: {', '.join(arrange(by_project[projects[0]]))}"
+                     for _, projects in groups) + note
+
+
+def _tag_params(tag):
+    """Cypher regexes for a tag at the start of a title or in brackets at either end. No tag word is
+    fixed here; the tag comes from the question."""
+    t = re.escape(" ".join(tag.lower().split()))
+    quote = "[\"'\u201c\u201d\\s]*"
+    word = t + r"(?:[\s_-][^\])(:|]{0,20})?"
+    return {"label": tag.lower().strip(),
+            "tag_prefix": f"(?is)^{quote}[\\[(]?\\s*{word}\\s*[\\])]?\\s*[:|]\\s.*",
+            "tag_bracket": f"(?is)(^{quote}[\\[(]\\s*{word}\\s*[\\])].*)|(.*[\\[(]\\s*{word}\\s*[\\])]{quote}$)"}
+
+
 def planner_prompt(question, ctx):
     try:
         people = ", ".join(active_people(ctx)) or "unknown"
     except Exception:
         people = "unknown"
+    try:
+        priorities = priority_names(ctx)
+    except Exception:
+        priorities = "unknown"
     return PLANNER_PROMPT.format(projects=", ".join(ctx.allowed_projects), people=people,
+                                 priorities=priorities,
                                  today=date.today().strftime("%Y-%m-%d (%A)"),
                                  question=question)
 
@@ -243,7 +327,9 @@ def parse_plan(text):
     if not isinstance(raw, dict):
         return None
     kind = raw.get("kind")
-    if kind == "out_of_scope":
+    if kind in ("out_of_scope", "general"):
+        return {"kind": "general"}
+    if kind in ("chat", "thanks", "action"):
         return {"kind": kind}
     if kind == "compound":
         questions = raw.get("questions")
@@ -304,8 +390,8 @@ def _match(plan, ctx):
         where.extend(("w.duedate < $today", CATEGORY_CONDITIONS["open"]))
         params["today"] = date.today().isoformat()
     if plan["priority"]:
-        where.append("toLower(w.priority) = toLower($priority)")
-        params["priority"] = plan["priority"]
+        where.append("toLower(w.priority) IN $priorities")
+        params["priorities"] = [p.strip().lower() for p in plan["priority"].split(",") if p.strip()]
     if plan["issuetype"]:
         where.append("toLower(w.issuetype) = toLower($issuetype)")
         params["issuetype"] = plan["issuetype"]
@@ -331,8 +417,11 @@ def _match(plan, ctx):
             where.append("(toLower(w.summary) CONTAINS toLower($text) "
                          "OR toLower(coalesce(w.description_text, '')) CONTAINS toLower($text))")
     if plan["label"]:
-        where.append("any(l IN coalesce(w.labels, []) WHERE toLower(l) = toLower($label))")
-        params["label"] = plan["label"]
+        # A tag can be a label, a component, or written in the title ("Backend: ...", "... (Flutter)").
+        where.append("(any(l IN coalesce(w.labels, []) WHERE toLower(l) = $label OR toLower(l) STARTS WITH $label + '-')"
+                     " OR any(c IN coalesce(w.components, []) WHERE toLower(c) = $label)"
+                     " OR w.summary =~ $tag_prefix OR w.summary =~ $tag_bracket)")
+        params.update(_tag_params(plan["label"]))
     if plan["component"]:
         where.append("any(c IN coalesce(w.components, []) WHERE toLower(c) = toLower($component))")
         params["component"] = plan["component"]

@@ -506,8 +506,13 @@ def find_comments(key, ctx, author=None, contains=None, oldest_first=False, limi
     return [dict(r) for r in rows]
 
 
+# "Open" means every status that is not done (To Do, In Progress, In Review, Blocked...), whatever the
+# statuses are called on this Jira site, not only a status named Open.
+OPEN_WORDS = ["open", "not done", "unresolved", "active", "pending", "remaining", "مفتوح", "مفتوحة"]
+
+
 def find_tickets(ctx, project=None, issuetype=None, status=None, assignee=None, parent=None,
-                 sprint=None, text=None, limit=MAX_RESULTS):
+                 sprint=None, text=None, priority=None, limit=MAX_RESULTS):
     """Tickets that match every filter given, with the total. The graph does the filtering."""
     low = {k: (v or "").strip().lower() or None for k, v in
            {"project": project, "issuetype": issuetype, "status": status, "assignee": assignee,
@@ -518,8 +523,10 @@ def find_tickets(ctx, project=None, issuetype=None, status=None, assignee=None, 
         WHERE w.project_key IN $allowed AND w.summary IS NOT NULL
           AND ($project IS NULL OR toLower(w.project_key) = $project)
           AND ($issuetype IS NULL OR toLower(w.issuetype) CONTAINS $issuetype)
-          AND ($status IS NULL OR toLower(w.status) CONTAINS $status OR toLower(w.statusCategory) = $status)
+          AND ($status IS NULL OR toLower(w.status) CONTAINS $status OR toLower(w.statusCategory) = $status
+               OR ($status IN $open_words AND coalesce(w.statusCategory, '') <> 'done'))
           AND ($text IS NULL OR toLower(w.summary) CONTAINS $text)
+          AND ($priorities IS NULL OR toLower(w.priority) IN $priorities)
           AND ($parent IS NULL OR EXISTS { MATCH (w)-[:CHILD_OF]->(p:WorkItem) WHERE p.key = $parent })
           AND ($sprint IS NULL OR EXISTS { MATCH (w)-[:IN_SPRINT]->(s:Sprint)
                                            WHERE toLower(s.name) CONTAINS $sprint OR toLower(s.state) = $sprint })
@@ -530,11 +537,39 @@ def find_tickets(ctx, project=None, issuetype=None, status=None, assignee=None, 
                       assignee: coalesce(a.displayName, 'Unassigned'), url: w.url}) AS items
         RETURN size(items) AS total, items[0..$limit] AS items
         """,
-        parent=(parent or "").strip().upper() or None, limit=limit, **low, **_scope(ctx))
+        parent=(parent or "").strip().upper() or None, limit=limit,
+        priorities=[p.strip().lower() for p in (priority or "").split(",") if p.strip()] or None,
+        open_words=OPEN_WORDS,
+        **low, **_scope(ctx))
     return rows[0] if rows else {"total": 0, "items": []}
 
 
 # ---------- Entry point ----------
+
+def _distance(a, b):
+    """Edit distance, for project keys only (a few letters)."""
+    row = list(range(len(b) + 1))
+    for i, x in enumerate(a, 1):
+        prev, row[0] = row[0], i
+        for j, y in enumerate(b, 1):
+            prev, row[j] = row[j], min(row[j] + 1, row[j - 1] + 1, prev + (x != y))
+    return row[-1]
+
+
+def _mistyped_keys(question, ctx):
+    """Keys like SYN-97 or SYTN-97 when the allowed project is SYNT: one or two letters off.
+    -> not_found results that suggest the right key, or [] when nothing looks like a typo."""
+    if not ctx.allowed_projects:
+        return []
+    results = []
+    for candidate in dict.fromkeys(k.upper() for k in _GENERIC_KEY.findall(question)):
+        prefix, _, number = candidate.rpartition("-")
+        close = sorted((_distance(prefix, p), p) for p in ctx.allowed_projects)
+        if close and 0 < close[0][0] <= (1 if len(prefix) <= 3 else 2):
+            results.append({"type": "not_found", "key": candidate, "suggestion": f"{close[0][1]}-{number}",
+                            "message": f"No ticket found with key {candidate}. Did you mean {close[0][1]}-{number}?"})
+    return results[:MAX_KEYS]
+
 
 def answer_key_question(question, ctx):
     """list من النتايج، واحدة لكل key. types: found | incomplete | not_found | no_key_found"""
@@ -552,6 +587,9 @@ def answer_key_question(question, ctx):
             keys.extend(r["key"] for r in rows if r["key"] not in keys)
             keys = keys[:MAX_KEYS]
     if not keys:
+        mistyped = _mistyped_keys(question, ctx)
+        if mistyped:   # a key whose project is a typo of an allowed one: say so, don't search
+            return mistyped
         return [{"type": "no_key_found", "message": "No ticket key found in the question."}]
     results = []
     for key in keys:

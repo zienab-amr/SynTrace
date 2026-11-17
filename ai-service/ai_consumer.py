@@ -10,6 +10,7 @@ Embeddings run in their own thread, so a long run never delays Jira events. That
 work from the graph, so it resumes by itself after a restart or an Ollama failure.
 """
 import json
+import cache_version
 import logging
 import os
 import signal
@@ -100,6 +101,11 @@ def tenants_missing_embeddings():
     return [r["tenant"] for r in rows if r["tenant"]]
 
 
+def _bump_after_embed(tenant):
+    """New embeddings change what search finds, so saved answers are out of date."""
+    cache_version.bump(tenant, lambda: webhook_handler.get_driver().session())
+
+
 def embed_tenant(tenant):
     from build_embeddings import embed_work_items_detailed
     return embed_work_items_detailed(tenant)
@@ -131,6 +137,7 @@ class EmbeddingWorker:
                 return
             try:
                 self.embed(tenant)
+                _bump_after_embed(tenant)
             except Exception as exc:
                 log.warning("embedding run failed, will try again: %s: %s", type(exc).__name__, exc)
 
@@ -154,6 +161,19 @@ class EventProcessor:
         self.embed = embed
 
     def process(self, body):
+        """Apply one message, then mark the company's cached answers as out of date."""
+        decision = self._process(body)
+        if decision.action == "ack":
+            try:
+                event = json.loads(body)
+                tenant, kind = event.get("companyId"), event.get("eventType")
+            except (ValueError, AttributeError):
+                tenant = kind = None
+            if tenant and kind != "FieldCatalog":
+                cache_version.bump(tenant, self.session_factory)
+        return decision
+
+    def _process(self, body):
         try:
             event = json.loads(body)
             if not isinstance(event, dict):
@@ -173,6 +193,12 @@ class EventProcessor:
             if not isinstance(fields, list):
                 return Decision("dead", "FieldCatalog needs payload.fields")
             return self._guard(lambda: self.catalog.save(tenant, site, fields))
+        if kind == "PriorityCatalog":
+            names = [p.get("name") for p in (event.get("payload") or {}).get("priorities") or []
+                     if isinstance(p, dict) and p.get("name")]
+            if not names:
+                return Decision("dead", "PriorityCatalog needs payload.priorities with names")
+            return self._guard(lambda: self._save_priorities(tenant, site, names))
         if kind == "IssueSnapshot":
             return self._guard(lambda: self._snapshot(event, tenant, site))
         if kind == "ImportCompleted":
@@ -214,6 +240,14 @@ class EventProcessor:
         if result.outcome == "rejected":
             return Decision("dead", result.error or result.status)
         return Decision("ack")
+
+    def _save_priorities(self, tenant, site, names):
+        """Jira's priorities in its own order, highest first, so "highest priority" needs no fixed names."""
+        with self.session_factory() as session:
+            session.execute_write(lambda tx: tx.run(
+                "MERGE (c:PriorityCatalog {uid: $uid}) SET c.tenant_id = $t, c.jira_site_id = $s, "
+                "c.names = $names, c.updated_at = $now", uid=f"{tenant}:site:{site}:priority-catalog",
+                t=tenant, s=site, names=names[:100], now=datetime.now(timezone.utc).isoformat()))
 
     def _disconnect(self, tenant):
         while True:
