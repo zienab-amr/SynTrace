@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\SynTrace.Contracts\SynTrace.Contracts.csproj" />
     <ProjectReference Include="..\SynTrace.Domain\SynTrace.Domain.csproj" />
   </ItemGroup>
 

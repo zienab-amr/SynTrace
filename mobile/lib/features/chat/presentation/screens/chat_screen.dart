@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
+import 'package:syntrace/features/chat/data/models/chat_message.dart';
 import 'package:syntrace/features/chat/data/models/chat_session.dart';
 import 'package:syntrace/features/chat/presentation/cubit/chat_cubit.dart';
 import 'package:syntrace/features/chat/presentation/cubit/chat_state.dart';
@@ -21,7 +22,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final _scrollController = ScrollController();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  // ─── للتحكم في فتح/قفل الـ Sidebar على الويب ───
   bool _isSidebarOpen = true;
 
   @override
@@ -86,9 +86,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Web Layout: Sidebar (قابل للطي) + Content
-  // ═══════════════════════════════════════════════════════
   Widget _buildWebLayout(BuildContext context, ChatState state) {
     final sessions = state is ChatLoaded ? state.sessions : <ChatSession>[];
     final selectedId = state is ChatLoaded ? state.currentSessionId : null;
@@ -97,7 +94,6 @@ class _ChatScreenState extends State<ChatScreen> {
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Row(
         children: [
-          // ═══ Sidebar (قابل للطي) ═══
           AnimatedContainer(
             duration: const Duration(milliseconds: 250),
             curve: Curves.easeInOut,
@@ -122,8 +118,6 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           ),
-
-          // ═══ Chat Area ═══
           Expanded(
             child: _buildChatArea(
               context,
@@ -137,9 +131,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Mobile Layout: Full + Drawer
-  // ═══════════════════════════════════════════════════════
   Widget _buildMobileLayout(BuildContext context, ChatState state) {
     final sessions = state is ChatLoaded ? state.sessions : <ChatSession>[];
     final selectedId = state is ChatLoaded ? state.currentSessionId : null;
@@ -171,9 +162,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Chat Area
-  // ═══════════════════════════════════════════════════════
   Widget _buildChatArea(
     BuildContext context,
     ChatState state, {
@@ -212,7 +200,7 @@ class _ChatScreenState extends State<ChatScreen> {
             constraints: const BoxConstraints(maxWidth: 800),
             child: ChatInput(
               onSend: (text) => context.read<ChatCubit>().sendMessage(text),
-              enabled: !state.isBusy,
+              enabled: true,
               isLoading: state.isSending,
             ),
           ),
@@ -221,9 +209,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Messages List
-  // ═══════════════════════════════════════════════════════
   Widget _buildMessages(BuildContext context, ChatLoaded state) {
     if (state.isEmpty && !state.isSending) {
       return _buildEmptyState(context);
@@ -243,13 +228,23 @@ class _ChatScreenState extends State<ChatScreen> {
           );
         }
 
+        final message = state.messages[index];
+
         return Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 800),
             child: MessageBubble(
-              message: state.messages[index],
+              message: message,
               onRetry: () => context.read<ChatCubit>().retryLastMessage(),
               onDelete: () => context.read<ChatCubit>().deleteFailedMessage(),
+              onEdit: message.role == ChatRole.user 
+                  ? (newText) {
+                      context.read<ChatCubit>().editMessage(
+                        message.id,
+                        newText,
+                      );
+                    }
+                  : null,
             ),
           ),
         );
@@ -257,9 +252,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Chat Header
-  // ═══════════════════════════════════════════════════════
   Widget _buildChatHeader(
     BuildContext context,
     ChatLoaded state,
@@ -272,7 +264,6 @@ class _ChatScreenState extends State<ChatScreen> {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Row(
         children: [
-          // ─── Menu Button (Mobile) ───
           if (isMobile)
             IconButton(
               onPressed: () => _scaffoldKey.currentState?.openDrawer(),
@@ -286,7 +277,6 @@ class _ChatScreenState extends State<ChatScreen> {
               tooltip: 'Chat history',
             ),
 
-          // ─── Sidebar Toggle (Web) ───
           if (showSidebarToggle)
             IconButton(
               onPressed: () {
@@ -304,7 +294,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
           if (isMobile || showSidebarToggle) const SizedBox(width: 12),
 
-          // ─── Title ───
           Text(
             'AI Assistant',
             style: TextStyle(
@@ -316,7 +305,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
           const Spacer(),
 
-          // ─── Clear Chat ───
           if (state.messages.isNotEmpty)
             IconButton(
               onPressed: () => context.read<ChatCubit>().clearChat(),
@@ -334,9 +322,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Empty State
-  // ═══════════════════════════════════════════════════════
   Widget _buildEmptyState(BuildContext context) {
     final theme = Theme.of(context);
 
@@ -408,9 +393,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Error State
-  // ═══════════════════════════════════════════════════════
   Widget _buildErrorState(BuildContext context, String message) {
     final theme = Theme.of(context);
 
@@ -448,9 +430,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// Suggestion Chip
-// ═══════════════════════════════════════════════════════════
 class _Suggestion extends StatelessWidget {
   final String text;
   final VoidCallback onTap;

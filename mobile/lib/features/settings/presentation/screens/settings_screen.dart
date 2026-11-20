@@ -1,91 +1,97 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import 'package:syntrace/core/models/user_model.dart';
+import 'package:syntrace/core/router/routes.dart';
+import 'package:syntrace/core/services/current_user_service.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
+import 'package:syntrace/features/employees/presentation/cubit/employees_cubit.dart';
 import 'package:syntrace/features/settings/presentation/cubit/integrations_cubit.dart';
+import 'package:syntrace/features/settings/presentation/cubit/settings_cubit.dart';
+import 'package:syntrace/features/settings/presentation/cubit/settings_state.dart';
 import 'package:syntrace/features/settings/presentation/widgets/integrations_tab.dart';
-import 'package:syntrace/features/settings/presentation/widgets/profile_tab.dart';
+import 'package:syntrace/features/settings/presentation/widgets/tabs/organization_tab.dart';
+import 'package:syntrace/features/settings/presentation/widgets/tabs/profile_tab.dart';
 import 'package:syntrace/shared/widgets/layouts/app_page_scaffold.dart';
 
-class SettingsScreen extends StatefulWidget
-{
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen>
-{
+class _SettingsScreenState extends State<SettingsScreen> {
   int _selectedTab = 0;
 
-  static const _tabs = [
-    _SettingsTabData(icon: Icons.person_outline, label: 'Profile'),
-    _SettingsTabData(icon: Icons.extension_outlined, label: 'Integrations'),
-    _SettingsTabData(icon: Icons.notifications_outlined, label: 'Notifications'),
-    _SettingsTabData(icon: Icons.lock_outline, label: 'Security'),
-    _SettingsTabData(icon: Icons.business_outlined, label: 'Organization'),
-  ];
+  List<_SettingsTabData> get _tabs {
+    final user = CurrentUserService.instance.user;
+    final isAdmin = user?.role == UserRole.admin;
+
+    return [
+      const _SettingsTabData(icon: Icons.person_outline, label: 'Profile'),
+      const _SettingsTabData(icon: Icons.extension_outlined, label: 'Integrations'),
+      const _SettingsTabData(icon: Icons.notifications_outlined, label: 'Notifications'),
+      const _SettingsTabData(icon: Icons.lock_outline, label: 'Security'),
+      if (isAdmin)
+        const _SettingsTabData(icon: Icons.business_outlined, label: 'Organization'),
+    ];
+  }
 
   @override
   void initState() {
     super.initState();
     context.read<IntegrationsCubit>().loadIntegrations();
+    context.read<SettingsCubit>().loadProfile();
   }
 
   @override
   Widget build(BuildContext context) {
-    return AppPageScaffold(
-      title: 'Settings',
-      subtitle: 'Manage your profile, integrations, and preferences',
-      scrollable: false,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildTabsRow(),
-          const SizedBox(height: 16),
-          Expanded(child: _buildContent()),
-        ],
-      ),
-    );
-  }
-
-  // ═══════════════════════════════════════════════════════
-  // Tabs Row
-  // ═══════════════════════════════════════════════════════
-  Widget _buildTabsRow() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: List.generate(
-          _tabs.length,
-          (index) => _buildTab(index),
+    return BlocListener<SettingsCubit, SettingsState>(
+      listener: (context, state) {
+        if (state is SettingsLoggedOut) {
+          context.go(AppRoutes.login);
+        }
+      },
+      child: AppPageScaffold(
+        title: 'Settings',
+        subtitle: 'Manage your profile, integrations, and preferences',
+        scrollable: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildTabsRow(),
+            const SizedBox(height: 16),
+            Expanded(child: _buildContent()),
+          ],
         ),
       ),
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Single Tab
-  // ═══════════════════════════════════════════════════════
+  Widget _buildTabsRow() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: List.generate(_tabs.length, (index) => _buildTab(index)),
+      ),
+    );
+  }
+
   Widget _buildTab(int index) {
     final theme = Theme.of(context);
     final isSelected = _selectedTab == index;
     final tab = _tabs[index];
 
     return Padding(
-      padding: EdgeInsets.only(
-        right: index == _tabs.length - 1 ? 0 : 4,
-      ),
+      padding: EdgeInsets.only(right: index == _tabs.length - 1 ? 0 : 4),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: () => setState(() => _selectedTab = index),
           borderRadius: BorderRadius.circular(8),
           child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 12,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -106,8 +112,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                             ? AppColors.primary
                             : theme.colorScheme.onSurface.withOpacity(0.6),
                         fontSize: 13,
-                        fontWeight:
-                            isSelected ? FontWeight.w600 : FontWeight.w500,
+                        fontWeight: isSelected
+                            ? FontWeight.w600
+                            : FontWeight.w500,
                       ),
                     ),
                   ],
@@ -130,30 +137,32 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Tab Content
-  // ═══════════════════════════════════════════════════════
   Widget _buildContent() {
-    switch (_selectedTab) {
-      case 0:
+    final tabs = _tabs;
+    if (_selectedTab >= tabs.length) return const SizedBox.shrink();
+
+    final label = tabs[_selectedTab].label;
+
+    switch (label) {
+      case 'Profile':
         return const ProfileTab();
-      case 1:
+      case 'Integrations':
         return const IntegrationsTab();
-      case 2:
+      case 'Notifications':
         return const _ComingSoon(title: 'Notifications');
-      case 3:
+      case 'Security':
         return const _ComingSoon(title: 'Security');
-      case 4:
-        return const _ComingSoon(title: 'Organization');
+      case 'Organization':
+        return BlocProvider(
+          create: (context) => EmployeesCubit()..loadEmployees(),
+          child: const OrganizationTab(),
+        );
       default:
         return const SizedBox.shrink();
     }
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// Tab Data
-// ═══════════════════════════════════════════════════════════
 class _SettingsTabData {
   final IconData icon;
   final String label;
@@ -161,9 +170,6 @@ class _SettingsTabData {
   const _SettingsTabData({required this.icon, required this.label});
 }
 
-// ═══════════════════════════════════════════════════════════
-// Coming Soon Placeholder
-// ═══════════════════════════════════════════════════════════
 class _ComingSoon extends StatelessWidget {
   final String title;
 

@@ -109,7 +109,7 @@ namespace SynTrace_api.Controllers
                         result.PendingId);
                 }
 
-                return Ok(redirectUrl);
+                return Redirect(redirectUrl);
             }
             catch (CompanyJiraConnectionAlreadyExistsException ex)
             {

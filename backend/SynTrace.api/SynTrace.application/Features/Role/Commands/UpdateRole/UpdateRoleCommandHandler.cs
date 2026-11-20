@@ -10,19 +10,12 @@ namespace SynTrace.Application.Features.Role.Commands.UpdateRole
     public class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand>
     {
         private readonly IRoleService _roleService;
-        private readonly RoleManager<IdentityRole> _roleManager;
-        public UpdateRoleCommandHandler(IRoleService roleService, RoleManager<IdentityRole> roleManager)
+        public UpdateRoleCommandHandler(IRoleService roleService)
         {
             _roleService = roleService;
-            _roleManager = roleManager;
         }
         public async Task Handle(UpdateRoleCommand request, CancellationToken cancellationToken)
         {
-            var role = await _roleService.GetRoleByNameAsync(request.OldRoleName);
-
-            if (role == null)
-                throw new Exception("This role does not exist");
-
             var result = await _roleService.UpdateRoleAsync(request.OldRoleName, request.NewRoleName);
 
             if (!result.Succeeded)

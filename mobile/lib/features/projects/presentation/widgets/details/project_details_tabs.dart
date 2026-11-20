@@ -11,8 +11,11 @@ class ProjectDetailsTabs extends StatelessWidget {
     return Container(
       height: 44,
       decoration: BoxDecoration(
-        color: AppColors.surfaceDark,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: Theme.of(context).dividerColor.withOpacity(0.3),
+        ),
       ),
       child: TabBar(
         controller: controller,
@@ -26,7 +29,9 @@ class ProjectDetailsTabs extends StatelessWidget {
         indicatorPadding: const EdgeInsets.all(4),
         dividerColor: Colors.transparent,
         labelColor: Colors.white,
-        unselectedLabelColor: AppColors.textSecondaryDark,
+        unselectedLabelColor: Theme.of(
+          context,
+        ).colorScheme.onSurface.withOpacity(0.6),
         labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
         unselectedLabelStyle: const TextStyle(fontSize: 13),
         tabs: const [
@@ -35,6 +40,8 @@ class ProjectDetailsTabs extends StatelessWidget {
           Tab(text: 'Pull Requests', height: 36),
           Tab(text: 'Commits', height: 36),
           Tab(text: 'Bugs', height: 36),
+          Tab(text: 'Team Notes', height: 36),
+          Tab(text: 'AI Notes', height: 36),
         ],
       ),
     );

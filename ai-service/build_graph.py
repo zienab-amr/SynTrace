@@ -1,207 +1,77 @@
 """
 build_graph.py
-يحول raw Jira JSON لـ nodes/edges في Neo4j.
-المرحلة 2: + Project, Sprint, issuelinks
+Bulk import: بيقرا كل ملفات all_tickets/*.json ويمرّرها على ingest.upsert_issue
+(نفس الدالة اللي بيستخدمها webhook_handler.py بالظبط).
+
+  python build_graph.py                  # import عادي (idempotent)
+  python build_graph.py --force         # يعيد كتابة الـ state حتى لو updated مش أحدث
+  python build_graph.py --wipe-all      # يمسح كل الـ graph الأول (لازم تكتبي WIPE)
+  python build_graph.py --tenant acme --dir tickets_acme
 """
+import argparse
+import glob
 import json
 import os
-from neo4j import GraphDatabase
+import sys
+from collections import Counter
+
 from dotenv import load_dotenv
-import glob
-from adf_parser import parse_adf_description
-import re
+from neo4j import GraphDatabase
 
-load_dotenv()
+load_dotenv()   # before importing ingest: it reads TENANT_ID at import time
 
-URI = os.getenv("NEO4J_URI")
-USER = os.getenv("NEO4J_USER")
-PASSWORD = os.getenv("NEO4J_PASSWORD")
-
-driver = GraphDatabase.driver(URI, auth=(USER, PASSWORD))
+import ingest
 
 
-def load_issue(filepath):
-    with open(filepath, "r", encoding="utf-8") as f:
-        return json.load(f)
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dir", default="all_tickets")
+    ap.add_argument("--tenant", default=ingest.DEFAULT_TENANT)
+    ap.add_argument("--force", action="store_true")
+    ap.add_argument("--wipe-all", action="store_true")
+    args = ap.parse_args()
+    if not args.tenant:
+        sys.exit("tenant مش محدد: حطي TENANT_ID في الـ .env أو استخدمي --tenant")
 
+    driver = GraphDatabase.driver(
+        os.getenv("NEO4J_URI"), auth=(os.getenv("NEO4J_USER"), os.getenv("NEO4J_PASSWORD")))
 
-def build_workitem_core(tx, issue):
-    """WorkItem node + description parsing (زي المرحلة 1)"""
-    fields = issue["fields"]
-    key = issue["key"]
+    if args.wipe_all:
+        if input("ده هيمسح كل الـ nodes والـ edges في الـ database. اكتبي WIPE للتأكيد: ") != "WIPE":
+            sys.exit("اتلغى.")
+        with driver.session() as s:
+            s.run("MATCH (n) DETACH DELETE n")
+        print(">>> Graph wiped. شغّلي setup_constraints.py لو لسه ما اتشغلش.\n")
 
-    parsed_desc = parse_adf_description(fields.get("description"))
+    files = sorted(glob.glob(os.path.join(args.dir, "*.json")))
+    print(f">>> tenant={args.tenant} | {len(files)} files from {args.dir}/")
+    if not ingest.FIELD_META:
+        print("    (تنبيه: field_meta.json مش موجود، الـ Sprint هيتكشف من شكل القيمة بس. "
+              "الملف ده بييجي من الـ export المحلي)")
 
-    workitem_props = {
-        "key": key,
-        "summary": fields.get("summary"),
-        "issuetype": fields["issuetype"]["name"],
-        "hierarchyLevel": fields["issuetype"]["hierarchyLevel"],
-        "status": fields["status"]["name"],
-        "statusCategory": fields["status"]["statusCategory"]["key"],
-        "priority": fields["priority"]["name"] if fields.get("priority") else None,
-        "created": fields.get("created"),
-        "updated": fields.get("updated"),
-        "resolutiondate": fields.get("resolutiondate"),
-        "duedate": fields.get("duedate"),
-        "labels": fields.get("labels", []),
-        "project_key": fields["project"]["key"],
-        "description_intro": parsed_desc["intro"],
-        "description_sections": json.dumps(parsed_desc["sections"], ensure_ascii=False),
-        "url": f"https://syntrace.atlassian.net/browse/{key}",
-    }
-
-    tx.run(
-        """
-        MERGE (w:WorkItem {key: $key})
-        SET w += $props
-        """,
-        key=key,
-        props=workitem_props,
-    )
-
-
-def build_people(tx, issue):
-    """Assignee + Reporter edges (من غير إيميل)"""
-    fields = issue["fields"]
-    key = issue["key"]
-
-    assignee = fields.get("assignee")
-    if assignee:
-        tx.run(
-            """
-            MERGE (p:Person {accountId: $accountId})
-            SET p.displayName = coalesce($displayName, p.displayName)
-            WITH p
-            MATCH (w:WorkItem {key: $key})
-            MERGE (w)-[:ASSIGNED_TO]->(p)
-            """,
-            accountId=assignee["accountId"],
-            displayName=assignee.get("displayName"),
-            key=key,
-        )
-
-    reporter = fields.get("reporter")
-    if reporter:
-        tx.run(
-            """
-            MERGE (p:Person {accountId: $accountId})
-            SET p.displayName = coalesce($displayName, p.displayName)
-            WITH p
-            MATCH (w:WorkItem {key: $key})
-            MERGE (w)-[:REPORTED_BY]->(p)
-            """,
-            accountId=reporter["accountId"],
-            displayName=reporter.get("displayName"),
-            key=key,
-        )
-
-
-def build_project(tx, issue):
-    """Project node + BELONGS_TO edge"""
-    fields = issue["fields"]
-    key = issue["key"]
-    project = fields.get("project")
-
-    if project:
-        tx.run(
-            """
-            MERGE (pr:Project {key: $project_key})
-            SET pr.name = $project_name, pr.projectTypeKey = $project_type
-            WITH pr
-            MATCH (w:WorkItem {key: $key})
-            MERGE (w)-[:BELONGS_TO]->(pr)
-            """,
-            project_key=project["key"],
-            project_name=project.get("name"),
-            project_type=project.get("projectTypeKey"),
-            key=key,
-        )
-
-
-def build_sprint(tx, issue):
-    """
-    Sprint node + IN_SPRINT edge.
-    customfield_10020 ده الحقل بتاع الـ Sprint في المشروع ده تحديدًا
-    (فاكرة: الرقم ده مش مضمون يفضل نفسه في مشاريع تانية،
-    بس دلوقتي بنشتغل على SYNTECH بس فهو ثابت هنا).
-    """
-    fields = issue["fields"]
-    key = issue["key"]
-    sprints = fields.get("customfield_10020")
-
-    if not sprints:
-        return
-
-    for sprint in sprints:
-        tx.run(
-            """
-            MERGE (s:Sprint {id: $sprint_id})
-            SET s.name = $name, s.state = $state, s.goal = $goal,
-                s.startDate = $startDate, s.endDate = $endDate
-            WITH s
-            MATCH (w:WorkItem {key: $key})
-            MERGE (w)-[:IN_SPRINT]->(s)
-            """,
-            sprint_id=sprint["id"],
-            name=sprint.get("name"),
-            state=sprint.get("state"),
-            goal=sprint.get("goal"),
-            startDate=sprint.get("startDate"),
-            endDate=sprint.get("endDate"),
-            key=key,
-        )
-
-
-def build_issuelinks(tx, issue):
-    """
-    الاتجاه: بنستخدم دايمًا اسم الـ outward ("blocks", "relates to").
-    - outwardIssue: (current)-[REL]->(other)
-    - inwardIssue : (other)-[REL]->(current)
-
-    """
-    key = issue["key"]
-    for link in issue["fields"].get("issuelinks", []):
-        rel_type = re.sub(r"[^A-Z0-9_]", "_", link["type"]["outward"].upper().replace(" ", "_"))
-
-        if "outwardIssue" in link:
-            src, dst = key, link["outwardIssue"]["key"]
-        elif "inwardIssue" in link:
-            src, dst = link["inwardIssue"]["key"], key
-        else:
-            continue
-
-        tx.run(
-            f"""
-            MERGE (a:WorkItem {{key: $src}})
-            MERGE (b:WorkItem {{key: $dst}})
-            MERGE (a)-[:{rel_type}]->(b)
-            """,
-            src=src,
-            dst=dst,
-        )
-
-
-def build_everything(tx, issue):
-    build_workitem_core(tx, issue)
-    build_people(tx, issue)
-    build_project(tx, issue)
-    build_sprint(tx, issue)
-    build_issuelinks(tx, issue)
-
-
-def process_file(filepath):
-    issue = load_issue(filepath)
-    with driver.session() as session:
-        session.execute_write(build_everything, issue)
-    print(f"✓ Processed {issue['key']} from {filepath}")
-
+    stats = Counter()
+    failures = []
+    for i, path in enumerate(files, 1):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                issue = json.load(f)
+            with driver.session() as session:
+                result = session.execute_write(
+                    lambda tx: ingest.upsert_issue(tx, issue, args.tenant, force=args.force,
+                                                   payload_mode="full"))
+        except Exception as exc:   # one bad file must not abort (or hide) the rest of the load
+            result = "failed"
+            failures.append((os.path.basename(path), f"{type(exc).__name__}: {exc}"))
+        stats[result] += 1
+        if i % 25 == 0 or i == len(files):
+            print(f"  [{i}/{len(files)}] {dict(stats)}")
+    driver.close()
+    print(f"\n>>> Done. {dict(stats)}")
+    for name, err in failures:
+        print(f"  ✗ {name}: {err}")
+    if failures:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    files = glob.glob("all_tickets/*.json")
-    print(f">>> Found {len(files)} files to process\n")
-    for f in files:
-        print(f"\n=== Processing {f} ===")
-        process_file(f)
-    print("\n>>> All done")
+    main()

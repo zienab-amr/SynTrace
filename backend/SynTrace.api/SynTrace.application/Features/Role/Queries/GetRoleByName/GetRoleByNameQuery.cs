@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Identity;
 
 namespace SynTrace.Application.Features.Role.Queries.GetRoleByName
 {
-    public class GetRoleByNameQuery : IRequest<IdentityRole>
+    public class GetRoleByNameQuery : IRequest<SynTrace.Domain.Entities.Role?>
     {
         public string RoleName { set; get; }
     }

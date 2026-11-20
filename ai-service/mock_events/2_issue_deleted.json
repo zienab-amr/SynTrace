@@ -1,0 +1,9 @@
+{
+  "webhookEvent": "jira:issue_deleted",
+  "issue": {
+    "key": "SYNTECH-300",
+    "id": "10300",
+    "self": "https://syntrace.atlassian.net/rest/api/3/issue/10300"
+  },
+  "timestamp": 1788000000000
+}

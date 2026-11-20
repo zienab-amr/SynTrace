@@ -1,4 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:syntrace/core/network/api_client.dart';
+import 'package:syntrace/core/network/api_endpoints.dart';
 import 'package:syntrace/core/services/secure_storage_service.dart';
 import 'package:syntrace/features/onboarding/data/onboarding_data.dart';
 import 'package:syntrace/features/onboarding/data/onboarding_service.dart';
@@ -8,11 +10,13 @@ class OnboardingCubit extends Cubit<OnboardingState> {
   OnboardingCubit() : super(const OnboardingInitial());
 
   void start() {
-    emit(const OnboardingInProgress(
-      currentStep: 0,
-      data: OnboardingData(),
-      canGoNext: true,
-    ));
+    emit(
+      const OnboardingInProgress(
+        currentStep: 0,
+        data: OnboardingData(),
+        canGoNext: true,
+      ),
+    );
   }
 
   void nextStep() {
@@ -21,84 +25,66 @@ class OnboardingCubit extends Cubit<OnboardingState> {
       _complete();
       return;
     }
-
-    emit(state.copyWith(
-      currentStep: state.currentStep + 1,
-      canGoNext: _validateStep(state.currentStep + 1, state.data),
-    ));
+    emit(
+      state.copyWith(
+        currentStep: state.currentStep + 1,
+        canGoNext: _validateStep(state.currentStep + 1, state.data),
+      ),
+    );
   }
 
   void previousStep() {
     final state = _currentState;
     if (state.isFirstStep) return;
-
-    emit(state.copyWith(
-      currentStep: state.currentStep - 1,
-      canGoNext: true,
-    ));
+    emit(state.copyWith(currentStep: state.currentStep - 1, canGoNext: true));
   }
 
   void goToStep(int step) {
     final state = _currentState;
     if (step < 0 || step >= OnboardingInProgress.totalSteps) return;
-
-    emit(state.copyWith(
-      currentStep: step,
-      canGoNext: _validateStep(step, state.data),
-    ));
+    emit(
+      state.copyWith(
+        currentStep: step,
+        canGoNext: _validateStep(step, state.data),
+      ),
+    );
   }
 
-  void updateOrganizationName(String name) {
-    _updateData(_currentState.data.copyWith(organizationName: name));
-  }
-
+  void updateOrganizationName(String name) =>
+      _updateData(_currentState.data.copyWith(organizationName: name));
   void updateIndustry(String industry) {
     final data = _currentState.data.copyWith(
       industry: industry,
-      customIndustry:
-          industry == 'Other' ? _currentState.data.customIndustry : '',
+      customIndustry: industry == 'Other'
+          ? _currentState.data.customIndustry
+          : '',
     );
     _updateData(data);
   }
 
-  void updateCustomIndustry(String value) {
-    _updateData(_currentState.data.copyWith(customIndustry: value));
+  void updateCustomIndustry(String value) =>
+      _updateData(_currentState.data.copyWith(customIndustry: value));
+  void updateTeamSize(String size) =>
+      _updateData(_currentState.data.copyWith(teamSize: size));
+
+  void addTeamMember(Map<String, String> member) {
+    final members = List<Map<String, String>>.from(
+      _currentState.data.teamMembers,
+    )..add(member);
+    _updateData(_currentState.data.copyWith(teamMembers: members));
   }
 
-  void updateTeamSize(String size) {
-    _updateData(_currentState.data.copyWith(teamSize: size));
+  void removeTeamMember(String email) {
+    final members = List<Map<String, String>>.from(
+      _currentState.data.teamMembers,
+    )..removeWhere((m) => m['email'] == email);
+    _updateData(_currentState.data.copyWith(teamMembers: members));
   }
 
-  void updateUserRole(String role) {
-    final data = _currentState.data.copyWith(
-      userRole: role,
-      customRole: role == 'Other' ? _currentState.data.customRole : '',
-    );
-    _updateData(data);
-  }
-
-  void updateCustomRole(String value) {
-    _updateData(_currentState.data.copyWith(customRole: value));
-  }
-
-  void addTeamEmail(String email) {
-    final emails = List<String>.from(_currentState.data.teamEmails)..add(email);
-    _updateData(_currentState.data.copyWith(teamEmails: emails));
-  }
-
-  void removeTeamEmail(String email) {
-    final emails = List<String>.from(_currentState.data.teamEmails)
-      ..remove(email);
-    _updateData(_currentState.data.copyWith(teamEmails: emails));
-  }
-
-  void updateDarkMode(bool value) {
-    _updateData(_currentState.data.copyWith(isDarkMode: value));
-  }
-
-  void updateNotifications(bool value) {
-    _updateData(_currentState.data.copyWith(notificationsEnabled: value));
-  }
+  void updateDarkMode(bool value) =>
+      _updateData(_currentState.data.copyWith(isDarkMode: value));
+  void updateNotifications(bool value) =>
+      _updateData(_currentState.data.copyWith(notificationsEnabled: value));
 
   OnboardingInProgress get _currentState {
     final state = this.state;
@@ -112,10 +98,12 @@ class OnboardingCubit extends Cubit<OnboardingState> {
 
   void _updateData(OnboardingData newData) {
     final state = _currentState;
-    emit(state.copyWith(
-      data: newData,
-      canGoNext: _validateStep(state.currentStep, newData),
-    ));
+    emit(
+      state.copyWith(
+        data: newData,
+        canGoNext: _validateStep(state.currentStep, newData),
+      ),
+    );
   }
 
   bool _validateStep(int step, OnboardingData data) {
@@ -123,7 +111,8 @@ class OnboardingCubit extends Cubit<OnboardingState> {
       case 0:
         return true;
       case 1:
-        final hasIndustry = data.industry.isNotEmpty &&
+        final hasIndustry =
+            data.industry.isNotEmpty &&
             (data.industry != 'Other' || data.customIndustry.isNotEmpty);
         return data.organizationName.isNotEmpty &&
             hasIndustry &&
@@ -141,11 +130,35 @@ class OnboardingCubit extends Cubit<OnboardingState> {
 
   Future<void> _complete() async {
     final state = _currentState;
+    emit(const OnboardingLoading());
 
+    // ═══ 1. نحفظ محلياً إنه خلص أونبوردينج فوراً (قبل أي API) ═══
     await OnboardingService.instance.saveData(state.data);
-
     await SecureStorageService.instance.saveOnboardingCompleted(true);
 
+    // ═══ 2. نحاول نبعت الموظفين للباك إند (لو فشل، منوقفش المستخدم) ═══
+    try {
+      for (var member in state.data.teamMembers) {
+        await ApiClient.instance.post(
+          ApiEndpoints.createEmployee,
+          data: {
+            'firstName': member['firstName'],
+            'lastName': member['lastName'],
+            'phoneNumber': member['phoneNumber'],
+            'email': member['email'],
+            'password': member['password'],
+            'role': member['role'],
+          },
+        );
+      }
+      print('✅ All employees created successfully');
+    } catch (e) {
+      // ═══ 3. لو فشل، بنطبع إيرور بس منمنعش المستخدم ═══
+      print('⚠️ Failed to create employees: $e');
+      // ممكن نضيف قائمة بالموظفين اللي فشلوا عشان يبعتهم بعدين
+    }
+
+    // ═══ 4. في كل الحالات، بنقفل الأونبوردينج ═══
     emit(OnboardingCompleted(state.data));
   }
 }

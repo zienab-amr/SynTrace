@@ -9,6 +9,7 @@ using SynTrace.Domain.Entities;
 using SynTrace.Domain.Interfaces;
 using SynTrace.Infrastructure.ExternalServices;
 using SynTrace.Infrastructure.Persistence.Context;
+using static System.Net.WebRequestMethods;
 
 namespace SynTrace.Infrastructure.Repositories
 {
@@ -38,22 +39,34 @@ namespace SynTrace.Infrastructure.Repositories
         }
 
 
-        public async Task<List<Employee>> GetAllEmployeesAsync() => await _context.Employees
-                                                                             .Where(e => e.CompanyId == _currentTenant.CompanyId)
-                                                                             .ToListAsync();
+        public async Task<List<Employee>> GetAllEmployeesAsync()
+        {
+            var companyId = _currentTenant.CompanyId;
+            return await _context.Employees
+                                 .Where(e => e.CompanyId == companyId)
+                                 .ToListAsync();
+        }
 
-        public async Task<Employee?> GetEmployeeByIdAsync(string employeeId) => await _context.Employees
-                                                                                                .FirstOrDefaultAsync(e => 
-                                                                                                e.Id == employeeId && 
-                                                                                                e.CompanyId == _currentTenant.CompanyId);
+        public async Task<Employee?> GetEmployeeByIdAsync(string employeeId)
+        {
+            var companyId = _currentTenant.CompanyId;
+            return await _context.Employees
+                                .FirstOrDefaultAsync(e =>
+                                    e.Id == employeeId &&
 
-        public async Task<List<Employee>> GetEmployeesByNameAsync(string name) => await _context.Employees
-                                                                                            .Where(e =>
-                                                                                                e.CompanyId == _currentTenant.CompanyId &&
-                                                                                                (e.FirstName.ToLower().Contains(name.ToLower())
-                                                                                                 || e.LastName.ToLower().Contains(name.ToLower())))
-                                                                                            .ToListAsync();
+                                    e.CompanyId == companyId);
+        }
 
+        public async Task<List<Employee>> GetEmployeesByNameAsync(string name)
+        {
+            var companyId = _currentTenant.CompanyId;
+            return await _context.Employees
+                                .Where(e =>
+                                    e.CompanyId == companyId &&
+                                    (e.FirstName.ToLower().Contains(name.ToLower())
+                                     || e.LastName.ToLower().Contains(name.ToLower())))
+                                .ToListAsync();
+        }
         public async Task<IList<Employee>> GetEmployeesByRoleAsync(string role)
         {
             var employees = await _userManager.GetUsersInRoleAsync(role);
@@ -75,3 +88,5 @@ namespace SynTrace.Infrastructure.Repositories
 
     }
 }
+
+

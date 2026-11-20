@@ -12,6 +12,7 @@ namespace SynTrace.Infrastructure.Options
         public string Audience { get; set; }
         public string ClientId { get; set; }
         public string ClientSecret { get; set; }
+        public string WebhookBaseUrl { get; set; } = string.Empty;
         public List<string> Scopes { get; set; }
     }
 }

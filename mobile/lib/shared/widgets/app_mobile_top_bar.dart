@@ -63,7 +63,7 @@ class AppMobileTopBar extends StatelessWidget {
           Stack(
             children: [
               IconButton(
-                onPressed: () => context.go(AppRoutes.notifications),
+                onPressed: () => context.go(AppRoutes.jiraActivity),
                 icon: Icon(
                   Icons.notifications_outlined,
                   color: theme.colorScheme.onSurface.withOpacity(0.7),

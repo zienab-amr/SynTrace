@@ -17,7 +17,7 @@ class FinishStep extends StatelessWidget {
         children: [
           const SizedBox(height: 20),
 
-          // ─── Success Icon ───
+          // Success Icon
           Container(
             width: 100,
             height: 100,
@@ -36,7 +36,7 @@ class FinishStep extends StatelessWidget {
 
           const SizedBox(height: 24),
 
-          // ─── Title ───
+          // Title
           Text(
             "You're all set!",
             style: TextStyle(
@@ -58,7 +58,7 @@ class FinishStep extends StatelessWidget {
 
           const SizedBox(height: 28),
 
-          // ─── Summary ───
+          // Summary Items
           _SummaryItem(
             icon: Icons.business_outlined,
             label: 'Organization',
@@ -67,19 +67,35 @@ class FinishStep extends StatelessWidget {
           _SummaryItem(
             icon: Icons.category_outlined,
             label: 'Industry',
-            value: data.industry,
+            value: data.industry == 'Other'
+                ? data.customIndustry
+                : data.industry,
           ),
           _SummaryItem(
             icon: Icons.groups_outlined,
             label: 'Team Size',
             value: data.teamSize,
           ),
-          if (data.teamEmails.isNotEmpty)
+
+          // Team Members Summary (Updated)
+          if (data.teamMembers.isNotEmpty)
             _SummaryItem(
-              icon: Icons.email_outlined,
-              label: 'Invited',
-              value: '${data.teamEmails.length} team members',
+              icon: Icons.person_add_alt_1_outlined,
+              label: 'Team Members',
+              value: '${data.teamMembers.length} added',
             ),
+
+          // Preferences Summary
+          _SummaryItem(
+            icon: Icons.dark_mode_outlined,
+            label: 'Dark Mode',
+            value: data.isDarkMode ? 'Enabled' : 'Disabled',
+          ),
+          _SummaryItem(
+            icon: Icons.notifications_outlined,
+            label: 'Notifications',
+            value: data.notificationsEnabled ? 'Enabled' : 'Disabled',
+          ),
         ],
       ),
     );
@@ -107,9 +123,7 @@ class _SummaryItem extends StatelessWidget {
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: theme.dividerColor.withOpacity(0.5),
-        ),
+        border: Border.all(color: theme.dividerColor.withOpacity(0.5)),
       ),
       child: Row(
         children: [

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
 
 class ChatInput extends StatefulWidget {
@@ -31,6 +32,9 @@ class _ChatInputState extends State<ChatInput> {
         setState(() => _hasText = hasText);
       }
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusNode.requestFocus();
+    });
   }
 
   @override
@@ -47,6 +51,19 @@ class _ChatInputState extends State<ChatInput> {
     widget.onSend(text);
     _controller.clear();
     _focusNode.requestFocus();
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.enter) {
+        final isShiftPressed = HardwareKeyboard.instance.isShiftPressed;
+        if (!isShiftPressed) {
+          _handleSend();
+          return KeyEventResult.handled;
+        }
+      }
+    }
+    return KeyEventResult.ignored;
   }
 
   @override
@@ -68,32 +85,35 @@ class _ChatInputState extends State<ChatInput> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: TextField(
-                  controller: _controller,
-                  focusNode: _focusNode,
-                  enabled: widget.enabled && !widget.isLoading,
-                  maxLines: null,
-                  minLines: 1,
-                  keyboardType: TextInputType.multiline,
-                  textInputAction: TextInputAction.newline,
-                  style: TextStyle(
-                    color: theme.colorScheme.onSurface,
-                    fontSize: 14,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: widget.enabled
-                        ? 'Ask about your engineering data, risks, developers, PRs...'
-                        : 'Connecting...',
-                    hintStyle: TextStyle(
-                      color: theme.colorScheme.onSurface.withOpacity(0.4),
+                child: Focus(
+                  onKeyEvent: _handleKeyEvent,
+                  child: TextField(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    enabled: true, 
+                    maxLines: null,
+                    minLines: 1,
+                    keyboardType: TextInputType.multiline,
+                    textInputAction: TextInputAction.newline,
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurface,
                       fontSize: 14,
                     ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
+                    decoration: InputDecoration(
+                      hintText: widget.enabled
+                          ? 'Ask about your engineering data, risks, developers, PRs...'
+                          : 'Connecting...',
+                      hintStyle: TextStyle(
+                        color: theme.colorScheme.onSurface.withOpacity(0.4),
+                        fontSize: 14,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      border: InputBorder.none,
+                      isDense: true,
                     ),
-                    border: InputBorder.none,
-                    isDense: true,
                   ),
                 ),
               ),

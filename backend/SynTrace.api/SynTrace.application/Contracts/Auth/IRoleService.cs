@@ -11,8 +11,8 @@ namespace SynTrace.Application.Contracts.Auth
     {
         public Task<IdentityResult> AssignRoleAsync(Employee employee, string role);
         public Task<IdentityResult> CreateRoleAsync(string role);
-        public Task<List<IdentityRole>> GetAllRolesAsync();
-        public Task<IdentityRole?> GetRoleByNameAsync(string role);
+        public Task<List<Role>> GetAllRolesAsync();
+        public Task<Role?> GetRoleByNameAsync(string role);
         public Task<IdentityResult> DeleteRoleAsync(string role);
         public Task<IdentityResult> UpdateRoleAsync(string oldRoleName, string newRoleName);
     }

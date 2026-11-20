@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
 
 class TeamSetupStep extends StatefulWidget {
-  final List<String> emails;
-  final void Function(String) onAdd;
-  final void Function(String) onRemove;
+  final List<Map<String, String>> teamMembers;
+  final void Function(Map<String, String> member) onAdd;
+  final void Function(String email) onRemove;
 
   const TeamSetupStep({
     super.key,
-    required this.emails,
+    required this.teamMembers,
     required this.onAdd,
     required this.onRemove,
   });
@@ -18,22 +18,59 @@ class TeamSetupStep extends StatefulWidget {
 }
 
 class _TeamSetupStepState extends State<TeamSetupStep> {
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
+  final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  String _selectedRole = 'Developer';
 
   @override
   void dispose() {
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    _phoneController.dispose();
     _emailController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
-  void _addEmail() {
+  void _addMember() {
+    final firstName = _firstNameController.text.trim();
+    final lastName = _lastNameController.text.trim();
+    final phone = _phoneController.text.trim();
     final email = _emailController.text.trim();
-    if (email.isEmpty) return;
-    if (!email.contains('@')) return;
-    if (widget.emails.contains(email)) return;
+    final password = _passwordController.text.trim();
 
-    widget.onAdd(email);
+    if (firstName.isEmpty ||
+        email.isEmpty ||
+        !email.contains('@') ||
+        password.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please fill all required fields correctly. Password min 6 chars.',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    widget.onAdd({
+      'firstName': firstName,
+      'lastName': lastName.isEmpty ? '.' : lastName,
+      'phoneNumber': phone.isEmpty ? '0000000000' : phone,
+      'email': email,
+      'password': password,
+      'role': _selectedRole,
+    });
+
+    _firstNameController.clear();
+    _lastNameController.clear();
+    _phoneController.clear();
     _emailController.clear();
+    _passwordController.clear();
   }
 
   @override
@@ -45,9 +82,8 @@ class _TeamSetupStepState extends State<TeamSetupStep> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ─── Header ───
           Text(
-            'Invite your team',
+            'Add team members',
             style: TextStyle(
               color: theme.colorScheme.onSurface,
               fontSize: 24,
@@ -56,147 +92,153 @@ class _TeamSetupStepState extends State<TeamSetupStep> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Add team members (optional). You can always do this later.',
+            'Create accounts for your team. You can add more later.',
             style: TextStyle(
               color: theme.colorScheme.onSurface.withOpacity(0.6),
               fontSize: 14,
-              height: 1.5,
             ),
           ),
-
           const SizedBox(height: 24),
 
-          // ─── Email Input ───
           Row(
             children: [
               Expanded(
-                child: TextField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  style: TextStyle(color: theme.colorScheme.onSurface),
-                  decoration: InputDecoration(
-                    hintText: 'teammate@company.com',
-                    hintStyle: TextStyle(
-                      color: theme.colorScheme.onSurface.withOpacity(0.3),
-                    ),
-                    prefixIcon: Icon(
-                      Icons.email_outlined,
-                      color: theme.colorScheme.onSurface.withOpacity(0.5),
-                      size: 20,
-                    ),
-                    filled: true,
-                    fillColor: theme.colorScheme.surface,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: theme.dividerColor),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: theme.dividerColor),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(
-                        color: AppColors.primary,
-                        width: 2,
-                      ),
-                    ),
-                  ),
+                child: _buildTextField(
+                  _firstNameController,
+                  'First Name *',
+                  Icons.person,
+                  theme,
                 ),
               ),
-              const SizedBox(width: 8),
-              IconButton(
-                onPressed: _addEmail,
-                icon: const Icon(Icons.add_circle),
-                iconSize: 44,
-                color: AppColors.primary,
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildTextField(
+                  _lastNameController,
+                  'Last Name',
+                  Icons.person_outline,
+                  theme,
+                ),
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          _buildTextField(_phoneController, 'Phone Number', Icons.phone, theme),
+          const SizedBox(height: 12),
+          _buildTextField(
+            _emailController,
+            'Email Address *',
+            Icons.email,
+            theme,
+          ),
+          const SizedBox(height: 12),
+          _buildTextField(
+            _passwordController,
+            'Password *',
+            Icons.lock,
+            theme,
+            isPassword: true,
+          ),
+          const SizedBox(height: 12),
 
-          const SizedBox(height: 24),
-
-          // ─── Emails List ───
-          if (widget.emails.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
+          DropdownButtonFormField<String>(
+            value: _selectedRole,
+            dropdownColor: theme.colorScheme.surface,
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: theme.colorScheme.surface,
+              border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: theme.dividerColor.withOpacity(0.5),
+                borderSide: BorderSide(color: theme.dividerColor),
+              ),
+            ),
+            items: ['Admin', 'Manager', 'Developer', 'Viewer'].map((role) {
+              return DropdownMenuItem(
+                value: role,
+                child: Text(
+                  role,
+                  style: TextStyle(color: theme.colorScheme.onSurface),
+                ),
+              );
+            }).toList(),
+            onChanged: (val) => setState(() => _selectedRole = val!),
+          ),
+
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _addMember,
+              icon: const Icon(Icons.add),
+              label: const Text('Add Member to List'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.group_outlined,
-                    size: 48,
-                    color: theme.colorScheme.onSurface.withOpacity(0.2),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'No team members yet',
-                    style: TextStyle(
-                      color: theme.colorScheme.onSurface.withOpacity(0.5),
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else
-            Column(
-              children: widget.emails.map((email) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surface,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: theme.dividerColor),
-                    ),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 16,
-                          backgroundColor:
-                              AppColors.primary.withOpacity(0.15),
-                          child: Text(
-                            email[0].toUpperCase(),
-                            style: const TextStyle(
-                              color: AppColors.primary,
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            email,
-                            style: TextStyle(
-                              color: theme.colorScheme.onSurface,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () => widget.onRemove(email),
-                          icon: Icon(
-                            Icons.close,
-                            color: theme.colorScheme.onSurface.withOpacity(0.5),
-                            size: 18,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
             ),
+          ),
+          const SizedBox(height: 24),
+
+          if (widget.teamMembers.isNotEmpty)
+            ...widget.teamMembers.map((member) {
+              return ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: AppColors.primary.withOpacity(0.2),
+                  child: Text(
+                    member['firstName']![0],
+                    style: const TextStyle(color: AppColors.primary),
+                  ),
+                ),
+                title: Text(
+                  '${member['firstName']} ${member['lastName']}',
+                  style: TextStyle(color: theme.colorScheme.onSurface),
+                ),
+                subtitle: Text(
+                  member['email']!,
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                  ),
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.red),
+                  onPressed: () => widget.onRemove(member['email']!),
+                ),
+              );
+            }).toList(),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTextField(
+    TextEditingController controller,
+    String hint,
+    IconData icon,
+    ThemeData theme, {
+    bool isPassword = false,
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: isPassword,
+      style: TextStyle(color: theme.colorScheme.onSurface),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(
+          color: theme.colorScheme.onSurface.withOpacity(0.4),
+        ),
+        prefixIcon: Icon(
+          icon,
+          color: theme.colorScheme.onSurface.withOpacity(0.5),
+          size: 20,
+        ),
+        filled: true,
+        fillColor: theme.colorScheme.surface,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: theme.dividerColor),
+        ),
       ),
     );
   }
