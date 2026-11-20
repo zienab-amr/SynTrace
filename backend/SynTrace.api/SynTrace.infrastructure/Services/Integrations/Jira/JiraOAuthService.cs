@@ -2,19 +2,24 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SynTrace.Application.Contracts;
 using SynTrace.Application.Contracts.Integrations.Jira;
 using SynTrace.Application.DTOs.Requests;
 using SynTrace.Application.DTOs.Responses;
 using SynTrace.Application.Exceptions;
+using SynTrace.Application.Integrations.Jira;
 using SynTrace.Domain.Entities;
-using SynTrace.Domain.Interfaces;
-using SynTrace.Infrastructure.Options;
-using Microsoft.Data.SqlClient;
-using Microsoft.EntityFrameworkCore;
+using SynTrace.Domain.Entities.Jira;
 using SynTrace.Domain.Enums;
-using Microsoft.Extensions.Caching.Memory;
+using SynTrace.Domain.Interfaces;
+using SynTrace.Infrastructure.Integrations.Jira;
+using SynTrace.Infrastructure.Options;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace SynTrace.Infrastructure.Services.Integrations.Jira
 {
@@ -27,6 +32,10 @@ namespace SynTrace.Infrastructure.Services.Integrations.Jira
         private readonly ICurrentEmployee _currentEmployee;
         private readonly IDataProtector _tokenProtector;
         private readonly IMemoryCache _memoryCache;
+        private readonly IJiraWebhookRegistrationService _jiraWebhookRegistrationService;
+        private readonly IJiraBackfillQueue _backfillQueue;
+        private readonly ILogger<JiraOAuthService> _logger;
+
         private const int PendingConnectionMinutes = 5;
 
         public JiraOAuthService(
@@ -36,7 +45,10 @@ namespace SynTrace.Infrastructure.Services.Integrations.Jira
             ICurrentEmployee currentEmployee,
             IJiraOAuthConnectionRepository jiraOAuthConnectionRepository,
             IDataProtectionProvider dataProtectionProvider,
-            IMemoryCache memoryCache
+            IMemoryCache memoryCache,
+            IJiraWebhookRegistrationService jiraWebhookRegistrationService,
+            IJiraBackfillQueue backfillQueue,
+            ILogger<JiraOAuthService> logger
             )
         {
             _options = options;
@@ -46,6 +58,9 @@ namespace SynTrace.Infrastructure.Services.Integrations.Jira
             _jiraOAuthConnectionRepository = jiraOAuthConnectionRepository;
             _tokenProtector = dataProtectionProvider.CreateProtector("SynTrace.Integrations.Jira.Tokens.v1");
             _memoryCache = memoryCache;
+            _jiraWebhookRegistrationService = jiraWebhookRegistrationService;
+            _backfillQueue = backfillQueue;
+            _logger = logger;
         }
 
         public async Task<string> ConnectJira()
@@ -246,10 +261,11 @@ namespace SynTrace.Infrastructure.Services.Integrations.Jira
             return authorizationUrl;
         }
 
-        private async Task<JiraOAuthTokenResponse> ExchangeCodeForTokenAsync(string code, CancellationToken cancellationToken)
+        private async Task<JiraOAuthTokenResponse> ExchangeCodeForTokenAsync(
+        string code,
+        CancellationToken cancellationToken)
         {
             var client = _httpClientFactory.CreateClient();
-            var TokenUri = _options.Value.TokenUrl;
 
             var request = new JiraOAuthTokenRequest
             {
@@ -258,30 +274,43 @@ namespace SynTrace.Infrastructure.Services.Integrations.Jira
                 ClientSecret = _options.Value.ClientSecret,
                 Code = code,
                 RedirectUri = _options.Value.RedirectUri
-
             };
 
-            using var response = await client.PostAsJsonAsync(TokenUri, request, cancellationToken);
+            using var response = await client.PostAsJsonAsync(
+                _options.Value.TokenUrl,
+                request,
+                cancellationToken
+            );
+
+            var responseBody = await response.Content.ReadAsStringAsync(
+                cancellationToken
+            );
 
             if (!response.IsSuccessStatusCode)
             {
+                // Temporary diagnostic: do not log the code or client secret.
                 throw new HttpRequestException(
-                    $"Jira token exchange failed with HTTP status " +
-                    $"{(int)response.StatusCode} ({response.StatusCode}).");
+                    $"Jira token exchange failed. " +
+                    $"Status: {(int)response.StatusCode} ({response.StatusCode}). " +
+                    $"Provider response: {responseBody}"
+                );
             }
 
-            var token = await response.Content.ReadFromJsonAsync<JiraOAuthTokenResponse>(cancellationToken: cancellationToken);
+            var token = System.Text.Json.JsonSerializer.Deserialize<JiraOAuthTokenResponse>(
+                responseBody,
+                new System.Text.Json.JsonSerializerOptions(
+                    System.Text.Json.JsonSerializerDefaults.Web
+                )
+            );
 
-            if (token is null ||
-            string.IsNullOrWhiteSpace(token.AccessToken))
+            if (token is null || string.IsNullOrWhiteSpace(token.AccessToken))
             {
                 throw new InvalidOperationException(
-                    "The OAuth provider returned an invalid token response.");
+                    "The OAuth provider returned an invalid token response."
+                );
             }
 
             return token;
-
-
         }
 
         public Task<IReadOnlyList<JiraSiteOptionResponse>>
@@ -352,8 +381,19 @@ namespace SynTrace.Infrastructure.Services.Integrations.Jira
 
             await SaveConnectionAsync(companyConnection);
 
-            // Remove only after successful persistence.
             _memoryCache.Remove(GetPendingCacheKey(pendingId));
+
+            try
+            {
+                await _jiraWebhookRegistrationService.RegisterAsync(connectionId: companyConnection.Id);
+            }
+            catch (Exception ex)
+            {
+                // The connection itself is valid; the admin can retry with POST /api/integrations/jira/sync?reregisterWebhook=true
+                _logger.LogError(ex, "Jira webhook registration failed for connection {ConnectionId}.", companyConnection.Id);
+            }
+
+            await _backfillQueue.EnqueueAsync(companyConnection.Id, cancellationToken);
         }
 
         private async Task SaveConnectionAsync(JiraConnection connection)

@@ -20,10 +20,6 @@ namespace SynTrace.Application.Features.Role.Commands.DeleteRole
             DeleteRoleCommand request,
             CancellationToken cancellationToken)
         {
-            var role = await _roleService.GetRoleByNameAsync(request.Role);
-
-            if (role == null)
-                throw new Exception("This role does not exist");
 
             var result = await _roleService.DeleteRoleAsync(request.Role);
 

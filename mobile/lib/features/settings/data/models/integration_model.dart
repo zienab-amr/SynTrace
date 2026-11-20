@@ -1,43 +1,34 @@
-import 'package:equatable/equatable.dart';
-
 enum IntegrationType { jira, github }
-
 enum IntegrationStatus { connected, disconnected, connecting }
 
-class IntegrationModel extends Equatable 
-{
+class IntegrationModel {
   final IntegrationType type;
   final String name;
   final String description;
   final IntegrationStatus status;
-  final DateTime? connectedAt;
   final String? accountName;
 
   const IntegrationModel({
     required this.type,
     required this.name,
     required this.description,
-    required this.status,
-    this.connectedAt,
+    this.status = IntegrationStatus.disconnected,
     this.accountName,
   });
 
   IntegrationModel copyWith({
+    IntegrationType? type,
+    String? name,
+    String? description,
     IntegrationStatus? status,
-    DateTime? connectedAt,
     String? accountName,
   }) {
     return IntegrationModel(
-      type: type,
-      name: name,
-      description: description,
+      type: type ?? this.type,
+      name: name ?? this.name,
+      description: description ?? this.description,
       status: status ?? this.status,
-      connectedAt: connectedAt ?? this.connectedAt,
       accountName: accountName ?? this.accountName,
     );
   }
-
-  @override
-  List<Object?> get props =>
-      [type, name, description, status, connectedAt, accountName];
 }

@@ -3,74 +3,107 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
 import 'package:syntrace/features/chat/data/models/chat_message.dart';
 import 'package:syntrace/features/chat/presentation/widgets/ai_progress_steps.dart';
-import 'package:syntrace/features/chat/presentation/widgets/jira_card_widget.dart';
+import 'package:syntrace/features/chat/presentation/widgets/jira_cards_list.dart';
 
 class MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final VoidCallback? onRetry;
   final VoidCallback? onDelete;
+  final Function(String newText)? onEdit;
 
   const MessageBubble({
     super.key,
     required this.message,
     this.onRetry,
     this.onDelete,
+    this.onEdit,
   });
 
   @override
   Widget build(BuildContext context) {
     final isUser = message.role == ChatRole.user;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(
-        crossAxisAlignment:
-            isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: [
-          // ─── Progress Steps (AI Only) ───
-          if (!isUser && message.steps.isNotEmpty) ...[
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.85,
-              ),
-              child: AiProgressSteps(steps: message.steps),
-            ),
-            const SizedBox(height: 10),
-          ],
-
-          // ─── Message Row ───
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment:
-                isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-            children: [
-              // ─── Failed Icon (User Message) ───
-              if (isUser && message.hasError && onRetry != null) ...[
-                _buildFailedIcon(context),
-                const SizedBox(width: 8),
-              ],
-
-              // ─── Bubble ───
-              Flexible(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: MediaQuery.of(context).size.width * 0.85,
-                  ),
-                  child: isUser
-                      ? _buildUserBubble(context)
-                      : _buildAiBubble(context),
+    return SelectionArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          crossAxisAlignment:
+              isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            if (!isUser && message.steps.isNotEmpty) ...[
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.85,
                 ),
+                child: AiProgressSteps(steps: message.steps),
               ),
+              const SizedBox(height: 10),
             ],
-          ),
-        ],
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment:
+                  isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+              children: [
+                if (isUser && message.hasError && onRetry != null) ...[
+                  _buildFailedIcon(context),
+                  const SizedBox(width: 8),
+                ],
+                if (isUser && onEdit != null) ...[
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                    onPressed: () => _showEditDialog(context),
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                Flexible(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.85,
+                    ),
+                    child: isUser
+                        ? _buildUserBubble(context)
+                        : _buildAiBubble(context),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Failed Icon (Retry / Delete Menu)
-  // ═══════════════════════════════════════════════════════
+  void _showEditDialog(BuildContext context) {
+    final controller = TextEditingController(text: message.content);
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Edit Message'),
+          content: TextField(
+            controller: controller,
+            maxLines: 3,
+            decoration: const InputDecoration(border: OutlineInputBorder()),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                if (onEdit != null) onEdit!(controller.text.trim());
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildFailedIcon(BuildContext context) {
     return PopupMenuButton<String>(
       tooltip: 'Options',
@@ -116,9 +149,6 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // User Bubble
-  // ═══════════════════════════════════════════════════════
   Widget _buildUserBubble(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -144,13 +174,9 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // AI Bubble
-  // ═══════════════════════════════════════════════════════
   Widget _buildAiBubble(BuildContext context) {
     final theme = Theme.of(context);
 
-    // ─── Error Message ───
     if (message.hasError) {
       return Container(
         padding: const EdgeInsets.all(14),
@@ -181,7 +207,6 @@ class MessageBubble extends StatelessWidget {
       );
     }
 
-    // ─── Normal Message ───
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -191,49 +216,42 @@ class MessageBubble extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ─── Empty + Streaming: Blinking Cursor Only ───
           if (message.content.isEmpty && message.isStreaming)
             Row(
               children: [
                 _BlinkingCursor(color: theme.colorScheme.onSurface),
               ],
             )
-          // ─── Content ───
           else if (message.content.isNotEmpty)
-            MarkdownBody(
-              data: message.content,
-              styleSheet: _markdownStyle(theme),
-              selectable: true,
+            Directionality(
+              textDirection: TextDirection.rtl,
+              child: MarkdownBody(
+                data: message.content,
+                selectable: true,
+                softLineBreak: true,
+                styleSheet: _markdownStyle(theme),
+              ),
             ),
-
-          // ─── Blinking Cursor during Streaming ───
           if (message.isStreaming && message.content.isNotEmpty) ...[
             const SizedBox(height: 4),
             _BlinkingCursor(color: theme.colorScheme.onSurface),
           ],
-
-          // ─── Jira Cards ───
           if (message.jiraCards.isNotEmpty) ...[
             const SizedBox(height: 12),
-            ...message.jiraCards.map((card) {
-              return JiraCardWidget(
-                card: card,
-                onTap: () {
-                  // TODO: open URL in browser
-                },
-              );
-            }),
+            JiraCardsList(cards: message.jiraCards), 
           ],
         ],
       ),
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Markdown Style
-  // ═══════════════════════════════════════════════════════
   MarkdownStyleSheet _markdownStyle(ThemeData theme) {
     return MarkdownStyleSheet(
+      textAlign: WrapAlignment.start,
+      h1Align: WrapAlignment.start,
+      h2Align: WrapAlignment.start,
+      h3Align: WrapAlignment.start,
+      listBulletPadding: const EdgeInsets.only(left: 0, right: 8),
       h2: TextStyle(
         color: theme.colorScheme.onSurface,
         fontSize: 17,
@@ -256,9 +274,10 @@ class MessageBubble extends StatelessWidget {
         fontWeight: FontWeight.bold,
       ),
       listBullet: TextStyle(
-        color: theme.colorScheme.onSurface.withOpacity(0.85),
+        color: AppColors.primary,
         fontSize: 14,
         height: 1.6,
+        fontWeight: FontWeight.bold,
       ),
       code: TextStyle(
         color: AppColors.secondary,
@@ -273,17 +292,14 @@ class MessageBubble extends StatelessWidget {
       blockquoteDecoration: BoxDecoration(
         color: AppColors.primary.withOpacity(0.08),
         borderRadius: BorderRadius.circular(8),
-        border: Border(
-          left: BorderSide(color: AppColors.primary, width: 3),
+        border: const Border(
+          right: BorderSide(color: AppColors.primary, width: 3),
         ),
       ),
     );
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// Blinking Cursor
-// ═══════════════════════════════════════════════════════════
 class _BlinkingCursor extends StatefulWidget {
   final Color color;
   const _BlinkingCursor({required this.color});

@@ -15,11 +15,13 @@ namespace SynTrace.Infrastructure.Identity
         private readonly SynTraceDbContext _context;
         private readonly UserManager<Employee> _userManager;
         private readonly IOTPService _otpService;
-        public RegisterService(SynTraceDbContext context, UserManager<Employee> userManager, IOTPService otpService)
+        private readonly RoleManager<Role> _roleManager;
+        public RegisterService(SynTraceDbContext context, UserManager<Employee> userManager, IOTPService otpService, RoleManager<Role> roleManager)
         {
             _context = context;
             _userManager = userManager;
             _otpService = otpService;
+            _roleManager = roleManager;
         }
         public async Task<RegisterResponseDTO> CreateFirstEmployeeAsync(RegisterRequestDTO requestDto)
         {
@@ -63,12 +65,26 @@ namespace SynTrace.Infrastructure.Identity
                     string.Join(", ", result.Errors.Select(e => e.Description)));
             }
 
-            var roleResult = await _userManager.AddToRoleAsync(employee, "Admin");
+            var adminRole = new Role
+            {
+                Name = "Admin",
+                CompanyId = company.CompanyId
+            };
+
+            var roleResult = await _roleManager.CreateAsync(adminRole);
 
             if (!roleResult.Succeeded)
             {
                 throw new InvalidOperationException(
                     string.Join(", ", roleResult.Errors.Select(e => e.Description)));
+            }
+
+            var assignrole= await _userManager.AddToRoleAsync(employee, "Admin");
+
+            if (!assignrole.Succeeded)
+            {
+                throw new InvalidOperationException(
+                    string.Join(", ", assignrole.Errors.Select(e => e.Description)));
             }
 
             _otpService.RemoveEmailVerification(requestDto.Email);

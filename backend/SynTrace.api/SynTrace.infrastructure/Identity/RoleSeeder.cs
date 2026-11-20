@@ -1,12 +1,16 @@
 ﻿using Microsoft.AspNetCore.Identity;
+using SynTrace.Application.Contracts;
+using SynTrace.Domain.Entities;
 
 namespace SynTrace.Infrastructure.Identity
 {
     public static class RoleSeeder
     {
 
-        public static async Task SeedRolesAsync(RoleManager<IdentityRole> roleManager)
+
+        public static async Task SeedRolesAsync(RoleManager<Role> roleManager, string companyId)
         {
+           
             string[] roles =
             {
                 "Admin",
@@ -23,7 +27,11 @@ namespace SynTrace.Infrastructure.Identity
             {
                 if(!await roleManager.RoleExistsAsync(role))
                 {
-                    await roleManager.CreateAsync(new IdentityRole(role));
+                    await roleManager.CreateAsync(
+                        new Role {
+                        Name = role ,
+                        CompanyId = companyId
+                        });
                 }
 
             }

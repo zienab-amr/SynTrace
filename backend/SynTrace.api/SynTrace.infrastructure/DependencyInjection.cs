@@ -1,20 +1,29 @@
-﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.IdentityModel.Tokens;
 using SynTrace.Application.Contracts;
+using SynTrace.Application.Contracts.Assistant;
 using SynTrace.Application.Contracts.Auth;
 using SynTrace.Application.Contracts.Integrations.Jira;
+using SynTrace.Application.Integrations.Jira;
 using SynTrace.Domain.Entities;
 using SynTrace.Domain.Interfaces;
 using SynTrace.Infrastructure.ExternalServices;
 using SynTrace.Infrastructure.Identity;
+using SynTrace.Infrastructure.Integrations.Jira;
+using SynTrace.Infrastructure.Messaging.RabbitMQ;
+using SynTrace.Infrastructure.Messaging.RabbitMQ.Configuration;
+using SynTrace.Infrastructure.Messaging.RabbitMQ.Connections;
+using SynTrace.Infrastructure.Messaging.RabbitMQ.Publishing;
+using SynTrace.Infrastructure.Messaging.RabbitMQ.Topology;
 using SynTrace.Infrastructure.Options;
 using SynTrace.Infrastructure.Persistence.Context;
 using SynTrace.Infrastructure.Repositories;
+using SynTrace.Infrastructure.Services.Assistant;
 using SynTrace.Infrastructure.Services.Integrations.Jira;
 
 namespace SynTrace.Infrastructure
@@ -31,7 +40,7 @@ namespace SynTrace.Infrastructure
             );
 
             // Identity
-            services.AddIdentity<Employee, IdentityRole>()
+            services.AddIdentity<Employee, Role>()
                 .AddEntityFrameworkStores<SynTraceDbContext>()
                 .AddDefaultTokenProviders();
 
@@ -81,12 +90,16 @@ namespace SynTrace.Infrastructure
             services.AddScoped<ITokenService, TokenService>();
             services.AddScoped<IForgotPasswordService, ForgotPasswordService>();
             services.AddScoped<IRoleService, RoleService>();
+
+            //Jira Services
             services.AddScoped<IJiraOAuthService, JiraOAuthService>();
+            services.AddJiraIntegration(configuration);   
 
             //JWT Token Service
             services.AddScoped<ICurrentTenant, CurrentTenant>();
             services.AddScoped<ICurrentEmployee, CurrentEmployee>();
             services.AddScoped<ICurrentRole, CurrentRole>();
+            services.AddScoped<ITenantValidator, TenantValidator>();
 
             //Repositories
             services.AddScoped<IEmployeeRepository, EmployeeRepository>();
@@ -95,8 +108,21 @@ namespace SynTrace.Infrastructure
             //Http Client
             services.AddHttpClient();
 
+            //AI service
+            services.Configure<AiServiceOptions>(configuration.GetSection(AiServiceOptions.SectionName));
+            services.AddScoped<IAssistantClient, AssistantClient>();
+
+            //RabbitMQ Service
+            services.AddRabbitMqInfrastructure(options =>
+            {
+                configuration.GetSection(RabbitMqOptions.SectionName).Bind(options);
+            });
+
             //binding configuration
             services.Configure<JiraOAuthOptions>(configuration.GetSection("JiraOAuth"));
+
+            services.Configure<RabbitMqTopologyOptions>(
+                configuration.GetSection(RabbitMqTopologyOptions.SectionName));
 
             return services;
         }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
 import 'package:syntrace/features/chat/data/models/jira_card_model.dart';
 
@@ -21,29 +22,35 @@ class JiraCardWidget extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: () async {
+            if (onTap != null) {
+              onTap!();
+            } else if (card.url.isNotEmpty) {
+              final Uri url = Uri.parse(card.url);
+              if (await canLaunchUrl(url)) {
+                await launchUrl(url, mode: LaunchMode.externalApplication);
+              }
+            }
+          },
           borderRadius: BorderRadius.circular(12),
           child: Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: theme.colorScheme.surface.withOpacity(0.5),
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: theme.dividerColor.withOpacity(0.2)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ─── Row 1: Type Icon + Key + Priority ───
                 Row(
                   children: [
-                    // Type Icon
                     Icon(
                       _getTypeIcon(),
                       size: 14,
                       color: _getTypeColor(),
                     ),
                     const SizedBox(width: 6),
-
-                    // Issue Key
                     Text(
                       card.issueKey,
                       style: TextStyle(
@@ -53,17 +60,11 @@ class JiraCardWidget extends StatelessWidget {
                         fontFamily: 'monospace',
                       ),
                     ),
-
                     const Spacer(),
-
-                    // Priority Badge
                     _buildPriorityBadge(theme),
                   ],
                 ),
-
                 const SizedBox(height: 10),
-
-                // ─── Row 2: Summary ───
                 Text(
                   card.summary,
                   maxLines: 2,
@@ -75,19 +76,12 @@ class JiraCardWidget extends StatelessWidget {
                     height: 1.4,
                   ),
                 ),
-
                 const SizedBox(height: 12),
-
-                // ─── Row 3: Status + Assignee ───
                 Row(
                   children: [
-                    // Status
                     _buildStatusBadge(theme),
-
                     const Spacer(),
-
-                    // Assignee
-                    if (card.assigneeName != null) ...[
+                    if (card.assigneeName != null && card.assigneeName!.isNotEmpty) ...[
                       Icon(
                         Icons.person_outline,
                         size: 12,
@@ -101,11 +95,8 @@ class JiraCardWidget extends StatelessWidget {
                           fontSize: 11,
                         ),
                       ),
+                      const SizedBox(width: 8),
                     ],
-
-                    const SizedBox(width: 8),
-
-                    // Open Link
                     Icon(
                       Icons.open_in_new,
                       size: 12,
@@ -121,11 +112,13 @@ class JiraCardWidget extends StatelessWidget {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Priority Badge
-  // ═══════════════════════════════════════════════════════
   Widget _buildPriorityBadge(ThemeData theme) {
+    if (card.priority.isEmpty || card.priority == 'None') {
+      return const SizedBox.shrink();
+    }
     final color = _getPriorityColor();
+    final icon = _getPriorityIcon();
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -135,8 +128,8 @@ class JiraCardWidget extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.arrow_upward, size: 10, color: color),
-          const SizedBox(width: 2),
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
           Text(
             card.priority,
             style: TextStyle(
@@ -150,11 +143,12 @@ class JiraCardWidget extends StatelessWidget {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Status Badge
-  // ═══════════════════════════════════════════════════════
   Widget _buildStatusBadge(ThemeData theme) {
+    if (card.status.isEmpty || card.status == 'Unknown') {
+      return const SizedBox.shrink();
+    }
     final color = _getStatusColor();
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -172,9 +166,6 @@ class JiraCardWidget extends StatelessWidget {
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Colors & Icons
-  // ═══════════════════════════════════════════════════════
   Color _getTypeColor() {
     switch (card.issueType.toLowerCase()) {
       case 'bug':
@@ -196,6 +187,9 @@ class JiraCardWidget extends StatelessWidget {
         return Icons.bookmark_outline;
       case 'epic':
         return Icons.bolt;
+      case 'sub-task':
+      case 'subtask':
+        return Icons.call_split;
       default:
         return Icons.task_alt;
     }
@@ -205,27 +199,51 @@ class JiraCardWidget extends StatelessWidget {
     switch (card.priority.toLowerCase()) {
       case 'highest':
       case 'critical':
-        return AppColors.error;
+        return Colors.red;
       case 'high':
-        return AppColors.warning;
+        return Colors.orange;
+      case 'medium':
+        return Colors.blue;
       case 'low':
+        return Colors.teal;
       case 'lowest':
-        return AppColors.textMuted;
+        return Colors.grey;
       default:
-        return AppColors.primary;
+        return AppColors.textMuted;
+    }
+  }
+
+  IconData _getPriorityIcon() {
+    switch (card.priority.toLowerCase()) {
+      case 'highest':
+      case 'critical':
+        return Icons.keyboard_double_arrow_up;
+      case 'high':
+        return Icons.arrow_upward;
+      case 'medium':
+        return Icons.drag_handle;
+      case 'low':
+        return Icons.arrow_downward;
+      case 'lowest':
+        return Icons.keyboard_double_arrow_down;
+      default:
+        return Icons.remove;
     }
   }
 
   Color _getStatusColor() {
-    switch (card.statusCategory.toLowerCase()) {
-      case 'done':
-        return AppColors.secondary;
-      case 'in_progress':
-        return AppColors.primary;
-      case 'blocked':
-        return AppColors.error;
-      default:
-        return AppColors.textMuted;
+    final status = card.status.toLowerCase();
+    final category = card.statusCategory.toLowerCase();
+
+    if (category == 'done' || status == 'done' || status == 'closed') {
+      return Colors.green;
     }
+    if (category == 'indeterminate' || status == 'in progress' || status == 'in_progress') {
+      return Colors.blue;
+    }
+    if (status == 'blocked') {
+      return Colors.red;
+    }
+    return Colors.grey;
   }
 }

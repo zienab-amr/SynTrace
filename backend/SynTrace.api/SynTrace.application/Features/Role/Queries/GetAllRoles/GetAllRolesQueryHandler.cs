@@ -7,14 +7,14 @@ using SynTrace.Application.Contracts.Auth;
 
 namespace SynTrace.Application.Features.Role.Queries.GetAllRoles
 {
-    public class GetAllRolesQueryHandler : IRequestHandler<GetAllRolesQuery, List<IdentityRole>>
+    public class GetAllRolesQueryHandler : IRequestHandler<GetAllRolesQuery, List<SynTrace.Domain.Entities.Role>>
     {
         private readonly IRoleService _roleService;
-        public GetAllRolesQueryHandler(IRoleService roleService, RoleManager<IdentityRole> roleManager)
+        public GetAllRolesQueryHandler(IRoleService roleService)
         {
             _roleService = roleService;
         }
-        public async Task<List<IdentityRole>> Handle(GetAllRolesQuery request, CancellationToken cancellationToken)
+        public async Task<List<SynTrace.Domain.Entities.Role>> Handle(GetAllRolesQuery request, CancellationToken cancellationToken)
         {
             return await _roleService.GetAllRolesAsync();
         }

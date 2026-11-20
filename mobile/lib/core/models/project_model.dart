@@ -141,21 +141,21 @@ class ProjectModel extends Equatable {
   // ═══════════════════════════════════════════════════════
   @override
   List<Object?> get props => [
-        id,
-        name,
-        description,
-        status,
-        startDate,
-        endDate,
-        tenantId,
-        ownerId,
-        memberIds,
-        currentSprint,
-        totalSprints,
-        sprintEnd,
-        createdAt,
-        updatedAt,
-      ];
+    id,
+    name,
+    description,
+    status,
+    startDate,
+    endDate,
+    tenantId,
+    ownerId,
+    memberIds,
+    currentSprint,
+    totalSprints,
+    sprintEnd,
+    createdAt,
+    updatedAt,
+  ];
 }
 
 // ═══════════════════════════════════════════════════════════

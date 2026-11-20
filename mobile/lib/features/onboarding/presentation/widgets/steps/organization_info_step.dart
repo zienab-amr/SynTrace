@@ -36,15 +36,15 @@ class _OrganizationInfoStepState extends State<OrganizationInfoStep> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.organizationName);
-    _customIndustryController =
-        TextEditingController(text: widget.customIndustry);
+    _customIndustryController = TextEditingController(
+      text: widget.customIndustry,
+    );
   }
 
   @override
   void didUpdateWidget(covariant OrganizationInfoStep oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // ─── Sync Name ───
     if (widget.organizationName != _nameController.text) {
       final selection = _nameController.selection;
       _nameController.text = widget.organizationName;
@@ -57,7 +57,6 @@ class _OrganizationInfoStepState extends State<OrganizationInfoStep> {
       }
     }
 
-    // ─── Sync Custom Industry ───
     if (widget.customIndustry != _customIndustryController.text) {
       final selection = _customIndustryController.selection;
       _customIndustryController.text = widget.customIndustry;
@@ -106,7 +105,6 @@ class _OrganizationInfoStepState extends State<OrganizationInfoStep> {
         ),
         const SizedBox(height: 32),
 
-        // ─── Organization Name ───
         _buildLabel('Organization Name', theme),
         const SizedBox(height: 8),
         TextField(
@@ -119,10 +117,8 @@ class _OrganizationInfoStepState extends State<OrganizationInfoStep> {
             theme: theme,
           ),
         ),
-
         const SizedBox(height: 20),
 
-        // ─── Industry ───
         _buildLabel('Industry', theme),
         const SizedBox(height: 8),
         _buildDropdown(
@@ -133,7 +129,6 @@ class _OrganizationInfoStepState extends State<OrganizationInfoStep> {
           theme: theme,
         ),
 
-        // ─── Custom Industry ───
         AnimatedSize(
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeInOut,
@@ -154,10 +149,8 @@ class _OrganizationInfoStepState extends State<OrganizationInfoStep> {
                 )
               : const SizedBox.shrink(),
         ),
-
         const SizedBox(height: 20),
 
-        // ─── Team Size ───
         _buildLabel('Team Size', theme),
         const SizedBox(height: 12),
         Wrap(
@@ -194,9 +187,7 @@ class _OrganizationInfoStepState extends State<OrganizationInfoStep> {
   }) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: TextStyle(
-        color: theme.colorScheme.onSurface.withOpacity(0.3),
-      ),
+      hintStyle: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.3)),
       prefixIcon: Icon(
         icon,
         color: theme.colorScheme.onSurface.withOpacity(0.5),

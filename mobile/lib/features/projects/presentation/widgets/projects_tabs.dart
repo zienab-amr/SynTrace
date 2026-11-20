@@ -3,7 +3,7 @@ import 'package:syntrace/core/theme/app_colors.dart';
 
 /// ═══════════════════════════════════════════════════════════
 /// ProjectsTabs
-/// 
+///
 /// Projects / Tasks / Pull Requests
 /// ═══════════════════════════════════════════════════════════
 class ProjectsTabs extends StatelessWidget {

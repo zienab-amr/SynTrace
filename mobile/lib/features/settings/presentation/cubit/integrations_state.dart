@@ -28,3 +28,16 @@ class IntegrationsError extends IntegrationsState {
   @override
   List<Object?> get props => [message];
 }
+
+class IntegrationsSiteSelectionRequired extends IntegrationsState {
+  final List<Map<String, dynamic>> sites;
+  final String pendingId;
+
+  const IntegrationsSiteSelectionRequired({
+    required this.sites,
+    required this.pendingId,
+  });
+
+  @override
+  List<Object?> get props => [sites, pendingId];
+}

@@ -1,18 +1,13 @@
 import 'package:equatable/equatable.dart';
 
 class OnboardingData extends Equatable {
-  // ─── Organization Info ───
   final String organizationName;
   final String industry;
-  final String customIndustry;   // ← جديد
+  final String customIndustry;
   final String teamSize;
   final String userRole;
-  final String customRole;       // ← جديد
-
-  // ─── Team Members ───
-  final List<String> teamEmails;
-
-  // ─── Preferences ───
+  final String customRole;
+  final List<Map<String, String>> teamMembers;
   final bool isDarkMode;
   final bool notificationsEnabled;
 
@@ -23,25 +18,10 @@ class OnboardingData extends Equatable {
     this.teamSize = '',
     this.userRole = '',
     this.customRole = '',
-    this.teamEmails = const [],
+    this.teamMembers = const [],
     this.isDarkMode = true,
     this.notificationsEnabled = true,
   });
-
-  /// ─── الـ industry الفعلي (لو Other، استخدم الـ custom) ───
-  String get effectiveIndustry {
-    if (industry == 'Other' && customIndustry.isNotEmpty) {
-      return customIndustry;
-    }
-    return industry;
-  }
-
-  String get effectiveRole {
-    if (userRole == 'Other' && customRole.isNotEmpty) {
-      return customRole;
-    }
-    return userRole;
-  }
 
   OnboardingData copyWith({
     String? organizationName,
@@ -50,7 +30,7 @@ class OnboardingData extends Equatable {
     String? teamSize,
     String? userRole,
     String? customRole,
-    List<String>? teamEmails,
+    List<Map<String, String>>? teamMembers,
     bool? isDarkMode,
     bool? notificationsEnabled,
   }) {
@@ -61,7 +41,7 @@ class OnboardingData extends Equatable {
       teamSize: teamSize ?? this.teamSize,
       userRole: userRole ?? this.userRole,
       customRole: customRole ?? this.customRole,
-      teamEmails: teamEmails ?? this.teamEmails,
+      teamMembers: teamMembers ?? this.teamMembers,
       isDarkMode: isDarkMode ?? this.isDarkMode,
       notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
     );
@@ -69,38 +49,33 @@ class OnboardingData extends Equatable {
 
   @override
   List<Object?> get props => [
-        organizationName,
-        industry,
-        customIndustry,
-        teamSize,
-        userRole,
-        customRole,
-        teamEmails,
-        isDarkMode,
-        notificationsEnabled,
-      ];
+    organizationName,
+    industry,
+    customIndustry,
+    teamSize,
+    userRole,
+    customRole,
+    teamMembers,
+    isDarkMode,
+    notificationsEnabled,
+  ];
 }
 
 class OnboardingOptions {
-  OnboardingOptions._();
-
-  static const industries = [
-    'Software Development',
-    'Fintech',
+  static const List<String> industries = [
+    'Technology',
+    'Finance',
     'Healthcare',
     'E-commerce',
     'Education',
     'Other',
   ];
 
-  static const teamSizes = ['1-10', '11-50', '51-200', '200+'];
-
-  static const roles = [
-    'Developer',
-    'Team Lead',
-    'Manager',
-    'CTO',
-    'Founder',
-    'Other',
+  static const List<String> teamSizes = [
+    '1-10',
+    '11-50',
+    '51-200',
+    '201-500',
+    '500+',
   ];
 }
