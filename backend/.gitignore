@@ -29,3 +29,9 @@ TestResults/
 # OS
 .DS_Store
 Thumbs.db
+# Private credentials
+*.pem
+.env
+.env.*
+
+!.env.example
