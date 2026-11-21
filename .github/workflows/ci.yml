@@ -19,10 +19,16 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Restore dependencies
-        run: dotnet restore backend/SynTrace.api/SynTrace.api.slnx
+        run: dotnet restore backend/SynTrace.api/SynTrace.api.slnx -p:NuGetAuditMode=all
 
       - name: Build project
         run: dotnet build --no-restore backend/SynTrace.api/SynTrace.api.slnx
 
-      - name: Run tests
-        run: dotnet test backend/SynTrace.api/SynTrace.api.slnx
+      - name: Run backend integration checks
+        run: dotnet run --project backend/SynTrace.api/SynTrace.IntegrationChecks --no-build --no-restore
+
+      - name: Check EF migrations
+        working-directory: backend/SynTrace.api
+        run: |
+          dotnet tool install dotnet-ef --tool-path "${{ runner.temp }}/ef-tools" --version 10.0.13
+          "${{ runner.temp }}/ef-tools/dotnet-ef" migrations has-pending-model-changes --project SynTrace.infrastructure --startup-project SynTrace_api --no-build
