@@ -26,7 +26,7 @@ public interface IJiraWebhookIngestionService
         CancellationToken cancellationToken);
 }
 
-public enum JiraEventProcessingResult { Processed, Duplicate }
+public enum JiraEventProcessingResult { Processed, Duplicate, Ignored }
 
 public interface IJiraEventProcessor
 {
