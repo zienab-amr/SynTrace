@@ -46,6 +46,9 @@ class ApiEndpoints {
   // AI Assistant
   // ═══════════════════════════════════════════════════════════
   static const String askAssistant = '/assistant/ask';
+  static const String getConversations = '/assistant/conversations';
+  static String getConversationMessages(String id) => '/assistant/conversations/$id/messages';
+  static String deleteConversation(String id) => '/assistant/conversations/$id';
   // ═══════════════════════════════════════════════════════════
   // Integrations (Jira)
   // ═══════════════════════════════════════════════════════════

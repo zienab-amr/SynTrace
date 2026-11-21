@@ -3,7 +3,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:syntrace/core/network/api_client.dart';
 import 'package:syntrace/core/network/api_endpoints.dart';
-import 'package:syntrace/core/services/chat_local_storage_service.dart';
 import 'package:syntrace/features/chat/data/models/chat_error.dart';
 import 'package:syntrace/features/chat/data/models/chat_message.dart';
 import 'package:syntrace/features/chat/data/models/chat_session.dart';
@@ -14,13 +13,19 @@ class ChatCubit extends Cubit<ChatState> {
   ChatCubit() : super(const ChatInitial());
 
   String? _lastFailedMessage;
+  String? _currentConversationId;
+  String? _activeMessageId;
+  CancelToken? _cancelToken;
 
   Future<void> loadChat() async {
     emit(const ChatLoading());
     try {
-      final cachedSessions = await ChatLocalStorageService.instance.loadSessions();
-      if (cachedSessions != null && cachedSessions.isNotEmpty) {
-        emit(ChatLoaded(sessions: cachedSessions));
+      final response = await ApiClient.instance.get(ApiEndpoints.getConversations);
+      if (response.statusCode == 200 && response.data is List) {
+        final sessions = (response.data as List)
+            .map((e) => ChatSession.fromJson(e as Map<String, dynamic>))
+            .toList();
+        emit(ChatLoaded(sessions: sessions));
       } else {
         emit(const ChatLoaded(sessions: []));
       }
@@ -32,16 +37,48 @@ class ChatCubit extends Cubit<ChatState> {
   Future<void> openSession(ChatSession session) async {
     if (state is! ChatLoaded) return;
     final current = state as ChatLoaded;
+    
+    _currentConversationId = session.id;
+
+    emit(current.copyWith(
+      currentSessionId: session.id,
+      isSending: true,
+      clearError: true,
+      messages: [],
+    ));
+
     try {
-      final cachedMessages = await ChatLocalStorageService.instance.loadMessages(session.id);
-      emit(current.copyWith(
-        currentSessionId: session.id,
-        messages: cachedMessages ?? [],
-        isSending: false,
-        isStreaming: false,
-        clearError: true,
-      ));
+      final response = await ApiClient.instance.get(
+        ApiEndpoints.getConversationMessages(session.id),
+      );
+
+      if (response.statusCode == 200 && response.data is List) {
+        final messages = (response.data as List).map((e) {
+          final map = e as Map<String, dynamic>;
+          final userMsg = ChatMessage(
+            id: map['id']?.toString() ?? '',
+            role: ChatRole.user,
+            content: map['question']?.toString() ?? '',
+            timestamp: DateTime.now(),
+          );
+          final aiMsg = ChatMessage(
+            id: 'ai-${map['id']}',
+            role: ChatRole.ai,
+            content: map['answer']?.toString() ?? '',
+            timestamp: DateTime.now(),
+          );
+          return [userMsg, aiMsg];
+        }).expand((e) => e).toList();
+
+        emit(current.copyWith(
+          messages: messages,
+          isSending: false,
+        ));
+      } else {
+        emit(current.copyWith(isSending: false));
+      }
     } catch (e) {
+      emit(current.copyWith(isSending: false));
       _emitError(ChatErrorType.unknown);
     }
   }
@@ -49,11 +86,12 @@ class ChatCubit extends Cubit<ChatState> {
   void newChat() {
     if (state is! ChatLoaded) return;
     final current = state as ChatLoaded;
+    _currentConversationId = null;
+    _activeMessageId = null;
     emit(current.copyWith(
       messages: [],
       clearSession: true,
       isSending: false,
-      isStreaming: false,
       clearError: true,
     ));
   }
@@ -62,29 +100,26 @@ class ChatCubit extends Cubit<ChatState> {
     if (state is! ChatLoaded) return;
     final current = state as ChatLoaded;
 
-    String sessionId = current.currentSessionId ?? DateTime.now().millisecondsSinceEpoch.toString();
-    List<ChatSession> updatedSessions = List.from(current.sessions);
-
-    if (current.currentSessionId == null) {
-      final newSession = ChatSession(
-        id: sessionId,
-        title: text.length > 20 ? '${text.substring(0, 20)}...' : text,
-        lastMessageAt: DateTime.now(),
-      );
-      updatedSessions.insert(0, newSession);
-      await ChatLocalStorageService.instance.saveSessions(updatedSessions);
-    }
-
+    String messageId = DateTime.now().millisecondsSinceEpoch.toString();
     final userMessage = ChatMessage(
-      id: 'user-${DateTime.now().millisecondsSinceEpoch}',
+      id: messageId,
       role: ChatRole.user,
       content: text,
       timestamp: DateTime.now(),
     );
 
+    bool isAppend = current.isSending && _activeMessageId != null;
+
+    if (!isAppend) {
+      _activeMessageId = messageId;
+    }
+
+    if (_cancelToken != null && !_cancelToken!.isCancelled) {
+      _cancelToken!.cancel('New message sent');
+    }
+    _cancelToken = CancelToken();
+
     emit(current.copyWith(
-      sessions: updatedSessions,
-      currentSessionId: sessionId,
       messages: [...current.messages, userMessage],
       isSending: true,
       clearError: true,
@@ -93,84 +128,59 @@ class ChatCubit extends Cubit<ChatState> {
     _lastFailedMessage = text;
 
     try {
+      final Map<String, dynamic> data = {'question': text};
+      if (_currentConversationId != null) {
+        data['conversationId'] = _currentConversationId;
+      }
+      if (isAppend) {
+        data['appendToMessageId'] = _activeMessageId;
+      }
+
       final response = await ApiClient.instance.post(
         ApiEndpoints.askAssistant,
-        data: {'question': text},
+        data: data,
+        cancelToken: _cancelToken, 
       );
 
       if (response.statusCode == 200) {
-        final dynamic data = response.data;
+        final responseData = response.data;
         String aiResponseText = '';
         List<JiraCardModel> jiraCards = [];
-
-        if (data is Map) {
-          aiResponseText = data['answer']?.toString() ?? 'No response received.';
-          if (aiResponseText.contains('links: [')) {
-            aiResponseText = aiResponseText.split('links: [').first.trim();
+        
+        if (responseData is Map) {
+          String? newConversationId = responseData['conversationId']?.toString();
+          if (newConversationId != null) {
+            _currentConversationId = newConversationId;
           }
+
+          aiResponseText = responseData['answer']?.toString() ?? 'No response received.';
           
-          if (data['links'] is List) {
-            final links = data['links'] as List;
+          if (responseData['links'] is List) {
+            final links = responseData['links'] as List;
             for (var link in links) {
               if (link is Map) {
-                var fields = link['fields'] is Map ? link['fields'] as Map : {};
-
-                String key = link['key']?.toString() ?? link['issueKey']?.toString() ?? 'KEY';
-                
-                String summary = link['summary']?.toString() ?? 
-                                 fields['summary']?.toString() ?? 
-                                 'No Summary';
-
-                var statusObj = link['status'] ?? fields['status'];
-                String status = 'Unknown';
-                String statusCategory = 'todo';
-                if (statusObj is Map) {
-                  status = statusObj['name']?.toString() ?? 'Unknown';
-                  statusCategory = statusObj['statusCategory']?['name']?.toString() ?? 
-                                   statusObj['statusCategory']?['key']?.toString() ?? 'todo';
-                } else if (statusObj != null) {
-                  status = statusObj.toString();
+                String priorityStr = 'Medium';
+                if (link['priority'] != null) {
+                  if (link['priority'] is Map) {
+                    priorityStr = link['priority']['name']?.toString() ?? 'Medium';
+                  } else {
+                    priorityStr = link['priority'].toString();
+                  }
                 }
-
-                var priorityObj = link['priority'] ?? fields['priority'];
-                String priority = 'None';
-                if (priorityObj is Map) {
-                  priority = priorityObj['name']?.toString() ?? 'None';
-                } else if (priorityObj != null) {
-                  priority = priorityObj.toString();
-                }
-
-                var typeObj = link['type'] ?? link['issueType'] ?? fields['issuetype'] ?? fields['issueType'];
-                String issueType = 'Task';
-                if (typeObj is Map) {
-                  issueType = typeObj['name']?.toString() ?? 'Task';
-                } else if (typeObj != null) {
-                  issueType = typeObj.toString();
-                }
-
-                String assignee = '';
-                var assigneeObj = link['assignee'] ?? fields['assignee'];
-                if (assigneeObj is Map) {
-                  assignee = assigneeObj['displayName']?.toString() ?? assigneeObj['name']?.toString() ?? '';
-                } else if (assigneeObj != null) {
-                  assignee = assigneeObj.toString();
-                }
-
                 jiraCards.add(JiraCardModel(
-                  issueKey: key,
-                  summary: summary,
-                  status: status,
-                  statusCategory: statusCategory,
-                  priority: priority,
-                  issueType: issueType,
-                  assigneeName: assignee.isNotEmpty ? assignee : null,
+                  issueKey: link['key']?.toString() ?? 'KEY',
+                  summary: link['summary']?.toString() ?? 'Jira Ticket',
+                  status: link['status']?.toString() ?? 'Open',
+                  statusCategory: link['statusCategory']?.toString() ?? 'todo',
+                  priority: priorityStr,
+                  issueType: link['type']?.toString() ?? 'Task',
                   url: link['url']?.toString() ?? '',
                 ));
               }
             }
           }
         } else {
-          aiResponseText = data.toString();
+          aiResponseText = responseData.toString();
         }
 
         final aiMessageId = 'ai-${DateTime.now().millisecondsSinceEpoch}';
@@ -191,22 +201,99 @@ class ChatCubit extends Cubit<ChatState> {
         ));
 
         await _streamResponse(
-          sessionId: sessionId,
           messageId: aiMessageId,
           fullText: aiResponseText,
         );
+        
+        _activeMessageId = null;
       } else {
         throw Exception('Server returned ${response.statusCode}');
       }
     } on DioException catch (e) {
+      if (e.type == DioExceptionType.cancel) {
+        return;
+      }
       _emitError(ChatErrorType.network, failedText: text);
     } catch (e) {
       _emitError(ChatErrorType.unknown, failedText: text);
     }
   }
 
+  Future<void> editMessage(String messageId, String newText) async {
+    if (state is! ChatLoaded) return;
+    final current = state as ChatLoaded;
+
+    int index = current.messages.indexWhere((m) => m.id == messageId);
+    if (index == -1) return;
+
+    List<ChatMessage> updatedMessages = current.messages.sublist(0, index);
+
+    final userMessage = ChatMessage(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      role: ChatRole.user,
+      content: newText,
+      timestamp: DateTime.now(),
+    );
+
+    emit(current.copyWith(
+      messages: [...updatedMessages, userMessage],
+      isSending: true,
+      clearError: true,
+    ));
+
+    try {
+      final Map<String, dynamic> data = {
+        'question': newText,
+        'editedMessageId': messageId,
+      };
+      if (_currentConversationId != null) {
+        data['conversationId'] = _currentConversationId;
+      }
+
+      final response = await ApiClient.instance.post(
+        ApiEndpoints.askAssistant,
+        data: data,
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = response.data;
+        String aiResponseText = responseData['answer']?.toString() ?? '';
+        
+        final aiMessage = ChatMessage(
+          id: 'ai-${DateTime.now().millisecondsSinceEpoch}',
+          role: ChatRole.ai,
+          content: aiResponseText,
+          timestamp: DateTime.now(),
+        );
+
+        final currentState = state as ChatLoaded;
+        emit(currentState.copyWith(
+          messages: [...currentState.messages, aiMessage],
+          isSending: false,
+        ));
+      }
+    } catch (e) {
+      _emitError(ChatErrorType.unknown, failedText: newText);
+    }
+  }
+
+  Future<void> deleteConversation(String id) async {
+    if (state is! ChatLoaded) return;
+    final current = state as ChatLoaded;
+
+    try {
+      await ApiClient.instance.delete(ApiEndpoints.deleteConversation(id));
+      final updatedSessions = current.sessions.where((s) => s.id != id).toList();
+      if (current.currentSessionId == id) {
+        newChat();
+      }
+      emit((state as ChatLoaded).copyWith(sessions: updatedSessions));
+    } catch (e) {
+      _emitError(ChatErrorType.unknown);
+    }
+  }
+
   Future<void> _streamResponse({
-    required String sessionId,
     required String messageId,
     required String fullText,
   }) async {
@@ -238,8 +325,6 @@ class ChatCubit extends Cubit<ChatState> {
       }
       return m;
     }).toList();
-
-    await ChatLocalStorageService.instance.saveMessages(sessionId, completedMessages);
 
     emit(finalState.copyWith(
       messages: completedMessages,
@@ -291,10 +376,6 @@ class ChatCubit extends Cubit<ChatState> {
     if (messages.isNotEmpty && messages.last.hasError) {
       messages.removeLast();
     }
-    
-    if (current.currentSessionId != null) {
-      ChatLocalStorageService.instance.saveMessages(current.currentSessionId!, messages);
-    }
 
     emit(current.copyWith(messages: messages, clearError: true));
     _lastFailedMessage = null;
@@ -306,12 +387,7 @@ class ChatCubit extends Cubit<ChatState> {
   }
 
   void clearChat() {
-    if (state is! ChatLoaded) return;
-    final current = state as ChatLoaded;
-    if (current.currentSessionId != null) {
-      ChatLocalStorageService.instance.saveMessages(current.currentSessionId!, []);
-    }
-    emit(current.copyWith(messages: [], clearError: true));
+    newChat();
   }
 
   void _emitError(ChatErrorType type, {String? failedText}) {

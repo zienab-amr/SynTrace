@@ -3,18 +3,20 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
 import 'package:syntrace/features/chat/data/models/chat_message.dart';
 import 'package:syntrace/features/chat/presentation/widgets/ai_progress_steps.dart';
-import 'package:syntrace/features/chat/presentation/widgets/jira_card_widget.dart';
+import 'package:syntrace/features/chat/presentation/widgets/jira_cards_list.dart';
 
 class MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final VoidCallback? onRetry;
   final VoidCallback? onDelete;
+  final Function(String newText)? onEdit;
 
   const MessageBubble({
     super.key,
     required this.message,
     this.onRetry,
     this.onDelete,
+    this.onEdit,
   });
 
   @override
@@ -46,6 +48,14 @@ class MessageBubble extends StatelessWidget {
                   _buildFailedIcon(context),
                   const SizedBox(width: 8),
                 ],
+                if (isUser && onEdit != null) ...[
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                    onPressed: () => _showEditDialog(context),
+                  ),
+                  const SizedBox(width: 4),
+                ],
                 Flexible(
                   child: ConstrainedBox(
                     constraints: BoxConstraints(
@@ -61,6 +71,36 @@ class MessageBubble extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  void _showEditDialog(BuildContext context) {
+    final controller = TextEditingController(text: message.content);
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Edit Message'),
+          content: TextField(
+            controller: controller,
+            maxLines: 3,
+            decoration: const InputDecoration(border: OutlineInputBorder()),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                if (onEdit != null) onEdit!(controller.text.trim());
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -192,17 +232,13 @@ class MessageBubble extends StatelessWidget {
                 styleSheet: _markdownStyle(theme),
               ),
             ),
-
           if (message.isStreaming && message.content.isNotEmpty) ...[
             const SizedBox(height: 4),
             _BlinkingCursor(color: theme.colorScheme.onSurface),
           ],
-
           if (message.jiraCards.isNotEmpty) ...[
             const SizedBox(height: 12),
-            ...message.jiraCards.map((card) {
-              return JiraCardWidget(card: card);
-            }),
+            JiraCardsList(cards: message.jiraCards), 
           ],
         ],
       ),

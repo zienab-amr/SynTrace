@@ -62,12 +62,18 @@ class ApiClient {
   // ═══════════════════════════════════════════════════════
   // Helper: GET
   // ═══════════════════════════════════════════════════════
-  Future<Response> get(
+   Future<Response> get(
     String path, {
     Map<String, dynamic>? queryParameters,
     Options? options,
+    CancelToken? cancelToken,
   }) {
-    return _dio.get(path, queryParameters: queryParameters, options: options);
+    return _dio.get(
+      path,
+      queryParameters: queryParameters,
+      options: options,
+      cancelToken: cancelToken,
+    );
   }
 
   // ═══════════════════════════════════════════════════════
@@ -78,12 +84,14 @@ class ApiClient {
     dynamic data,
     Map<String, dynamic>? queryParameters,
     Options? options,
+    CancelToken? cancelToken,
   }) {
     return _dio.post(
       path,
       data: data,
       queryParameters: queryParameters,
       options: options,
+      cancelToken: cancelToken,
     );
   }
 
@@ -95,12 +103,14 @@ class ApiClient {
     dynamic data,
     Map<String, dynamic>? queryParameters,
     Options? options,
+    CancelToken? cancelToken,
   }) {
     return _dio.put(
       path,
       data: data,
       queryParameters: queryParameters,
       options: options,
+      cancelToken: cancelToken,
     );
   }
 
@@ -112,12 +122,14 @@ class ApiClient {
     dynamic data,
     Map<String, dynamic>? queryParameters,
     Options? options,
+    CancelToken? cancelToken,
   }) {
     return _dio.patch(
       path,
       data: data,
       queryParameters: queryParameters,
       options: options,
+      cancelToken: cancelToken,
     );
   }
 
@@ -129,12 +141,14 @@ class ApiClient {
     dynamic data,
     Map<String, dynamic>? queryParameters,
     Options? options,
+    CancelToken? cancelToken,
   }) {
     return _dio.delete(
       path,
       data: data,
       queryParameters: queryParameters,
       options: options,
+      cancelToken: cancelToken,
     );
   }
 
