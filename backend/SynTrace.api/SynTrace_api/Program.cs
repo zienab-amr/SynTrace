@@ -2,6 +2,7 @@ using SynTrace.Api.Audit;
 using SynTrace.Api.Errors;
 using SynTrace.Api.Realtime;
 using SynTrace.Infrastructure.Services.Assistant;
+using SynTrace.Infrastructure.Services.Knowledge;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
@@ -18,6 +19,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddApplicationDI();
 builder.Services.AddInfrastructureDI(builder.Configuration);
+builder.Services.AddKnowledgeSources();
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
