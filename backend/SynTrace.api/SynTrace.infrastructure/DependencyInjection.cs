@@ -9,6 +9,7 @@ using SynTrace.Application.Contracts;
 using SynTrace.Application.Contracts.Assistant;
 using SynTrace.Application.Contracts.Auth;
 using SynTrace.Application.Contracts.Integrations.Jira;
+using SynTrace.Application.Contracts.Repositories;
 using SynTrace.Application.Integrations.Jira;
 using SynTrace.Domain.Entities;
 using SynTrace.Domain.Interfaces;
@@ -24,6 +25,7 @@ using SynTrace.Infrastructure.Messaging.RabbitMQ.Topology;
 using SynTrace.Infrastructure.Options;
 using SynTrace.Infrastructure.Persistence.Context;
 using SynTrace.Infrastructure.Repositories;
+using SynTrace.Infrastructure.Services;
 using SynTrace.Infrastructure.Services.Assistant;
 using SynTrace.Infrastructure.Services.Integrations.Jira;
 
@@ -116,6 +118,9 @@ namespace SynTrace.Infrastructure
             //AI service
             services.Configure<AiServiceOptions>(configuration.GetSection(AiServiceOptions.SectionName));
             services.AddScoped<IAssistantClient, AssistantClient>();
+
+            services.AddScoped<IClientService, ClientService>();
+            services.AddScoped<IClientRepository, ClientRepository>();
 
             //RabbitMQ Service
             services.AddRabbitMqInfrastructure(options =>
