@@ -1,3 +1,4 @@
+using SynTrace.Api.Realtime;
 using SynTrace.Infrastructure.Services.Assistant;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
@@ -19,10 +20,14 @@ builder.Services.AddControllers();
 builder.Services.AddScoped<AssistantProjectAccess>();
 builder.Services.AddHttpClient(AssistantClient.HttpClientName)
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<ProjectStatusSubscriptions>();
+builder.Services.AddHostedService<ProjectStatusNotifier>();
 builder.Services.AddScoped<IAuthorizationHandler, CurrentCompanyAdminHandler>();
 builder.Services.AddAuthorizationBuilder().AddPolicy(CurrentCompanyAdminHandler.Policy, policy =>
     policy.RequireAuthenticatedUser().AddRequirements(new CurrentCompanyAdminRequirement()));
 
+var frontendOrigins = builder.Configuration.GetSection("Cors:FrontendOrigins").Get<string[]>() ?? [];
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("JiraOAuthTest", policy =>
@@ -30,6 +35,11 @@ builder.Services.AddCors(options =>
         policy.AllowAnyOrigin()
               .AllowAnyMethod()
               .AllowAnyHeader();
+    });
+    options.AddPolicy("ProjectStatusFrontend", policy =>
+    {
+        if (frontendOrigins.Length > 0)
+            policy.WithOrigins(frontendOrigins).AllowAnyHeader().AllowAnyMethod().AllowCredentials();
     });
 });
 
@@ -81,5 +91,7 @@ app.UseAuthorization();
 app.UseRateLimiter();
 
 app.MapControllers();
+app.MapHub<ProjectStatusHub>(ProjectStatusHub.Path, options => options.CloseOnAuthenticationExpiration = true)
+    .RequireCors("ProjectStatusFrontend");
 
 app.Run();

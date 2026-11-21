@@ -60,6 +60,15 @@ namespace SynTrace.Infrastructure
             .AddJwtBearer(options =>
             {
                 options.Events.OnTokenValidated = JwtSessionValidator.ValidateAsync;
+                options.Events.OnMessageReceived = context =>
+                {
+                    var request = context.HttpContext.Request;
+                    if (request.Path == "/hubs/project-status" &&
+                        string.IsNullOrWhiteSpace(request.Headers.Authorization) &&
+                        request.Query.TryGetValue("access_token", out var token) && token.Count == 1)
+                        context.Token = token[0];
+                    return Task.CompletedTask;
+                };
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,
