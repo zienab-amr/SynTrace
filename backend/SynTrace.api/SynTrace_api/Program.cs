@@ -1,5 +1,7 @@
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using SynTrace.Api.Audit;
 using SynTrace.Api.Errors;
+using SynTrace.Api.Health;
 using SynTrace.Api.Realtime;
 using SynTrace.Infrastructure.Services.Assistant;
 using SynTrace.Infrastructure.Services.Knowledge;
@@ -26,6 +28,9 @@ builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddScoped<AssistantProjectAccess>();
 builder.Services.AddHttpClient(AssistantClient.HttpClientName)
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHealthChecks()
+    .AddCheck<SqlServerHealthCheck>("sql", tags: ["ready"], timeout: TimeSpan.FromSeconds(4))
+    .AddCheck<RabbitMqHealthCheck>("rabbitmq", tags: ["ready"], timeout: TimeSpan.FromSeconds(4));
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<ProjectStatusSubscriptions>();
 builder.Services.AddHostedService<ProjectStatusNotifier>();
@@ -104,5 +109,7 @@ app.UseRateLimiter();
 app.MapControllers();
 app.MapHub<ProjectStatusHub>(ProjectStatusHub.Path, options => options.CloseOnAuthenticationExpiration = true)
     .RequireCors("ProjectStatusFrontend");
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
+app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") }).AllowAnonymous();
 
 app.Run();
