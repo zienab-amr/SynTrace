@@ -68,8 +68,13 @@ public sealed class JiraWebhookNormalizer
                 payload = p; entityId = p.SprintId;
                 break;
             }
+            case JiraEventType.ProjectCreated:
+            case JiraEventType.ProjectUpdated:
             case JiraEventType.ProjectDeleted:
             case JiraEventType.ProjectSoftDeleted:
+            case JiraEventType.ProjectRestoredDeleted:
+            case JiraEventType.ProjectArchived:
+            case JiraEventType.ProjectRestoredArchived:
             {
                 var p = BuildProject(root);
                 if (p is null) return null;
@@ -94,7 +99,7 @@ public sealed class JiraWebhookNormalizer
             EventId = eventId,
             EventType = type,
             SchemaVersion = 1,
-            SourceEventName = sourceName,
+            SourceEventName = sourceName!,
             CompanyId = companyId,
             JiraConnectionId = connectionId,
             CloudId = cloudId,
@@ -184,6 +189,7 @@ public sealed class JiraWebhookNormalizer
         {
             CommentId = id,
             IssueId = issueId,
+            ProjectId = root.Obj("issue")?.Obj("fields")?.Obj("project")?.Str("id"),
             IssueKey = root.Obj("issue")?.Str("key"),
             AuthorAccountId = comment.Obj("author")?.Str("accountId"),
             BodyText = text,
@@ -192,7 +198,7 @@ public sealed class JiraWebhookNormalizer
         };
     }
 
-    private static JiraProjectPayload? BuildProject(JsonElement root)
+    internal static JiraProjectPayload? BuildProject(JsonElement root)
     {
         if (root.Obj("project") is not { } project) return null;
         var id = project.Str("id");
@@ -201,7 +207,9 @@ public sealed class JiraWebhookNormalizer
         {
             ProjectId = id,
             ProjectKey = project.Str("key"),
-            Name = project.Str("name")
+            Name = project.Str("name"),
+            ProjectTypeKey = project.Str("projectTypeKey"),
+            LeadAccountId = project.Obj("lead")?.Str("accountId")
         };
     }
 

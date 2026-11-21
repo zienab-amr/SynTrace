@@ -1,5 +1,5 @@
+using System.Data;
 using System.Text.Json;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SynTrace.Application.Integrations.Jira;
@@ -24,10 +24,13 @@ public sealed class JiraEventProcessor : IJiraEventProcessor
 
     public async Task<JiraEventProcessingResult> ProcessAsync(CanonicalJiraEvent e, CancellationToken ct)
     {
-        await using var tx = await _db.Database.BeginTransactionAsync(ct);
+        await using var tx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        var scope = new JiraProjectionScope(_db, e.CompanyId, e.JiraConnectionId);
+        if (!await scope.IsActiveAsync(ct))
+            return JiraEventProcessingResult.Ignored;
 
-        // 1) Idempotency
-        if (await _db.ProcessedJiraEvents.AnyAsync(p => p.JiraConnectionId == e.JiraConnectionId && p.EventId == e.EventId, ct))
+        if (await _db.ProcessedJiraEvents.IgnoreQueryFilters().AnyAsync(p => p.CompanyId == e.CompanyId
+            && p.JiraConnectionId == e.JiraConnectionId && p.EventId == e.EventId, ct))
             return JiraEventProcessingResult.Duplicate;
 
         _db.ProcessedJiraEvents.Add(new ProcessedJiraEvent
@@ -39,24 +42,13 @@ public sealed class JiraEventProcessor : IJiraEventProcessor
             ProcessedAt = DateTime.UtcNow
         });
 
-        // 2) Apply
-        await ApplyAsync(e, ct);
-
-        try
-        {
-            await _db.SaveChangesAsync(ct);   // unique index (JiraConnectionId, EventId) is the final guard against races
-        }
-        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
-        {
-            _logger.LogInformation("Jira event {EventId} was processed concurrently; treating as duplicate.", e.EventId);
-            return JiraEventProcessingResult.Duplicate;
-        }
-
+        await ApplyAsync(e, scope, ct);
+        await _db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return JiraEventProcessingResult.Processed;
     }
 
-    private async Task ApplyAsync(CanonicalJiraEvent e, CancellationToken ct)
+    private async Task ApplyAsync(CanonicalJiraEvent e, JiraProjectionScope scope, CancellationToken ct)
     {
         var fallbackStamp = (e.OccurredAtUtc ?? e.ReceivedAtUtc).UtcDateTime;
 
@@ -65,7 +57,7 @@ public sealed class JiraEventProcessor : IJiraEventProcessor
             case JiraEventType.IssueCreated:
             {
                 var p = Read<JiraIssuePayload>(e);
-                await UpsertIssueAsync(e.CompanyId, p.IssueId, p.IssueKey, p.ProjectId, p.ProjectKey, p.Summary, p.Status,
+                await UpsertIssueAsync(scope, e.CompanyId, p.IssueId, p.IssueKey, p.ProjectId, p.ProjectKey, p.Summary, p.Status,
                     p.AssigneeAccountId, (p.SourceUpdatedAtUtc?.UtcDateTime) ?? fallbackStamp, ct);
                 break;
             }
@@ -74,35 +66,51 @@ public sealed class JiraEventProcessor : IJiraEventProcessor
                 // Status / assignee / summary changes all arrive as the resulting issue state, so one upsert covers
                 // SYNT-178 (create/update), SYNT-181 (status) and SYNT-182 (assignment). Changes[] is kept for AI/audit.
                 var p = Read<JiraIssueUpdatedPayload>(e);
-                await UpsertIssueAsync(e.CompanyId, p.IssueId, p.IssueKey, p.ProjectId, p.ProjectKey, p.Summary, p.Status,
+                await UpsertIssueAsync(scope, e.CompanyId, p.IssueId, p.IssueKey, p.ProjectId, p.ProjectKey, p.Summary, p.Status,
                     p.AssigneeAccountId, (p.SourceUpdatedAtUtc?.UtcDateTime) ?? fallbackStamp, ct);
                 break;
             }
             case JiraEventType.IssueDeleted:
             {
                 var p = Read<JiraIssuePayload>(e);
-                await DeleteIssuesAsync(e.CompanyId, p.SubtaskIds.Append(p.IssueId).ToList(), ct);
+                await DeleteIssuesAsync(scope, e.CompanyId, p.SubtaskIds.Append(p.IssueId).Distinct().ToList(), fallbackStamp, ct);
+                break;
+            }
+            case JiraEventType.ProjectCreated:
+            case JiraEventType.ProjectUpdated:
+            case JiraEventType.ProjectRestoredDeleted:
+            case JiraEventType.ProjectArchived:
+            case JiraEventType.ProjectRestoredArchived:
+            {
+                var p = ReadProject(e);
+                var restore = e.EventType == JiraEventType.ProjectRestoredDeleted;
+                if (await scope.ApplyWatermarkAsync(JiraProjectionKind.Project, p.ProjectId, fallbackStamp, false, restore, ct))
+                    await UpsertProjectAsync(e.CompanyId, p, ct);
                 break;
             }
             case JiraEventType.ProjectDeleted:
             case JiraEventType.ProjectSoftDeleted:
             {
-                var p = Read<JiraProjectPayload>(e);
-                await DeleteProjectAsync(e.CompanyId, p.ProjectId, ct);
+                var p = ReadProject(e);
+                if (await scope.ApplyWatermarkAsync(JiraProjectionKind.Project, p.ProjectId, fallbackStamp, true, false, ct))
+                    await DeleteProjectAsync(e.CompanyId, p.ProjectId, ct);
                 break;
             }
             case JiraEventType.CommentCreated:
             case JiraEventType.CommentUpdated:
             {
                 var p = Read<JiraCommentPayload>(e);
-                await UpsertCommentAsync(e.CompanyId, p, fallbackStamp, ct);
+                await UpsertCommentAsync(scope, e.CompanyId, p, fallbackStamp, ct);
                 break;
             }
             case JiraEventType.CommentDeleted:
             {
                 var p = Read<JiraCommentPayload>(e);
-                await _db.JiraComments.Where(c => c.CompanyId == e.CompanyId && c.ExternalId == p.CommentId)
-                    .ExecuteDeleteAsync(ct);
+                var comments = _db.JiraComments.IgnoreQueryFilters()
+                    .Where(c => c.CompanyId == e.CompanyId && c.ExternalId == p.CommentId);
+                if (!await comments.AnyAsync(c => c.SourceUpdatedAt > fallbackStamp, ct) &&
+                    await scope.ApplyWatermarkAsync(JiraProjectionKind.Comment, p.CommentId, fallbackStamp, true, false, ct))
+                    await comments.ExecuteDeleteAsync(ct);
                 break;
             }
             case JiraEventType.SprintCreated:
@@ -111,14 +119,16 @@ public sealed class JiraEventProcessor : IJiraEventProcessor
             case JiraEventType.SprintClosed:
             {
                 var p = Read<JiraSprintPayload>(e);
-                await UpsertSprintAsync(e.CompanyId, p, ct);
+                if (await scope.ApplyWatermarkAsync(JiraProjectionKind.Sprint, p.SprintId, fallbackStamp, false, false, ct))
+                    await UpsertSprintAsync(e.CompanyId, p, ct);
                 break;
             }
             case JiraEventType.SprintDeleted:
             {
                 var p = Read<JiraSprintPayload>(e);
-                await _db.JiraSprints.Where(x => x.CompanyId == e.CompanyId && x.ExternalId == p.SprintId)
-                    .ExecuteDeleteAsync(ct);
+                if (await scope.ApplyWatermarkAsync(JiraProjectionKind.Sprint, p.SprintId, fallbackStamp, true, false, ct))
+                    await _db.JiraSprints.IgnoreQueryFilters()
+                        .Where(x => x.CompanyId == e.CompanyId && x.ExternalId == p.SprintId).ExecuteDeleteAsync(ct);
                 break;
             }
             default:
@@ -130,10 +140,16 @@ public sealed class JiraEventProcessor : IJiraEventProcessor
     }
 
     private async Task UpsertIssueAsync(
-        string companyId, string issueId, string key, string? projectId, string? projectKey,
+        JiraProjectionScope scope, string companyId, string issueId, string key, string? projectId, string? projectKey,
         string? summary, string? status, string? assignee, DateTime stamp, CancellationToken ct)
     {
-        var issue = await _db.JiraIssues.SingleOrDefaultAsync(i => i.CompanyId == companyId && i.ExternalId == issueId, ct);
+        if (await scope.IsDeletedAsync(JiraProjectionKind.Issue, issueId, ct))
+            return;
+
+        var issue = await _db.JiraIssues.IgnoreQueryFilters().SingleOrDefaultAsync(i => i.CompanyId == companyId && i.ExternalId == issueId, ct);
+
+        if (await scope.IsStaleForProjectAsync(projectId ?? issue?.ProjectExternalId, stamp, ct))
+            return;
 
         if (issue is null)
         {
@@ -160,41 +176,83 @@ public sealed class JiraEventProcessor : IJiraEventProcessor
             await EnsureProjectAsync(companyId, projectId, projectKey, ct);
     }
 
-    private async Task DeleteIssuesAsync(string companyId, List<string> issueIds, CancellationToken ct)
+    private async Task DeleteIssuesAsync(JiraProjectionScope scope, string companyId, List<string> issueIds,
+        DateTime stamp, CancellationToken ct)
     {
-        await _db.JiraComments.Where(c => c.CompanyId == companyId && issueIds.Contains(c.IssueExternalId))
+        var newerIds = await _db.JiraIssues.IgnoreQueryFilters()
+            .Where(i => i.CompanyId == companyId && issueIds.Contains(i.ExternalId) && i.SourceUpdatedAt > stamp)
+            .Select(i => i.ExternalId).ToListAsync(ct);
+        var deletedIds = new List<string>();
+        foreach (var id in issueIds.Except(newerIds))
+        {
+            if (await scope.ApplyWatermarkAsync(JiraProjectionKind.Issue, id, stamp, true, false, ct))
+                deletedIds.Add(id);
+        }
+
+        if (deletedIds.Count == 0) return;
+        await _db.JiraComments.IgnoreQueryFilters().Where(c => c.CompanyId == companyId && deletedIds.Contains(c.IssueExternalId))
             .ExecuteDeleteAsync(ct);
-        await _db.JiraIssues.Where(i => i.CompanyId == companyId && issueIds.Contains(i.ExternalId))
+        await _db.JiraIssues.IgnoreQueryFilters().Where(i => i.CompanyId == companyId && deletedIds.Contains(i.ExternalId))
             .ExecuteDeleteAsync(ct);
     }
 
     /// <summary>Jira sends no issue_deleted for the issues of a deleted project.</summary>
     private async Task DeleteProjectAsync(string companyId, string projectId, CancellationToken ct)
     {
-        var issueIds = _db.JiraIssues
+        var issueIds = _db.JiraIssues.IgnoreQueryFilters()
             .Where(i => i.CompanyId == companyId && i.ProjectExternalId == projectId)
             .Select(i => i.ExternalId);
-        await _db.JiraComments.Where(c => c.CompanyId == companyId && issueIds.Contains(c.IssueExternalId))
+        await _db.JiraComments.IgnoreQueryFilters().Where(c => c.CompanyId == companyId && issueIds.Contains(c.IssueExternalId))
             .ExecuteDeleteAsync(ct);
-        await _db.JiraIssues.Where(i => i.CompanyId == companyId && i.ProjectExternalId == projectId)
+        await _db.JiraIssues.IgnoreQueryFilters().Where(i => i.CompanyId == companyId && i.ProjectExternalId == projectId)
             .ExecuteDeleteAsync(ct);
-        await _db.JiraProjects.Where(p => p.CompanyId == companyId && p.ExternalId == projectId)
-            .ExecuteDeleteAsync(ct);
+        var jiraProjects = _db.JiraProjects.IgnoreQueryFilters().Where(p => p.CompanyId == companyId && p.ExternalId == projectId);
+        await _db.Projects.IgnoreQueryFilters().Where(p => p.CompanyId == companyId &&
+                jiraProjects.Any(j => j.Id == p.JiraProjectId))
+            .ExecuteUpdateAsync(setters => setters.SetProperty(p => p.JiraProjectId, (string?)null), ct);
+        await jiraProjects.ExecuteDeleteAsync(ct);
+    }
+
+    private async Task UpsertProjectAsync(string companyId, JiraProjectPayload payload, CancellationToken ct)
+    {
+        var project = await _db.JiraProjects.IgnoreQueryFilters()
+            .SingleOrDefaultAsync(x => x.CompanyId == companyId && x.ExternalId == payload.ProjectId, ct);
+        if (project is null)
+        {
+            project = new JiraProject { CompanyId = companyId, ExternalId = payload.ProjectId };
+            _db.JiraProjects.Add(project);
+        }
+
+        project.Key = payload.ProjectKey ?? project.Key;
+        project.Name = payload.Name ?? project.Name;
+        project.ProjectTypeKey = payload.ProjectTypeKey ?? project.ProjectTypeKey;
+        project.LeadAccountId = payload.LeadAccountId ?? project.LeadAccountId;
+        project.UpdatedAt = DateTime.UtcNow;
     }
 
     private async Task EnsureProjectAsync(string companyId, string projectId, string? projectKey, CancellationToken ct)
     {
         var tracked = _db.JiraProjects.Local.Any(p => p.CompanyId == companyId && p.ExternalId == projectId);
-        if (tracked || await _db.JiraProjects.AnyAsync(p => p.CompanyId == companyId && p.ExternalId == projectId, ct))
+        if (tracked || await _db.JiraProjects.IgnoreQueryFilters().AnyAsync(p => p.CompanyId == companyId && p.ExternalId == projectId, ct))
             return;
 
         _db.JiraProjects.Add(new JiraProject { CompanyId = companyId, ExternalId = projectId, Key = projectKey });
     }
 
-    private async Task UpsertCommentAsync(string companyId, JiraCommentPayload p, DateTime fallbackStamp, CancellationToken ct)
+    private async Task UpsertCommentAsync(JiraProjectionScope scope, string companyId, JiraCommentPayload p, DateTime fallbackStamp, CancellationToken ct)
     {
         var stamp = (p.UpdatedAtUtc ?? p.CreatedAtUtc)?.UtcDateTime ?? fallbackStamp;
-        var comment = await _db.JiraComments.SingleOrDefaultAsync(c => c.CompanyId == companyId && c.ExternalId == p.CommentId, ct);
+        if (await scope.IsDeletedAsync(JiraProjectionKind.Comment, p.CommentId, ct) ||
+            await scope.IsDeletedAsync(JiraProjectionKind.Issue, p.IssueId, ct))
+            return;
+
+        var parentProjectId = p.ProjectId ?? await _db.JiraIssues.IgnoreQueryFilters()
+            .Where(x => x.CompanyId == companyId && x.ExternalId == p.IssueId)
+            .Select(x => x.ProjectExternalId).SingleOrDefaultAsync(ct);
+        if (await scope.IsStaleForProjectAsync(parentProjectId, stamp, ct))
+            return;
+
+        var comment = await _db.JiraComments.IgnoreQueryFilters().SingleOrDefaultAsync(c => c.CompanyId == companyId && c.ExternalId == p.CommentId, ct);
 
         if (comment is null)
         {
@@ -218,7 +276,7 @@ public sealed class JiraEventProcessor : IJiraEventProcessor
 
     private async Task UpsertSprintAsync(string companyId, JiraSprintPayload p, CancellationToken ct)
     {
-        var sprint = await _db.JiraSprints.SingleOrDefaultAsync(s => s.CompanyId == companyId && s.ExternalId == p.SprintId, ct);
+        var sprint = await _db.JiraSprints.IgnoreQueryFilters().SingleOrDefaultAsync(s => s.CompanyId == companyId && s.ExternalId == p.SprintId, ct);
         if (sprint is null)
         {
             sprint = new JiraSprint { CompanyId = companyId, ExternalId = p.SprintId, CreatedAt = DateTime.UtcNow };
@@ -234,10 +292,21 @@ public sealed class JiraEventProcessor : IJiraEventProcessor
         sprint.UpdatedAt = DateTime.UtcNow;
     }
 
+    private static JiraProjectPayload ReadProject(CanonicalJiraEvent e)
+    {
+        var payload = Read<JiraProjectPayload>(e);
+        if (!string.IsNullOrEmpty(payload.ProjectId))
+            return payload;
+
+        // Older workers queued project create/update events with an empty typed payload.
+        if (e.RawWebhook is { } raw && JiraWebhookNormalizer.BuildProject(raw) is { } fromWebhook)
+            return fromWebhook;
+
+        throw new JsonException("The Jira project payload is missing its project ID.");
+    }
+
     private static T Read<T>(CanonicalJiraEvent e) where T : class =>
         e.Payload.Deserialize<T>(JiraEventContractJson.Options)
         ?? throw new JsonException($"Payload for {e.EventType} could not be deserialized as {typeof(T).Name}.");
 
-    private static bool IsUniqueViolation(DbUpdateException ex) =>
-        ex.GetBaseException() is SqlException { Number: 2601 or 2627 };
 }

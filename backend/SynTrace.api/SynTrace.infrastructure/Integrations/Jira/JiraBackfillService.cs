@@ -1,3 +1,4 @@
+using System.Data;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
@@ -39,7 +40,7 @@ public sealed class JiraBackfillService : IJiraBackfillService
     public async Task RunAsync(string connectionId, CancellationToken ct)
     {
         var connection = await _db.JiraConnections.AsNoTracking()
-            .Where(c => c.Id == connectionId && c.status)
+            .Where(c => c.Id == connectionId && c.status && c.JiraConnectionType == JiraConnectionType.Company)
             .Select(c => new { c.CompanyId, c.CloudId, c.SiteUrl, c.AiImportCompletedAt })
             .SingleOrDefaultAsync(ct);
 
@@ -59,8 +60,8 @@ public sealed class JiraBackfillService : IJiraBackfillService
             await SyncUsersAsync(connectionId, companyId, ct);
             var projects = await SyncProjectsAsync(connectionId, companyId, ct);
 
-            foreach (var (_, key) in projects)
-                await SyncIssuesAsync(connectionId, companyId, key, ct);
+            foreach (var (id, key) in projects)
+                await SyncIssuesAsync(connectionId, companyId, id, key, ct);
 
             await SyncSprintsAsync(connectionId, companyId, ct);
 
@@ -68,13 +69,17 @@ public sealed class JiraBackfillService : IJiraBackfillService
             if (connection.AiImportCompletedAt is null)
             {
                 await SendImportToAiAsync(connectionId, companyId, connection.CloudId, connection.SiteUrl,
-                    projects.Select(p => p.Key).ToList(), ct);
-                await _db.JiraConnections.Where(c => c.Id == connectionId)
+                    projects, ct);
+                await _db.JiraConnections.Where(c => c.Id == connectionId && c.status)
                     .ExecuteUpdateAsync(u => u.SetProperty(c => c.AiImportCompletedAt, (DateTime?)DateTime.UtcNow), ct);
             }
 
             await SetStatusAsync(connectionId, JiraSyncStatus.Completed, DateTime.UtcNow, null, CancellationToken.None);
             _logger.LogInformation("Jira back-fill completed for connection {ConnectionId}.", connectionId);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -86,21 +91,26 @@ public sealed class JiraBackfillService : IJiraBackfillService
 
     // ---------------- full copy for the AI ----------------
     private async Task SendImportToAiAsync(
-        string connectionId, string companyId, string cloudId, string siteUrl, List<string> projectKeys, CancellationToken ct)
+        string connectionId, string companyId, string cloudId, string siteUrl, List<(string Id, string Key)> projects, CancellationToken ct)
     {
-        Task Publish(JiraEventType type, string entity, object payload) => _publisher.PublishAsync(new CanonicalJiraEvent
+        var scope = new JiraProjectionScope(_db, companyId, connectionId);
+        async Task Publish(JiraEventType type, string entity, object payload)
         {
-            EventId = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{connectionId}|{type}|{entity}"))).ToLowerInvariant(),
-            EventType = type,
-            SourceEventName = "syntrace:import",
-            CompanyId = companyId,
-            JiraConnectionId = connectionId,
-            CloudId = cloudId,
-            SiteUrl = siteUrl,
-            CorrelationId = connectionId,
-            ReceivedAtUtc = DateTimeOffset.UtcNow,
-            Payload = JsonSerializer.SerializeToElement(payload, payload.GetType(), JiraEventContractJson.Options)
-        }, ct);
+            await scope.RequireActiveAsync(ct);
+            await _publisher.PublishAsync(new CanonicalJiraEvent
+            {
+                EventId = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{connectionId}|{type}|{entity}"))).ToLowerInvariant(),
+                EventType = type,
+                SourceEventName = "syntrace:import",
+                CompanyId = companyId,
+                JiraConnectionId = connectionId,
+                CloudId = cloudId,
+                SiteUrl = siteUrl,
+                CorrelationId = connectionId,
+                ReceivedAtUtc = DateTimeOffset.UtcNow,
+                Payload = JsonSerializer.SerializeToElement(payload, payload.GetType(), JiraEventContractJson.Options)
+            }, ct);
+        }
 
         using (var fields = await _api.SendAsync(connectionId, HttpMethod.Get, "/rest/api/3/field", cancellationToken: ct))
         {
@@ -109,8 +119,11 @@ public sealed class JiraBackfillService : IJiraBackfillService
         }
 
         var sent = 0;
-        foreach (var projectKey in projectKeys)
+        foreach (var (projectId, projectKey) in projects)
         {
+            if (await scope.IsDeletedAsync(JiraProjectionKind.Project, projectId, ct))
+                continue;
+
             string? nextToken = null;
             do
             {
@@ -125,7 +138,10 @@ public sealed class JiraBackfillService : IJiraBackfillService
                 {
                     if (reference.Str("id") is not { } id) continue;
                     var issue = await GetFullIssueAsync(connectionId, id, ct);
-                    if (issue is null) continue;   // deleted after it was listed
+                    if (issue is null ||
+                        await scope.IsDeletedAsync(JiraProjectionKind.Issue, id, ct) ||
+                        await scope.IsDeletedAsync(JiraProjectionKind.Project, projectId, ct))
+                        continue;
                     var updated = reference.Obj("fields")?.Str("updated");
                     await Publish(JiraEventType.IssueSnapshot, $"{id}|{updated}", issue);
                     sent++;
@@ -185,6 +201,7 @@ public sealed class JiraBackfillService : IJiraBackfillService
     // ---------------- users ----------------
     private async Task SyncUsersAsync(string connectionId, string companyId, CancellationToken ct)
     {
+        var scope = new JiraProjectionScope(_db, companyId, connectionId);
         var startAt = 0;
         while (true)
         {
@@ -201,8 +218,10 @@ public sealed class JiraBackfillService : IJiraBackfillService
             var total = doc.RootElement.GetArrayLength();
             if (items.Count > 0)
             {
+                await using var tx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+                await scope.RequireActiveAsync(ct);
                 var ids = items.Select(i => i.Id!).ToList();
-                var existing = await _db.JiraUsers
+                var existing = await _db.JiraUsers.IgnoreQueryFilters()
                     .Where(x => x.CompanyId == companyId && ids.Contains(x.AccountId))
                     .ToDictionaryAsync(x => x.AccountId, ct);
 
@@ -218,6 +237,7 @@ public sealed class JiraBackfillService : IJiraBackfillService
                     user.UpdatedAt = DateTime.UtcNow;
                 }
                 await _db.SaveChangesAsync(ct);
+                await tx.CommitAsync(ct);
                 _db.ChangeTracker.Clear();
             }
 
@@ -229,11 +249,13 @@ public sealed class JiraBackfillService : IJiraBackfillService
     // ---------------- projects ----------------
     private async Task<List<(string Id, string Key)>> SyncProjectsAsync(string connectionId, string companyId, CancellationToken ct)
     {
+        var scope = new JiraProjectionScope(_db, companyId, connectionId);
         var result = new List<(string, string)>();
         var startAt = 0;
 
         while (true)
         {
+            var observedAt = DateTime.UtcNow;
             using var doc = await _api.SendAsync(connectionId, HttpMethod.Get,
                 $"/rest/api/3/project/search?startAt={startAt}&maxResults=50&expand=lead", cancellationToken: ct);
             if (doc is null) break;
@@ -241,8 +263,11 @@ public sealed class JiraBackfillService : IJiraBackfillService
             var values = doc.RootElement.Arr("values");
             var page = values?.EnumerateArray().ToList() ?? new List<JsonElement>();
 
-            var ids = page.Select(p => p.Str("id")).Where(x => x is not null).Select(x => x!).ToList();
-            var existing = await _db.JiraProjects
+            var ids = page.Select(p => p.Str("id")).OfType<string>().ToList();
+            await using var tx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            await scope.RequireActiveAsync(ct);
+            var blocked = await scope.BlockedSnapshotIdsAsync(JiraProjectionKind.Project, ids, observedAt, ct);
+            var existing = await _db.JiraProjects.IgnoreQueryFilters()
                 .Where(x => x.CompanyId == companyId && ids.Contains(x.ExternalId))
                 .ToDictionaryAsync(x => x.ExternalId, ct);
 
@@ -251,6 +276,13 @@ public sealed class JiraBackfillService : IJiraBackfillService
                 var id = p.Str("id");
                 var key = p.Str("key");
                 if (id is null || key is null) continue;
+
+                if (blocked.Contains(id))
+                {
+                    if (existing.TryGetValue(id, out var current) && current.Key is string currentKey)
+                        result.Add((id, currentKey));
+                    continue;
+                }
 
                 if (!existing.TryGetValue(id, out var project))
                 {
@@ -266,6 +298,7 @@ public sealed class JiraBackfillService : IJiraBackfillService
             }
 
             await _db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
             _db.ChangeTracker.Clear();
 
             if (doc.RootElement.Bool("isLast") != false || page.Count == 0) break;
@@ -275,73 +308,85 @@ public sealed class JiraBackfillService : IJiraBackfillService
     }
 
     // ---------------- issues (+ comments) ----------------
-    private async Task SyncIssuesAsync(string connectionId, string companyId, string projectKey, CancellationToken ct)
+    private async Task SyncIssuesAsync(string connectionId, string companyId, string projectId, string projectKey, CancellationToken ct)
     {
+        var scope = new JiraProjectionScope(_db, companyId, connectionId);
         string? nextToken = null;
         do
         {
-            // Bounded JQL (project = X) - required by the enhanced search endpoint.
+            // Bounded JQL is required by the enhanced search endpoint.
             var jql = Uri.EscapeDataString($"project = \"{projectKey}\" ORDER BY created ASC");
             var path = $"/rest/api/3/search/jql?jql={jql}&maxResults=100&fields=summary,status,assignee,project,updated,comment";
             if (nextToken is not null) path += $"&nextPageToken={Uri.EscapeDataString(nextToken)}";
 
+            var observedAt = DateTime.UtcNow;
             using var doc = await _api.SendAsync(connectionId, HttpMethod.Get, path, cancellationToken: ct);
             if (doc is null) break;
 
-            var issues = doc.RootElement.Arr("issues")?.EnumerateArray().ToList() ?? new List<JsonElement>();
+            var issues = doc.RootElement.Arr("issues")?.EnumerateArray().ToList() ?? [];
             nextToken = doc.RootElement.Str("nextPageToken");
-
-            var ids = issues.Select(i => i.Str("id")).Where(x => x is not null).Select(x => x!).ToList();
-            var existing = await _db.JiraIssues
-                .Where(x => x.CompanyId == companyId && ids.Contains(x.ExternalId))
-                .ToDictionaryAsync(x => x.ExternalId, ct);
-
+            var ids = issues.Select(i => i.Str("id")).OfType<string>().ToList();
+            var projectIds = issues.Select(i => i.Obj("fields")?.Obj("project")?.Str("id") ?? projectId)
+                .Append(projectId).Distinct().ToList();
             var commentWork = new List<(string IssueId, string IssueKey, JsonElement Comment)>();
+            var extraComments = new List<(string IssueId, string IssueKey, int StartAt)>();
 
-            foreach (var i in issues)
+            await using (var tx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct))
             {
-                var id = i.Str("id");
-                var key = i.Str("key");
-                if (id is null || key is null) continue;
+                await scope.RequireActiveAsync(ct);
+                var blockedProjects = await scope.BlockedSnapshotIdsAsync(JiraProjectionKind.Project, projectIds, observedAt, ct);
+                if (blockedProjects.Contains(projectId)) return;
+                var blockedIssues = await scope.BlockedSnapshotIdsAsync(JiraProjectionKind.Issue, ids, observedAt, ct);
+                var existing = await _db.JiraIssues.IgnoreQueryFilters()
+                    .Where(x => x.CompanyId == companyId && ids.Contains(x.ExternalId))
+                    .ToDictionaryAsync(x => x.ExternalId, ct);
 
-                var fields = i.Obj("fields");
-                var updated = fields?.Date("updated")?.UtcDateTime;
-
-                if (!existing.TryGetValue(id, out var issue))
+                foreach (var i in issues)
                 {
-                    issue = new JiraIssue { CompanyId = companyId, ExternalId = id };
-                    _db.JiraIssues.Add(issue);
-                }
-                else if (issue.SourceUpdatedAt is { } have && updated is { } incoming && incoming < have)
-                {
-                    continue;   // a newer webhook already updated it
+                    var id = i.Str("id");
+                    var key = i.Str("key");
+                    if (id is null || key is null || blockedIssues.Contains(id)) continue;
+
+                    var fields = i.Obj("fields");
+                    var fieldProject = fields?.Obj("project");
+                    var actualProjectId = fieldProject?.Str("id") ?? projectId;
+                    if (blockedProjects.Contains(actualProjectId)) continue;
+
+                    var updated = fields?.Date("updated")?.UtcDateTime;
+                    if (!existing.TryGetValue(id, out var issue))
+                    {
+                        issue = new JiraIssue { CompanyId = companyId, ExternalId = id };
+                        _db.JiraIssues.Add(issue);
+                        existing[id] = issue;
+                    }
+                    if (issue.SourceUpdatedAt is null || updated >= issue.SourceUpdatedAt)
+                    {
+                        issue.Key = key;
+                        issue.ProjectExternalId = actualProjectId;
+                        issue.ProjectKey = fieldProject?.Str("key") ?? projectKey;
+                        issue.Summary = fields?.Str("summary");
+                        issue.Status = fields?.Obj("status")?.Str("name");
+                        issue.AssigneeAccountId = fields?.Obj("assignee")?.Str("accountId");
+                        issue.SourceUpdatedAt = updated;
+                        issue.UpdatedAt = DateTime.UtcNow;
+                    }
+
+                    if (fields?.Obj("comment") is not { } comments || comments.Arr("comments") is not { } embedded)
+                        continue;
+                    foreach (var comment in embedded.EnumerateArray())
+                        commentWork.Add((id, key, comment));
+                    if ((comments.Long("total") ?? 0) > embedded.GetArrayLength())
+                        extraComments.Add((id, key, embedded.GetArrayLength()));
                 }
 
-                issue.Key = key;
-                issue.ProjectExternalId = fields?.Obj("project")?.Str("id");
-                issue.ProjectKey = fields?.Obj("project")?.Str("key");
-                issue.Summary = fields?.Str("summary");
-                issue.Status = fields?.Obj("status")?.Str("name");
-                issue.AssigneeAccountId = fields?.Obj("assignee")?.Str("accountId");
-                issue.SourceUpdatedAt = updated ?? issue.SourceUpdatedAt;
-                issue.UpdatedAt = DateTime.UtcNow;
-
-                if (fields?.Obj("comment") is { } c && c.Arr("comments") is { } embedded)
-                {
-                    foreach (var cm in embedded.EnumerateArray()) commentWork.Add((id, key, cm));
-
-                    // Search results embed only the first page of comments; pull the rest.
-                    var total = c.Long("total") ?? 0;
-                    var have2 = embedded.GetArrayLength();
-                    if (total > have2)
-                        await FetchRemainingCommentsAsync(connectionId, id, key, have2, commentWork, ct);
-                }
+                await _db.SaveChangesAsync(ct);
+                await tx.CommitAsync(ct);
+                _db.ChangeTracker.Clear();
             }
 
-            await _db.SaveChangesAsync(ct);
-            await UpsertCommentsAsync(companyId, commentWork, ct);
-            _db.ChangeTracker.Clear();
-
+            foreach (var (id, key, startAt) in extraComments)
+                await FetchRemainingCommentsAsync(connectionId, id, key, startAt, commentWork, ct);
+            await UpsertCommentsAsync(scope, companyId, commentWork, observedAt, ct);
         } while (nextToken is not null);
     }
 
@@ -351,41 +396,61 @@ public sealed class JiraBackfillService : IJiraBackfillService
     {
         while (true)
         {
-            using var doc = await _api.SendAsync(connectionId, HttpMethod.Get,
-                $"/rest/api/3/issue/{Uri.EscapeDataString(issueId)}/comment?startAt={startAt}&maxResults=100", cancellationToken: ct);
-            var list = doc?.RootElement.Arr("comments")?.EnumerateArray().Select(x => x.Clone()).ToList();
-            if (list is null || list.Count == 0) break;
+            try
+            {
+                using var doc = await _api.SendAsync(connectionId, HttpMethod.Get,
+                    $"/rest/api/3/issue/{Uri.EscapeDataString(issueId)}/comment?startAt={startAt}&maxResults=100", cancellationToken: ct);
+                var list = doc?.RootElement.Arr("comments")?.EnumerateArray().Select(x => x.Clone()).ToList();
+                if (list is null || list.Count == 0) break;
 
-            foreach (var c in list) sink.Add((issueId, issueKey, c));
-            startAt += list.Count;
+                foreach (var c in list) sink.Add((issueId, issueKey, c));
+                startAt += list.Count;
 
-            var total = doc!.RootElement.Long("total") ?? 0;
-            if (startAt >= total) break;
+                var total = doc!.RootElement.Long("total") ?? 0;
+                if (startAt >= total) break;
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                break;
+            }
         }
     }
 
-    private async Task UpsertCommentsAsync(string companyId, List<(string IssueId, string IssueKey, JsonElement Comment)> work, CancellationToken ct)
+    private async Task UpsertCommentsAsync(JiraProjectionScope scope, string companyId,
+        List<(string IssueId, string IssueKey, JsonElement Comment)> work, DateTime observedAt, CancellationToken ct)
     {
         if (work.Count == 0) return;
 
-        var ids = work.Select(w => w.Comment.Str("id")).Where(x => x is not null).Select(x => x!).Distinct().ToList();
-        var existing = await _db.JiraComments
+        var ids = work.Select(w => w.Comment.Str("id")).OfType<string>().Distinct().ToList();
+        var issueIds = work.Select(w => w.IssueId).Distinct().ToList();
+        await using var tx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        await scope.RequireActiveAsync(ct);
+        var blocked = await scope.BlockedSnapshotIdsAsync(JiraProjectionKind.Comment, ids, observedAt, ct);
+        var parentProjects = await _db.JiraIssues.IgnoreQueryFilters()
+            .Where(x => x.CompanyId == companyId && issueIds.Contains(x.ExternalId))
+            .ToDictionaryAsync(x => x.ExternalId, x => x.ProjectExternalId, ct);
+        var blockedProjects = await scope.BlockedSnapshotIdsAsync(JiraProjectionKind.Project,
+            parentProjects.Values.OfType<string>().Distinct().ToList(), observedAt, ct);
+        var existing = await _db.JiraComments.IgnoreQueryFilters()
             .Where(x => x.CompanyId == companyId && ids.Contains(x.ExternalId))
             .ToDictionaryAsync(x => x.ExternalId, ct);
 
         foreach (var (issueId, issueKey, cm) in work)
         {
             var id = cm.Str("id");
-            if (id is null) continue;
+            if (id is null || blocked.Contains(id) ||
+                !parentProjects.TryGetValue(issueId, out var parentProject) ||
+                (parentProject is not null && blockedProjects.Contains(parentProject)))
+                continue;
 
-            var updated = cm.Date("updated")?.UtcDateTime;
+            var updated = (cm.Date("updated") ?? cm.Date("created"))?.UtcDateTime;
             if (!existing.TryGetValue(id, out var comment))
             {
                 comment = new JiraComment { CompanyId = companyId, ExternalId = id };
                 _db.JiraComments.Add(comment);
                 existing[id] = comment;
             }
-            else if (comment.SourceUpdatedAt is { } have && updated is { } incoming && incoming < have)
+            else if (comment.SourceUpdatedAt is { } have && (updated is null || updated < have))
             {
                 continue;
             }
@@ -399,11 +464,14 @@ public sealed class JiraBackfillService : IJiraBackfillService
             comment.UpdatedAt = DateTime.UtcNow;
         }
         await _db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+        _db.ChangeTracker.Clear();
     }
 
     // ---------------- sprints ----------------
     private async Task SyncSprintsAsync(string connectionId, string companyId, CancellationToken ct)
     {
+        var scope = new JiraProjectionScope(_db, companyId, connectionId);
         var boards = new List<string>();
         var startAt = 0;
         while (true)
@@ -422,6 +490,7 @@ public sealed class JiraBackfillService : IJiraBackfillService
             var sStart = 0;
             while (true)
             {
+                var observedAt = DateTime.UtcNow;
                 JsonDocument? doc;
                 try
                 {
@@ -438,15 +507,18 @@ public sealed class JiraBackfillService : IJiraBackfillService
                     var page = doc?.RootElement.Arr("values")?.EnumerateArray().ToList();
                     if (page is null || page.Count == 0) break;
 
-                    var ids = page.Select(s => s.Str("id")).Where(x => x is not null).Select(x => x!).ToList();
-                    var existing = await _db.JiraSprints
+                    var ids = page.Select(s => s.Str("id")).OfType<string>().ToList();
+                    await using var tx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+                    await scope.RequireActiveAsync(ct);
+                    var blocked = await scope.BlockedSnapshotIdsAsync(JiraProjectionKind.Sprint, ids, observedAt, ct);
+                    var existing = await _db.JiraSprints.IgnoreQueryFilters()
                         .Where(x => x.CompanyId == companyId && ids.Contains(x.ExternalId))
                         .ToDictionaryAsync(x => x.ExternalId, ct);
 
                     foreach (var s in page)
                     {
                         var id = s.Str("id");
-                        if (id is null) continue;
+                        if (id is null || blocked.Contains(id)) continue;
                         if (!existing.TryGetValue(id, out var sprint))
                         {
                             sprint = new JiraSprint { CompanyId = companyId, ExternalId = id };
@@ -461,6 +533,7 @@ public sealed class JiraBackfillService : IJiraBackfillService
                         sprint.UpdatedAt = DateTime.UtcNow;
                     }
                     await _db.SaveChangesAsync(ct);
+                    await tx.CommitAsync(ct);
                     _db.ChangeTracker.Clear();
 
                     if (doc!.RootElement.Bool("isLast") != false) break;
@@ -471,7 +544,7 @@ public sealed class JiraBackfillService : IJiraBackfillService
     }
 
     private Task SetStatusAsync(string connectionId, JiraSyncStatus status, DateTime? syncedAt, string? error, CancellationToken ct) =>
-        _db.JiraConnections.Where(c => c.Id == connectionId)
+        _db.JiraConnections.Where(c => c.Id == connectionId && c.status)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(c => c.SyncStatus, status)
                 .SetProperty(c => c.LastSyncError, error)
