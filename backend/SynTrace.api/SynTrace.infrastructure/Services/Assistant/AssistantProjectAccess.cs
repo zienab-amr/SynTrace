@@ -24,6 +24,21 @@ public sealed class AssistantProjectAccess(SynTraceDbContext db, ProjectIntegrat
                 && x.JiraConnectionType == JiraConnectionType.Company, ct))
             return new([], projectIds);
 
+        // Company admins can ask about any Jira project belonging to their company,
+        // including synced Jira projects not yet linked to a SynTrace project.
+        // Non-admin employees remain limited to their assigned SynTrace projects.
+        // Both paths require an active company Jira connection (checked above).
+        if (isAdmin)
+        {
+            var companyJiraKeys = await db.JiraProjects.IgnoreQueryFilters().AsNoTracking()
+                .Where(jira => jira.CompanyId == companyId && jira.Key != null)
+                .Select(jira => jira.Key!)
+                .Distinct()
+                .OrderBy(key => key)
+                .ToListAsync(ct);
+            return new(companyJiraKeys, projectIds);
+        }
+
         var jiraKeys = await (from project in projects
             join jira in db.JiraProjects.IgnoreQueryFilters() on project.JiraProjectId equals jira.Id
             where jira.CompanyId == companyId && jira.Key != null
