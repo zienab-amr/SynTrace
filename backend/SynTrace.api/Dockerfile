@@ -22,6 +22,11 @@ RUN dotnet publish "SynTrace_api/SynTrace.Api.csproj" \
     -o /app/publish \
     --no-restore
 
+# SDK target used by the one-time migration job in local Compose.
+FROM build AS migrate
+RUN dotnet tool install dotnet-ef --tool-path /tools --version 10.0.13
+ENTRYPOINT ["/tools/dotnet-ef", "database", "update", "--project", "SynTrace.infrastructure", "--startup-project", "SynTrace_api", "--configuration", "Release", "--no-build"]
+
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app

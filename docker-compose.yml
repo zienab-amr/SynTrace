@@ -55,6 +55,18 @@ services:
       start_period: 40s
     restart: unless-stopped
 
+  migrate:
+    build:
+      context: ./backend/SynTrace.api
+      dockerfile: Dockerfile
+      target: migrate
+    environment:
+      ConnectionStrings__ConnectionDB: *db
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    restart: "no"
+
   backend:
     build:
       context: ./backend/SynTrace.api
@@ -74,8 +86,8 @@ services:
       # Jira tokens are encrypted with these keys. Without this volume, a new container cannot read them.
       - dataprotection_keys:/root/.aspnet/DataProtection-Keys
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
     restart: unless-stopped
@@ -90,8 +102,8 @@ services:
       ConnectionStrings__ConnectionDB: *db
       RabbitMQ__ClientProvidedName: "SynTrace.Worker"
     depends_on:
-      sqlserver:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
     restart: unless-stopped

@@ -1,0 +1,111 @@
+name: syntrace
+
+x-backend-environment: &backend-environment
+  ConnectionStrings__ConnectionDB: 'Server=sql,1433;Database=SynTrace;User Id=sa;Password="${SYNTRACE_SQL_PASSWORD:?Set SYNTRACE_SQL_PASSWORD in .env}";Encrypt=True;TrustServerCertificate=True'
+  RabbitMQ__HostName: rabbitmq
+  RabbitMQ__Port: "5672"
+  RabbitMQ__UserName: syntrace
+  RabbitMQ__Password: "${SYNTRACE_RABBITMQ_PASSWORD:?Set SYNTRACE_RABBITMQ_PASSWORD in .env}"
+  RabbitMQ__VirtualHost: /
+  GithubOAuth__AppId: "${SYNTRACE_GITHUB_APP_ID:-0}"
+  GithubOAuth__AppSlug: "${SYNTRACE_GITHUB_APP_SLUG:-syntrace-integration}"
+  GithubOAuth__ClientId: "${SYNTRACE_GITHUB_CLIENT_ID:-}"
+
+services:
+  sql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: "${SYNTRACE_SQL_PASSWORD:?Set SYNTRACE_SQL_PASSWORD in .env}"
+    volumes:
+      - sql-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$${MSSQL_SA_PASSWORD}" -C -Q "SELECT 1" -b -o /dev/null']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:4.2-management
+    environment:
+      RABBITMQ_DEFAULT_USER: syntrace
+      RABBITMQ_DEFAULT_PASS: "${SYNTRACE_RABBITMQ_PASSWORD:?Set SYNTRACE_RABBITMQ_PASSWORD in .env}"
+    ports:
+      - "127.0.0.1:${SYNTRACE_RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: ./SynTrace.api
+      dockerfile: Dockerfile
+      target: migrate
+    depends_on:
+      sql:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__ConnectionDB: 'Server=sql,1433;Database=SynTrace;User Id=sa;Password="${SYNTRACE_SQL_PASSWORD:?Set SYNTRACE_SQL_PASSWORD in .env}";Encrypt=True;TrustServerCertificate=True'
+    restart: "no"
+
+  api:
+    build:
+      context: ./SynTrace.api
+      dockerfile: Dockerfile
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${SYNTRACE_API_PORT:-8080}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - api-data-protection:/root/.aspnet/DataProtection-Keys
+    environment:
+      <<: *backend-environment
+      jwt__key: "${SYNTRACE_JWT_SIGNING_KEY:?Set SYNTRACE_JWT_SIGNING_KEY in .env}"
+      GithubOAuth__ClientSecret: "${SYNTRACE_GITHUB_CLIENT_SECRET:-}"
+      GithubOAuth__WebhookSecret: "${SYNTRACE_GITHUB_WEBHOOK_SECRET:-}"
+      GithubOAuth__RedirectUri: "${SYNTRACE_GITHUB_REDIRECT_URI:-}"
+      GithubOAuth__FrontendRedirectUri: "${SYNTRACE_GITHUB_FRONTEND_REDIRECT_URI:-}"
+      JiraOAuth__ClientId: "${SYNTRACE_JIRA_CLIENT_ID:-}"
+      JiraOAuth__ClientSecret: "${SYNTRACE_JIRA_CLIENT_SECRET:-}"
+      JiraOAuth__RedirectUri: "${SYNTRACE_JIRA_REDIRECT_URI:-}"
+      JiraOAuth__WebhookBaseUrl: "${SYNTRACE_JIRA_WEBHOOK_BASE_URL:-}"
+      JiraOAuth__FrontendRedirectUri: "${SYNTRACE_JIRA_FRONTEND_REDIRECT_URI:-}"
+      GmailSMTP__Email: "${SYNTRACE_SMTP_EMAIL:-}"
+      GmailSMTP__AppPassword: "${SYNTRACE_SMTP_APP_PASSWORD:-}"
+      AiService__BaseUrl: "${SYNTRACE_AI_BASE_URL:-}"
+      AiService__ApiKey: "${SYNTRACE_AI_API_KEY:-}"
+      AiService__EnableSynTraceProjectScope: "${SYNTRACE_AI_PROJECT_SCOPE:-false}"
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./SynTrace.api
+      dockerfile: SynTrace.Worker/Dockerfile
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      <<: *backend-environment
+      GitHubSync__Enabled: "false"
+    restart: unless-stopped
+
+volumes:
+  sql-data:
+  rabbitmq-data:
+  api-data-protection:
