@@ -1,0 +1,17 @@
+# Enable GitHub ingestion and mount the same app key read-only in both services.
+services:
+  api:
+    environment:
+      GithubOAuth__PrivateKeyPath: /run/secrets/github_private_key
+    secrets:
+      - github_private_key
+  worker:
+    environment:
+      GithubOAuth__PrivateKeyPath: /run/secrets/github_private_key
+      GitHubSync__Enabled: "true"
+    secrets:
+      - github_private_key
+
+secrets:
+  github_private_key:
+    file: "${SYNTRACE_GITHUB_PRIVATE_KEY_FILE:?Set the path to the GitHub App .pem file in .env}"
