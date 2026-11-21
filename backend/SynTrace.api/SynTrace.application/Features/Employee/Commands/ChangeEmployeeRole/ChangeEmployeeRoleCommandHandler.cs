@@ -1,45 +1,21 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
 using MediatR;
-using Microsoft.AspNetCore.Identity;
+using SynTrace.Application.Exceptions;
 using SynTrace.Domain.Interfaces;
 
-namespace SynTrace.Application.Features.Employee.Commands.ChangeEmployee
+namespace SynTrace.Application.Features.Employee.Commands.ChangeEmployee;
+
+public sealed class ChangeEmployeeRoleCommandHandler(IEmployeeRepository repository)
+    : IRequestHandler<ChangeEmployeeRoleCommand>
 {
-    public class ChangeEmployeeRoleCommandHandler : IRequestHandler<ChangeEmployeeRoleCommand>
+    public async Task Handle(ChangeEmployeeRoleCommand request, CancellationToken cancellationToken)
     {
-        private readonly IEmployeeRepository _repository;
-        private readonly UserManager<SynTrace.Domain.Entities.Employee> _userManager;
-        public ChangeEmployeeRoleCommandHandler(IEmployeeRepository repository, UserManager<SynTrace.Domain.Entities.Employee> userManager)
-        {
-            _repository = repository;
-            _userManager = userManager;
-        }
-        public async Task Handle(ChangeEmployeeRoleCommand request, CancellationToken cancellationToken)
-        {
-            var employee = await _repository.GetEmployeeByIdAsync(request.EmployeeId);
+        var role = request.NewRoleId ?? request.NewRole;
+        if (string.IsNullOrWhiteSpace(role))
+            throw new RequestFailureException(400, "NewRoleId is required.");
 
-            if(employee == null)
-                throw new Exception("Sorry, Employee not found");
+        var employee = await repository.GetEmployeeByIdAsync(request.EmployeeId)
+            ?? throw new RequestFailureException(404, "Employee was not found.");
 
-            var currentRoles = await _userManager.GetRolesAsync(employee);
-
-            if (!currentRoles.Any())
-                throw new Exception("Employee has no role");
-
-            var oldRole = currentRoles.First();
-
-
-            var result = await _repository.ChangeEmployeeRole(employee, oldRole, request.NewRole);
-
-            if (!result.Succeeded)
-            {
-                throw new InvalidOperationException(
-                    string.Join(", ", result.Errors.Select(e => e.Description))
-                );
-            }
-
-        }
+        await repository.ChangeEmployeeRole(employee, role, request.PreviousRoleId);
     }
 }

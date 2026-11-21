@@ -1,4 +1,5 @@
-﻿using System;
+using SynTrace.Application.Exceptions;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using MediatR;
@@ -21,7 +22,7 @@ namespace SynTrace.Application.Features.Role.Queries.GetRoleByName
             var role = await _roleService.GetRoleByNameAsync(request.RoleName);
 
             if (role == null)
-                throw new Exception("This Role does not exist.");
+                throw new RequestFailureException(404, "Role was not found in this company.");
 
             return role;
         }

@@ -1,12 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+using System.ComponentModel.DataAnnotations;
 using MediatR;
 
-namespace SynTrace.Application.Features.Role.Commands.DeleteRole
+namespace SynTrace.Application.Features.Role.Commands.DeleteRole;
+
+public sealed class DeleteRoleCommand : IRequest
 {
-    public class DeleteRoleCommand : IRequest
-    {
-        public string Role { get; set; }
-    }
+    [StringLength(256)] public string? RoleId { get; set; }
+    [StringLength(256)] public string? Role { get; set; }
 }

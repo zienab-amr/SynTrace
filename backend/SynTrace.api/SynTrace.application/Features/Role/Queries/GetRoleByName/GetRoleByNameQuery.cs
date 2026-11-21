@@ -1,13 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+using System.ComponentModel.DataAnnotations;
 using MediatR;
-using Microsoft.AspNetCore.Identity;
 
-namespace SynTrace.Application.Features.Role.Queries.GetRoleByName
+namespace SynTrace.Application.Features.Role.Queries.GetRoleByName;
+
+public sealed class GetRoleByNameQuery : IRequest<Domain.Entities.Role?>
 {
-    public class GetRoleByNameQuery : IRequest<SynTrace.Domain.Entities.Role?>
-    {
-        public string RoleName { set; get; }
-    }
+    [Required, StringLength(256)] public string RoleName { get; set; } = string.Empty;
 }

@@ -1,13 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+using System.ComponentModel.DataAnnotations;
 using MediatR;
 
-namespace SynTrace.Application.Features.Employee.Commands.ChangeEmployee
+namespace SynTrace.Application.Features.Employee.Commands.ChangeEmployee;
+
+public sealed class ChangeEmployeeRoleCommand : IRequest
 {
-    public class ChangeEmployeeRoleCommand : IRequest
-    {
-        public string EmployeeId { get; set; }
-        public string NewRole { get; set; }
-    }
+    [Required, StringLength(100)] public string EmployeeId { get; set; } = string.Empty;
+    [StringLength(256)] public string? NewRoleId { get; set; }
+    [StringLength(256)] public string? PreviousRoleId { get; set; }
+    [StringLength(256)] public string? NewRole { get; set; }
 }

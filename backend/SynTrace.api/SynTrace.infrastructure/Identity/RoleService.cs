@@ -1,161 +1,96 @@
-﻿using System;
-using System.Collections.Generic;
 using System.Data;
-using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using SynTrace.Application.Contracts;
 using SynTrace.Application.Contracts.Auth;
+using SynTrace.Application.Exceptions;
 using SynTrace.Domain.Entities;
+using SynTrace.Infrastructure.Integrations.GitHub;
 using SynTrace.Infrastructure.Persistence.Context;
 
+namespace SynTrace.Infrastructure.Identity;
 
-namespace SynTrace.Infrastructure.Identity
+public sealed class RoleService(RoleManager<Role> roles, ICurrentTenant tenant, ICurrentEmployee actor,
+    ProjectIntegrationAccess access, SynTraceDbContext db) : IRoleService
 {
-    public class RoleService : IRoleService
+    private IQueryable<Role> CompanyRoles => roles.Roles.Where(r => r.CompanyId == tenant.CompanyId);
+
+    public async Task<IdentityResult> CreateRoleAsync(string name)
     {
-        private readonly RoleManager<Role> _roleManager;
-        private readonly UserManager<Employee> _userManager;
-        private readonly ICurrentTenant _currentTenant;
-        private readonly ITenantValidator _tenantValidator;
-        private readonly SynTraceDbContext _context;
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        await RequireAdminAsync();
+        if (await GetRoleByNameAsync(name) is not null)
+            throw new RequestFailureException(409, "A role with this name already exists.");
 
-        public RoleService(
-            RoleManager<Role> roleManager,
-            UserManager<Employee> userManager,
-            ICurrentTenant currentTenant,
-            ITenantValidator tenantValidator,
-            SynTraceDbContext context)
-        {
-            _roleManager = roleManager;
-            _userManager = userManager;
-            _currentTenant = currentTenant;
-            _tenantValidator = tenantValidator;
-            _context = context;
-        }
-        public async Task<IdentityResult> AssignRoleAsync(Employee employee, string roleId)
-        {
-            if (!_tenantValidator.BelongsToCurrentTenant(employee.CompanyId))
-                throw new UnauthorizedAccessException(
-                    "Employee does not belong to the current tenant.");
+        var result = await roles.CreateAsync(new Role { Name = name.Trim(), CompanyId = tenant.CompanyId });
+        if (result.Succeeded)
+            await transaction.CommitAsync();
 
-            var existingRole = await _roleManager.FindByIdAsync(roleId);
+        return result;
+    }
 
-            if (existingRole == null ||
-                existingRole.CompanyId != _currentTenant.CompanyId)
-            {
-                throw new InvalidOperationException(
-                    "Role does not exist for the current tenant.");
-            }
+    public Task<List<Role>> GetAllRolesAsync() =>
+        CompanyRoles.AsNoTracking().OrderBy(r => r.NormalizedName).ToListAsync();
 
-            var alreadyAssigned = await _context.UserRoles
-                .AnyAsync(x => x.UserId == employee.Id && x.RoleId == roleId);
+    public Task<Role?> GetRoleByNameAsync(string name)
+    {
+        var normalized = roles.NormalizeKey(name.Trim());
+        return CompanyRoles.SingleOrDefaultAsync(r => r.NormalizedName == normalized);
+    }
 
-            if (alreadyAssigned)
-                throw new InvalidOperationException("Employee already has this role.");
+    public async Task DeleteRoleAsync(string? roleId, string? legacyName)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        await RequireAdminAsync();
+        var role = await GetModifiableRoleAsync(roleId, legacyName);
+        if (await db.UserRoles.AnyAsync(x => x.RoleId == role.Id))
+            throw new RequestFailureException(409, "Reassign employees before deleting this role.");
 
-            _context.UserRoles.Add(new IdentityUserRole<string>
-            {
-                UserId = employee.Id,
-                RoleId = roleId
-            });
+        EnsureSuccess(await roles.DeleteAsync(role));
+        await transaction.CommitAsync();
+    }
 
-            await _context.SaveChangesAsync();
+    public async Task UpdateRoleAsync(string? roleId, string? legacyName, string newName)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        await RequireAdminAsync();
+        var role = await GetModifiableRoleAsync(roleId, legacyName);
+        var existing = await GetRoleByNameAsync(newName);
+        if (existing is not null && existing.Id != role.Id)
+            throw new RequestFailureException(409, "A role with this name already exists.");
 
-            return IdentityResult.Success;
-        }
+        role.Name = newName.Trim();
+        EnsureSuccess(await roles.UpdateAsync(role));
+        await transaction.CommitAsync();
+    }
 
-        public async Task<IdentityResult> CreateRoleAsync(string role)
-        {
-            if (string.IsNullOrWhiteSpace(role))
-                throw new ArgumentException("Role name is required.");
+    private async Task<Role> GetModifiableRoleAsync(string? roleId, string? legacyName)
+    {
+        if (string.IsNullOrWhiteSpace(roleId) && string.IsNullOrWhiteSpace(legacyName))
+            throw new RequestFailureException(400, "RoleId is required.");
 
-            var companyId = _currentTenant.CompanyId;
+        var role = roleId is null
+            ? await GetRoleByNameAsync(legacyName!)
+            : await CompanyRoles.SingleOrDefaultAsync(x => x.Id == roleId);
 
-            if (string.IsNullOrWhiteSpace(companyId))
-                throw new InvalidOperationException(
-                    "Current tenant's company ID is not set.");
+        if (role is null)
+            throw new RequestFailureException(404, "Role was not found in this company.");
 
-            var existingRole = await GetRoleByNameAsync(role);
+        if (role.NormalizedName == "ADMIN")
+            throw new RequestFailureException(409, "The company administrator role is reserved.");
 
-            if (existingRole != null)
-                throw new InvalidOperationException(
-                    "Role already exists for the current tenant.");
+        return role;
+    }
 
-            var newRole = new Role
-            {
-                Name = role.Trim(),
-                CompanyId = companyId
-            };
+    private async Task RequireAdminAsync()
+    {
+        if (!await access.IsCompanyAdminAsync(tenant.CompanyId, actor.EmployeeId, CancellationToken.None))
+            throw new RequestFailureException(403, "A current company administrator is required.");
+    }
 
-            return await _roleManager.CreateAsync(newRole);
-        }
-
-        public async Task<List<Role>> GetAllRolesAsync()
-        {
-            var companyId = _currentTenant.CompanyId;
-            if(companyId is null)
-                throw new InvalidOperationException("Current tenant's company ID is not set.");
-
-
-            return await _roleManager.Roles
-                .Where(r => r.CompanyId == companyId)
-                .ToListAsync();
-
-        }
-
-        public async Task<Role?> GetRoleByNameAsync(string role)
-        {
-            if (string.IsNullOrWhiteSpace(role))
-                return null;
-
-            var companyId = _currentTenant.CompanyId;
-
-            var normalizedName = _roleManager.NormalizeKey(role.Trim());
-
-            return await _roleManager.Roles
-                .FirstOrDefaultAsync(r =>
-                    r.CompanyId == companyId &&
-                    r.NormalizedName == normalizedName);
-        }
-
-        public async Task<IdentityResult> DeleteRoleAsync(string role)
-        {
-            var roleExisting = await GetRoleByNameAsync(role);
-
-            if (roleExisting == null)
-                throw new Exception("This Role not found");
-
-            return await _roleManager.DeleteAsync(roleExisting);
-        }
-
-        public async Task<IdentityResult> UpdateRoleAsync(string oldRoleName, string newRoleName)
-        {
-            var companyId = _currentTenant.CompanyId;
-
-            if (string.IsNullOrWhiteSpace(companyId))
-                throw new InvalidOperationException("Current tenant's company ID is not set.");
-
-            if (string.IsNullOrWhiteSpace(newRoleName))
-                throw new ArgumentException("New role name is required.");
-
-            var roleExisting = await GetRoleByNameAsync(newRoleName);
-
-            if (roleExisting == null)
-                throw new Exception("This role was not found.");
-
-            var existingNewRole = await _roleManager.FindByNameAsync(newRoleName);
-
-            if (existingNewRole != null &&
-                existingNewRole.Id != roleExisting.Id)
-            {
-                throw new InvalidOperationException(
-                    "Role already exists for the current tenant.");
-            }
-
-            roleExisting.Name = newRoleName.Trim();
-
-            return await _roleManager.UpdateAsync(roleExisting);
-        }
+    private static void EnsureSuccess(IdentityResult result)
+    {
+        if (!result.Succeeded)
+            throw new RequestFailureException(409, string.Join(" ", result.Errors.Select(error => error.Description)));
     }
 }

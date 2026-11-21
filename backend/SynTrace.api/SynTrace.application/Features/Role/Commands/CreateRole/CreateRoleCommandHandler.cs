@@ -1,4 +1,5 @@
-﻿using System;
+using SynTrace.Application.Exceptions;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using MediatR;
@@ -25,7 +26,7 @@ namespace SynTrace.Application.Features.Role.Commands.CreateRole
 
             if (!result.Succeeded)
             {
-                throw new InvalidOperationException(
+                throw new RequestFailureException(409,
                     string.Join(", ", result.Errors.Select(e => e.Description))
                 );
             }

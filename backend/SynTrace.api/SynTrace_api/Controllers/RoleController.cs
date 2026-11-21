@@ -1,7 +1,9 @@
-﻿using MediatR;
+using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using SynTrace.Application.Features.Employee.Queries.GetAllEmployees;
+using SynTrace.Application.DTOs.Responses;
+using SynTrace.Infrastructure.Integrations.GitHub;
 using SynTrace.Application.Features.Role.Commands.CreateRole;
 using SynTrace.Application.Features.Role.Commands.DeleteRole;
 using SynTrace.Application.Features.Role.Commands.UpdateRole;
@@ -10,6 +12,7 @@ using SynTrace.Application.Features.Role.Queries.GetRoleByName;
 
 namespace SynTrace_api.Controllers
 {
+    [Authorize(Policy = CurrentCompanyAdminHandler.Policy)]
     [Route("api/[controller]")]
     [ApiController]
     public class RoleController : ControllerBase
@@ -49,7 +52,7 @@ namespace SynTrace_api.Controllers
         {
             var roles = await _mediator.Send(new GetAllRolesQuery());
 
-            return Ok(roles);
+            return Ok(roles.Select(role => new RoleResponseDTO(role.Id, role.Name, role.NormalizedName, role.CompanyId)));
         }
 
         [HttpGet("get-role-by-name")]
@@ -57,7 +60,7 @@ namespace SynTrace_api.Controllers
         {
             var role = await _mediator.Send(query);
 
-            return Ok(role);
+            return Ok(new RoleResponseDTO(role!.Id, role.Name, role.NormalizedName, role.CompanyId));
         }
     }
 }

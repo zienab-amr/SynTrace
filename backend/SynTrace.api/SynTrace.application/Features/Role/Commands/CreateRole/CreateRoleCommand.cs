@@ -1,14 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+using System.ComponentModel.DataAnnotations;
 using MediatR;
-using SynTrace.Application.Contracts.Auth;
 
-namespace SynTrace.Application.Features.Role.Commands.CreateRole
+namespace SynTrace.Application.Features.Role.Commands.CreateRole;
+
+public sealed class CreateRoleCommand : IRequest
 {
-    public class CreateRoleCommand : IRequest
-    {
-        public string Role { get; set; }
-    }
-
+    [Required, StringLength(256)] public string Role { get; set; } = string.Empty;
 }
