@@ -107,6 +107,7 @@ namespace SynTrace.Infrastructure
             services.AddScoped<IJiraOAuthConnectionRepository, JiraOAuthConnectionRepository>();
             services.AddScoped<IOAuthStateRepository, OAuthStateRepository>();
             services.AddGitHubOAuth(configuration);
+            services.AddGitHubSync(configuration, runWorker: false);
 
             //Http Client
             services.AddHttpClient();

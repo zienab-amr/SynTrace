@@ -21,6 +21,7 @@ builder.Services.Configure<RabbitMqTopologyOptions>(
 // NEW: DbContext + IJiraEventProcessor (needs ConnectionStrings:ConnectionDB in the Worker's config)
 builder.Services.AddJiraEventProcessing(builder.Configuration);
 builder.Services.AddGitHubOAuth(builder.Configuration, workerOnly: true);
+builder.Services.AddGitHubSync(builder.Configuration, runWorker: true);
 
 // Register background worker
 builder.Services.AddHostedService<Worker>();
