@@ -1,3 +1,4 @@
+using SynTrace.Api.Audit;
 using SynTrace.Api.Realtime;
 using SynTrace.Infrastructure.Services.Assistant;
 using System.Security.Claims;
@@ -86,6 +87,7 @@ app.UseRouting();
 app.UseCors("JiraOAuthTest");
 
 app.UseAuthentication();
+app.UseMiddleware<ApiAuditMiddleware>();
 app.UseAuthorization();
 
 app.UseRateLimiter();
