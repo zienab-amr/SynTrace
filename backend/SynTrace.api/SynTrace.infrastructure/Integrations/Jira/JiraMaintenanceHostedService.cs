@@ -51,7 +51,7 @@ public sealed class JiraMaintenanceHostedService : BackgroundService
         {
             var db = cleanup.ServiceProvider.GetRequiredService<SynTraceDbContext>();
             var cutoff = DateTime.UtcNow.Subtract(LedgerRetention);
-            await db.ProcessedJiraEvents.Where(e => e.ProcessedAt < cutoff).ExecuteDeleteAsync(ct);
+            await db.ProcessedJiraEvents.IgnoreQueryFilters().Where(e => e.ProcessedAt < cutoff).ExecuteDeleteAsync(ct);
         }
 
         List<(string Id, long? WebhookId, DateTime? ExpiresAt, JiraSyncStatus Sync)> connections;
