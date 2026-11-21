@@ -1,6 +1,5 @@
 ﻿using System.Net.Http.Json;
 using System.Security.Cryptography;
-using System.Text;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -28,6 +27,7 @@ namespace SynTrace.Infrastructure.Services.Integrations.Jira
         private readonly IOptions<JiraOAuthOptions> _options;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IJiraOAuthConnectionRepository _jiraOAuthConnectionRepository;
+        private readonly IOAuthStateRepository _oauthStateRepository;
         private readonly ICurrentTenant _currentTenant;
         private readonly ICurrentEmployee _currentEmployee;
         private readonly IDataProtector _tokenProtector;
@@ -44,6 +44,7 @@ namespace SynTrace.Infrastructure.Services.Integrations.Jira
             ICurrentTenant currentTenant,
             ICurrentEmployee currentEmployee,
             IJiraOAuthConnectionRepository jiraOAuthConnectionRepository,
+            IOAuthStateRepository oauthStateRepository,
             IDataProtectionProvider dataProtectionProvider,
             IMemoryCache memoryCache,
             IJiraWebhookRegistrationService jiraWebhookRegistrationService,
@@ -56,6 +57,7 @@ namespace SynTrace.Infrastructure.Services.Integrations.Jira
             _currentTenant = currentTenant;
             _currentEmployee = currentEmployee;
             _jiraOAuthConnectionRepository = jiraOAuthConnectionRepository;
+            _oauthStateRepository = oauthStateRepository;
             _tokenProtector = dataProtectionProvider.CreateProtector("SynTrace.Integrations.Jira.Tokens.v1");
             _memoryCache = memoryCache;
             _jiraWebhookRegistrationService = jiraWebhookRegistrationService;
@@ -72,21 +74,10 @@ namespace SynTrace.Infrastructure.Services.Integrations.Jira
                 throw new CompanyJiraConnectionAlreadyExistsException("A Jira connection already exists for this company.");
             }
 
-            var (stateHash, authorizationUrl) = CreateAuthorizationUrl();
+            var state = await _oauthStateRepository.CreateAsync(
+                IntegrationProvider.Jira, OAuthStatePurpose.Company, companyId, _currentEmployee.EmployeeId);
 
-            var newState = new JiraOAuthState
-            {
-                JiraOAuthStateId = Guid.NewGuid().ToString(),
-                StateHash = stateHash,
-                ConnectionType = Domain.Enums.JiraConnectionType.Company,
-                EmployeeId = _currentEmployee.EmployeeId,
-                CompanyId = companyId,
-                ExpiresAt = DateTime.UtcNow.AddMinutes(5),
-                ConsumedAt = null
-            };
-            await _jiraOAuthConnectionRepository.CreateState(newState);
-
-            return authorizationUrl;
+            return CreateAuthorizationUrl(state);
         }
 
         public async Task<JiraOAuthCallbackResponse> CallBack(
@@ -100,10 +91,8 @@ namespace SynTrace.Infrastructure.Services.Integrations.Jira
             if (string.IsNullOrWhiteSpace(code))
                 throw new ArgumentException("OAuth code is required.", nameof(code));
 
-            var stateHash = ComputeHash(state);
-
-            var oauthState =
-                await _jiraOAuthConnectionRepository.TryConsumeState(stateHash);
+            var oauthState = await _oauthStateRepository.TryConsumeAsync(
+                state, IntegrationProvider.Jira, cancellationToken: cancellationToken);
 
             if (oauthState is null)
             {
@@ -132,7 +121,7 @@ namespace SynTrace.Infrastructure.Services.Integrations.Jira
                     : _tokenProtector.Protect(token.RefreshToken);
 
             // Company: wait for the Admin to choose a Site.
-            if (oauthState.ConnectionType == JiraConnectionType.Company)
+            if (oauthState.Purpose == OAuthStatePurpose.Company)
             {
                 var pendingId =
                     Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
@@ -140,7 +129,7 @@ namespace SynTrace.Infrastructure.Services.Integrations.Jira
                 var pendingData = new PendingCompanyConnection(
                     oauthState.CompanyId,
                     oauthState.EmployeeId,
-                    oauthState.ConnectionType,
+                    JiraConnectionType.Company,
                     encryptedAccessToken,
                     encryptedRefreshToken,
                     resources
@@ -159,7 +148,7 @@ namespace SynTrace.Infrastructure.Services.Integrations.Jira
             }
 
             // Employee: must use the exact CloudId selected by the Admin.
-            if (oauthState.ConnectionType == JiraConnectionType.Employee)
+            if (oauthState.Purpose == OAuthStatePurpose.Employee)
             {
                 var companyConnection =
                     await _jiraOAuthConnectionRepository.GetActiveCompanyConnection(
@@ -240,25 +229,10 @@ namespace SynTrace.Infrastructure.Services.Integrations.Jira
                     "A Jira connection already exists for this employee.");
             }
 
-            // 2. Create the authorization URL and state hash.
-            var (stateHash, authorizationUrl) = CreateAuthorizationUrl();
+            var state = await _oauthStateRepository.CreateAsync(
+                IntegrationProvider.Jira, OAuthStatePurpose.Employee, companyId, employeeId);
 
-            // 3. Save the OAuth state before returning the authorization URL.
-            var newState = new JiraOAuthState
-            {
-                JiraOAuthStateId = Guid.NewGuid().ToString(),
-                StateHash = stateHash,
-                ConnectionType = JiraConnectionType.Employee,
-                EmployeeId = employeeId,
-                CompanyId = companyId,
-                ExpiresAt = DateTime.UtcNow.AddMinutes(5),
-                ConsumedAt = null
-            };
-
-            await _jiraOAuthConnectionRepository.CreateState(newState);
-
-            // 4. Return the URL to the caller.
-            return authorizationUrl;
+            return CreateAuthorizationUrl(state);
         }
 
         private async Task<JiraOAuthTokenResponse> ExchangeCodeForTokenAsync(
@@ -435,14 +409,6 @@ namespace SynTrace.Infrastructure.Services.Integrations.Jira
                 throw;
             }
         }
-        private static string ComputeHash(string data)
-        {
-            var hash = SHA256.HashData(
-                Encoding.UTF8.GetBytes(data));
-
-            return Convert.ToHexString(hash);
-        }
-
         private PendingCompanyConnection GetOwnedPendingCompanyConnection(
     string pendingId)
         {
@@ -544,13 +510,11 @@ namespace SynTrace.Infrastructure.Services.Integrations.Jira
         private static string GetPendingCacheKey(string pendingId) =>
             $"SynTrace:Jira:PendingCompany:{pendingId}";
 
-        private (string stateHash, string authorizationUrl) CreateAuthorizationUrl()
+        private string CreateAuthorizationUrl(string state)
         {
-            var state = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
-
             var encodedState = Uri.EscapeDataString(state);
 
-            var authorizationUrl = $"{_options.Value.AuthorizationUrl}?"
+            return $"{_options.Value.AuthorizationUrl}?"
                                     + $"audience={Uri.EscapeDataString(_options.Value.Audience)}&"
                                     + $"client_id={Uri.EscapeDataString(_options.Value.ClientId)}&"
                                     + $"scope={Uri.EscapeDataString(string.Join(" ", _options.Value.Scopes))}&"
@@ -559,8 +523,6 @@ namespace SynTrace.Infrastructure.Services.Integrations.Jira
                                     + "response_type=code&"
                                     + "prompt=consent";
 
-            var stateHash = ComputeHash(state);
-            return (stateHash, authorizationUrl);
         }
     } 
 }

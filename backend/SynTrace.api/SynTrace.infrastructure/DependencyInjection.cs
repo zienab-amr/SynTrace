@@ -15,6 +15,7 @@ using SynTrace.Domain.Interfaces;
 using SynTrace.Infrastructure.ExternalServices;
 using SynTrace.Infrastructure.Identity;
 using SynTrace.Infrastructure.Integrations.Jira;
+using SynTrace.Infrastructure.Integrations.GitHub;
 using SynTrace.Infrastructure.Messaging.RabbitMQ;
 using SynTrace.Infrastructure.Messaging.RabbitMQ.Configuration;
 using SynTrace.Infrastructure.Messaging.RabbitMQ.Connections;
@@ -104,6 +105,8 @@ namespace SynTrace.Infrastructure
             //Repositories
             services.AddScoped<IEmployeeRepository, EmployeeRepository>();
             services.AddScoped<IJiraOAuthConnectionRepository, JiraOAuthConnectionRepository>();
+            services.AddScoped<IOAuthStateRepository, OAuthStateRepository>();
+            services.AddGitHubOAuth(configuration);
 
             //Http Client
             services.AddHttpClient();

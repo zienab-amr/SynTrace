@@ -16,35 +16,6 @@ namespace SynTrace.Infrastructure.Repositories
         {
             _context = context;
         }
-        public async Task<JiraOAuthState> CreateState(JiraOAuthState state)
-        {
-            var status = await _context.JiraOAuthStates.AddAsync(state);
-
-            await _context.SaveChangesAsync();
-
-            return status.Entity;
-        }
-
-        public async Task<JiraOAuthState?> TryConsumeState(string stateHash)
-        {
-            var now = DateTime.UtcNow;
-
-            var affectedRows = await _context.JiraOAuthStates
-                .Where(x =>
-                    x.StateHash == stateHash &&
-                    x.ConsumedAt == null &&
-                    x.ExpiresAt > now)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(x => x.ConsumedAt, now));
-
-            if (affectedRows != 1)
-                return null;
-
-            return await _context.JiraOAuthStates
-                .AsNoTracking()
-                .SingleOrDefaultAsync(x => x.StateHash == stateHash);
-        }
-
         public async Task CreateConnection(JiraConnection connection)
         {
             await _context.JiraConnections.AddAsync(connection);
