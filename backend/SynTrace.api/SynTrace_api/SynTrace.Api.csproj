@@ -21,7 +21,4 @@
     <ProjectReference Include="..\SynTrace.infrastructure\SynTrace.Infrastructure.csproj" />
   </ItemGroup>
 
-	<PropertyGroup>
-		<NoWarn>$(NoWarn);NU1902</NoWarn>
-	</PropertyGroup>
 </Project>
