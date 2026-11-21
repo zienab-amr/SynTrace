@@ -58,6 +58,7 @@ namespace SynTrace.Infrastructure
             })
             .AddJwtBearer(options =>
             {
+                options.Events.OnTokenValidated = JwtSessionValidator.ValidateAsync;
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,
