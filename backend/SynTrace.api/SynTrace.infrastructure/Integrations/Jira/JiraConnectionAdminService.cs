@@ -7,6 +7,7 @@ using SynTrace.Application.Integrations.Jira;
 using SynTrace.Application.Messaging;
 using SynTrace.Contracts.IntegrationEvents.Jira;
 using SynTrace.Contracts.Serialization;
+using SynTrace.Domain.Entities;
 using SynTrace.Domain.Enums;
 using SynTrace.Infrastructure.Options;
 using SynTrace.Infrastructure.Persistence.Context;
@@ -78,7 +79,7 @@ public sealed class JiraConnectionAdminService : IJiraConnectionAdminService
 
     public async Task<bool> DisconnectAsync(string companyId, string correlationId, CancellationToken cancellationToken)
     {
-        var connection = await ActiveConnection(companyId).SingleOrDefaultAsync(cancellationToken);
+        var connection = await ActiveConnection(companyId).AsNoTracking().SingleOrDefaultAsync(cancellationToken);
         if (connection is null) return false;
 
         if (connection.WebhookId is { } webhookId)
@@ -112,22 +113,40 @@ public sealed class JiraConnectionAdminService : IJiraConnectionAdminService
 
         await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
 
+        // Hold the connection write lock before purging so workers cannot write after the purge.
+        var disconnected = await ActiveConnection(companyId)
+            .Where(x => x.Id == connection.Id)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.status, false)
+                .SetProperty(x => x.EncryptedAccessToken, string.Empty)
+                .SetProperty(x => x.EncryptedRefreshToken, (string?)null)
+                .SetProperty(x => x.EncryptedAdminWebhookSecret, (string?)null)
+                .SetProperty(x => x.WebhookId, (long?)null)
+                .SetProperty(x => x.WebhookSecretHash, (string?)null)
+                .SetProperty(x => x.WebhookExpiresAt, (DateTime?)null)
+                .SetProperty(x => x.UpdatedAt, DateTime.UtcNow), cancellationToken);
+        if (disconnected == 0)
+            return false;
+
         await _db.JiraComments.Where(x => x.CompanyId == companyId).ExecuteDeleteAsync(cancellationToken);
         await _db.JiraIssues.Where(x => x.CompanyId == companyId).ExecuteDeleteAsync(cancellationToken);
         await _db.JiraSprints.Where(x => x.CompanyId == companyId).ExecuteDeleteAsync(cancellationToken);
+        await _db.Projects.Where(x => x.CompanyId == companyId && x.JiraProjectId != null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.JiraProjectId, (string?)null), cancellationToken);
         await _db.JiraProjects.Where(x => x.CompanyId == companyId).ExecuteDeleteAsync(cancellationToken);
+        await _db.JiraConnections
+            .Where(x => x.CompanyId == companyId && x.CloudId == connection.CloudId &&
+                x.JiraConnectionType == JiraConnectionType.Employee && x.status)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.status, false)
+                .SetProperty(x => x.EncryptedAccessToken, string.Empty)
+                .SetProperty(x => x.EncryptedRefreshToken, (string?)null)
+                .SetProperty(x => x.UpdatedAt, DateTime.UtcNow), cancellationToken);
         await _db.JiraUsers.Where(x => x.CompanyId == companyId).ExecuteDeleteAsync(cancellationToken);
         await _db.ProcessedJiraEvents.Where(x => x.CompanyId == companyId).ExecuteDeleteAsync(cancellationToken);
 
-        connection.status = false;
-        connection.EncryptedAccessToken = string.Empty;
-        connection.EncryptedRefreshToken = null;
-        connection.EncryptedAdminWebhookSecret = null;
-        connection.WebhookId = null;
-        connection.WebhookSecretHash = null;
-        connection.WebhookExpiresAt = null;
-        connection.UpdatedAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync(cancellationToken);
+        await _db.Set<JiraProjectionWatermark>().Where(x => x.CompanyId == companyId && x.JiraConnectionId == connection.Id)
+            .ExecuteDeleteAsync(cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
         return true;
