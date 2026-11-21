@@ -1,4 +1,5 @@
-﻿using System;
+using SynTrace.Application.Behaviors;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,8 +12,10 @@ namespace SynTrace.Application
             this IServiceCollection services)
         {
             services.AddMediatR(cfg =>
-                cfg.RegisterServicesFromAssembly(
-                    typeof(DependencyInjection).Assembly));
+            {
+                cfg.RegisterServicesFromAssembly(typeof(DependencyInjection).Assembly);
+                cfg.AddOpenBehavior(typeof(ValidationBehavior<,>));
+            });
 
             return services;
         }

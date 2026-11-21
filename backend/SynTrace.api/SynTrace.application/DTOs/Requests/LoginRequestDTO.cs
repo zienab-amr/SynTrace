@@ -1,12 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+using System.ComponentModel.DataAnnotations;
 
-namespace SynTrace.Application.DTOs.Requests
+namespace SynTrace.Application.DTOs.Requests;
+
+public sealed class LoginRequestDTO
 {
-    public class LoginRequestDTO
-    {
-        public string Email { get; set; } = string.Empty;
-        public string Password { get; set; } = string.Empty;
-    }
+    [Required, EmailAddress, StringLength(256)] public string Email { get; set; } = string.Empty;
+    [Required, StringLength(128)] public string Password { get; set; } = string.Empty;
 }

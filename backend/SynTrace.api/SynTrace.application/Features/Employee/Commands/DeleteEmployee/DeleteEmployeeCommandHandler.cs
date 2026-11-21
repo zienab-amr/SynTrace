@@ -1,4 +1,5 @@
-﻿using System;
+using SynTrace.Application.Exceptions;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using MediatR;
@@ -18,7 +19,7 @@ namespace SynTrace.Application.Features.Employee.Commands.DeleteEmployee
             var employee = await _repository.GetEmployeeByIdAsync(request.EmployeeId);
 
             if(employee == null)
-                throw new Exception("Sorry, Employee not found");
+                throw new RequestFailureException(404, "Employee was not found.");
 
             var result = await _repository.DeleteEmployeeAsync(employee);
 
