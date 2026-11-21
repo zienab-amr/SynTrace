@@ -1,4 +1,5 @@
 using SynTrace.Api.Audit;
+using SynTrace.Api.Errors;
 using SynTrace.Api.Realtime;
 using SynTrace.Infrastructure.Services.Assistant;
 using System.Security.Claims;
@@ -18,6 +19,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddApplicationDI();
 builder.Services.AddInfrastructureDI(builder.Configuration);
 builder.Services.AddControllers();
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddScoped<AssistantProjectAccess>();
 builder.Services.AddHttpClient(AssistantClient.HttpClientName)
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
