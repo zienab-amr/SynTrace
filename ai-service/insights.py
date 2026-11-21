@@ -97,47 +97,152 @@ def stuck(ctx, project=None, sprint=None, issuetype=None, min_days=7, limit=LIMI
     return {"total": len(items), "items": items[:limit]}
 
 
-def sprint_summary(ctx, sprint, project=None, limit=LIMIT):
-    """One sprint: its dates and goal, counts by status category, done tickets with who moved them
-    to done, open tickets, and open tickets blocked by an unfinished ticket."""
-    low = _low(sprint=sprint, project=project)
-    head = run_query(
-        """
-        MATCH (w:WorkItem {tenant_id: $tenant})-[:IN_SPRINT]->(s:Sprint)
-        WHERE w.project_key IN $allowed
-          AND (toLower(s.name) CONTAINS $sprint OR toLower(s.state) = $sprint)
-          AND ($project IS NULL OR toLower(w.project_key) = $project)
-        WITH s, count(DISTINCT w) AS n ORDER BY coalesce(s.startDate, '') DESC
-        RETURN s.name AS name, s.state AS state, s.goal AS goal, s.startDate AS start,
-               s.endDate AS end, s.completeDate AS completed, n LIMIT 3
-        """, **low, **_scope(ctx))
-    if not head:
-        return None
-    chosen = head[0]["name"]
+# ---------- Sprints ----------
+# A sprint is chosen by its id (uid), never by its name alone: two boards can each have a "Sprint 4".
+
+ACTIVE_WORDS = {"active", "current", "open", "الحالي", "الحالية", "الشغال", "اللي شغال"}
+
+
+def _same_name(wanted, name):
+    """"sprint 4" is "SCRUM Sprint 4" but not "Sprint 40"."""
+    wanted, name = " ".join(wanted.lower().split()), " ".join((name or "").lower().split())
+    return wanted == name or bool(re.search(r"(?<![\w])" + re.escape(wanted) + r"(?![\w])", name))
+
+
+def find_sprints(ctx, sprint, project=None):
+    """The sprints a name (or "active") means in the allowed projects, best matches first, each with
+    its uid, state, dates, board, how many tickets it has and in which projects. An exact name beats a
+    partial one; among equals the active sprint, then the newest, comes first."""
     rows = run_query(
         """
-        MATCH (w:WorkItem {tenant_id: $tenant})-[:IN_SPRINT]->(s:Sprint {name: $name})
+        MATCH (w:WorkItem {tenant_id: $tenant})-[:IN_SPRINT]->(s:Sprint)
+        WHERE w.project_key IN $allowed AND ($project IS NULL OR toLower(w.project_key) = $project)
+        RETURN s.uid AS uid, s.name AS name, s.state AS state, s.goal AS goal, s.startDate AS start,
+               s.endDate AS end, s.completeDate AS completed, s.boardId AS board,
+               count(DISTINCT w) AS n, collect(DISTINCT w.project_key) AS projects
+        """, **_low(project=project), **_scope(ctx))
+    wanted = " ".join(str(sprint or "").lower().split())
+    if not wanted:
+        return []
+    if wanted in ACTIVE_WORDS:
+        found = [dict(r) for r in rows if (r["state"] or "").lower() == "active"]
+    else:
+        exact = [dict(r) for r in rows if " ".join((r["name"] or "").lower().split()) == wanted]
+        found = exact or [dict(r) for r in rows if _same_name(wanted, r["name"])]
+    rank = {"active": 0, "future": 1, "closed": 2}
+    found.sort(key=lambda r: str(r["start"] or ""), reverse=True)   # newest first, then by state
+    return sorted(found, key=lambda r: rank.get((r["state"] or "").lower(), 3))
+
+
+# ---------- Blockers ----------
+# Jira link names differ per company ("Blocks", "Blocker", "Depends", "Dependency"...). The graph keeps
+# each as a relationship type made from its outward name. The direction is read from the verb:
+# "A blocks B" means A blocks B; "A is blocked by B", "A depends on B" or "A requires B" means B blocks A.
+
+_BACKWARD = re.compile(r"blocked by|is blocked|depends|depend on|dependent|requires|waits? for|\bneeds\b")
+_FORWARD = re.compile(r"block|dependency (?:of|for)|required by|needed by|prerequisite")
+
+
+def blocking_types():
+    """-> (forward, backward) relationship types of the graph that mean one ticket blocks another."""
+    types = [r["t"] for r in run_query("CALL db.relationshipTypes() YIELD relationshipType AS t RETURN t")]
+    forward, backward = [], []
+    for t in types:
+        words = t.lower().replace("_", " ")
+        if _BACKWARD.search(words):
+            backward.append(t)
+        elif _FORWARD.search(words):
+            forward.append(t)
+    return forward, backward
+
+
+def blockers(ctx, sprint_uid=None, project=None, key=None, include_done=False, limit=LIMIT):
+    """Tickets with blocking links and the tickets that block them. A blocker is unresolved while it is
+    not done. -> {"linked": tickets with any blocking link, "blocked": open tickets with an unresolved
+    blocker, "items": those tickets, "types": the link types read}. A blocker outside the allowed
+    projects is counted but never named."""
+    forward, backward = blocking_types()
+    if not forward and not backward:
+        return {"linked": 0, "blocked": 0, "items": [], "types": []}
+    rows = run_query(
+        """
+        MATCH (w:WorkItem {tenant_id: $tenant})
+        WHERE w.project_key IN $allowed AND ($project IS NULL OR toLower(w.project_key) = $project)
+          AND ($key IS NULL OR w.key = $key)
+          AND ($sprint IS NULL OR EXISTS { MATCH (w)-[:IN_SPRINT]->(:Sprint {uid: $sprint}) })
+        CALL {
+            WITH w
+            OPTIONAL MATCH (b:WorkItem {tenant_id: $tenant})-[r]->(w) WHERE type(r) IN $forward
+            RETURN collect(DISTINCT b) AS f
+        }
+        CALL {
+            WITH w
+            OPTIONAL MATCH (w)-[r]->(b:WorkItem {tenant_id: $tenant}) WHERE type(r) IN $backward
+            RETURN collect(DISTINCT b) AS bk
+        }
+        WITH w, f + bk AS found
+        WHERE size(found) > 0
+        RETURN w.key AS key, w.summary AS summary, w.status AS status, w.statusCategory AS category,
+               w.url AS url,
+               [b IN found WHERE b.project_key IN $allowed | {key: b.key, summary: b.summary, status: b.status,
+                    done: coalesce(b.statusCategory, '') = 'done', url: b.url}] AS by,
+               size([b IN found WHERE NOT b.project_key IN $allowed AND coalesce(b.statusCategory, '') <> 'done']) AS hidden
+        ORDER BY w.key
+        """, forward=forward, backward=backward, sprint=sprint_uid, key=(key or "").upper() or None,
+        **_low(project=project), **_scope(ctx))
+    items = []
+    for r in rows:
+        r = dict(r)
+        r["open_by"] = [b for b in r["by"] if not b["done"]]
+        r["blocked"] = (r["category"] != DONE) and bool(r["open_by"] or r["hidden"])
+        if r["blocked"] or include_done:
+            items.append(r)
+    return {"linked": len(rows), "blocked": sum(1 for r in items if r["blocked"]), "items": items[:limit],
+            "types": forward + backward}
+
+
+def sprint_summary(ctx, sprint, project=None, limit=LIMIT, now=None):
+    """One sprint, chosen by uid: name, state, dates, goal, totals by status and status category,
+    completion, its blocked tickets, overdue and unassigned open tickets, and the done and open tickets.
+    -> None when no sprint matches; {"choices": [...]} when several sprints share the name."""
+    found = find_sprints(ctx, sprint, project)
+    if not found:
+        return None
+    best = [f for f in found if f["name"] == found[0]["name"] and f["state"] == found[0]["state"]]
+    if len(best) > 1:
+        return {"choices": found[:5]}
+    chosen = found[0]
+    rows = [dict(r) for r in run_query(
+        """
+        MATCH (w:WorkItem {tenant_id: $tenant})-[:IN_SPRINT]->(:Sprint {uid: $uid})
         WHERE w.project_key IN $allowed AND ($project IS NULL OR toLower(w.project_key) = $project)
         OPTIONAL MATCH (w)-[:ASSIGNED_TO]->(a:Person)
         OPTIONAL MATCH (w)-[:HAD_CHANGE]->(c:ChangeEvent)
           WHERE toLower(c.field) = 'status' AND c.to_name = w.status
         WITH w, a, c ORDER BY c.changed_at DESC
         WITH w, a, collect(c)[0] AS last
-        OPTIONAL MATCH (b:WorkItem {tenant_id: $tenant})-[:BLOCKS]->(w)
-          WHERE coalesce(b.statusCategory, '') <> 'done' AND b.project_key IN $allowed
         RETURN w.key AS key, w.summary AS summary, w.status AS status, w.statusCategory AS category,
-               w.issuetype AS type, w.url AS url, coalesce(a.displayName, 'Unassigned') AS assignee,
-               last.author AS moved_by, last.changed_at AS moved_at, collect(DISTINCT b.key) AS blocked_by
+               w.issuetype AS type, w.url AS url, w.duedate AS due, coalesce(a.displayName, 'Unassigned') AS assignee,
+               last.author AS moved_by, last.changed_at AS moved_at
         ORDER BY w.key
-        """, name=chosen, project=low["project"], **_scope(ctx))
+        """, uid=chosen["uid"], **_low(project=project), **_scope(ctx))]
+    by_status, by_category = {}, {}
+    for r in rows:
+        by_status[r["status"] or "unknown"] = by_status.get(r["status"] or "unknown", 0) + 1
+        by_category[r["category"] or "unknown"] = by_category.get(r["category"] or "unknown", 0) + 1
     done = [r for r in rows if r["category"] == DONE]
     open_ = [r for r in rows if r["category"] != DONE]
-    counts = {}
-    for r in rows:
-        counts[r["category"] or "unknown"] = counts.get(r["category"] or "unknown", 0) + 1
-    return {"sprint": head[0], "other_matches": [h["name"] for h in head[1:]], "counts": counts,
-            "total": len(rows), "done": done[:limit], "open": open_[:limit],
-            "blocked": [r for r in open_ if r["blocked_by"]][:limit]}
+    today = (now or datetime.now(timezone.utc)).date().isoformat()
+    try:
+        blocked = blockers(ctx, sprint_uid=chosen["uid"], project=project, limit=limit)
+    except Exception:   # the summary still stands without the links
+        blocked = None
+    return {"sprint": chosen, "other_matches": [f for f in found[1:4]], "total": len(rows),
+            "by_status": dict(sorted(by_status.items(), key=lambda kv: -kv[1])), "by_category": by_category,
+            "completion": round(100 * len(done) / len(rows)) if rows else 0,
+            "blocked": blocked, "overdue": [r for r in open_ if r["due"] and str(r["due"])[:10] < today][:limit],
+            "unassigned": sum(1 for r in open_ if r["assignee"] == "Unassigned"),
+            "done": done[:limit], "open": open_[:limit]}
 
 
 def uncovered_requirements(ctx, project=None, kinds=("requirement", "action_item"), limit=LIMIT):
@@ -195,7 +300,7 @@ def _same_tag(wanted, tag):
 
 def _tagged(ctx, project=None, sprint=None, parent=None, status=None):
     low = _low(project=project, sprint=sprint, issuetype=None)
-    rows = run_query(
+    rows = [dict(r) for r in run_query(
         """
         MATCH (w:WorkItem {tenant_id: $tenant})
         WHERE w.project_key IN $allowed AND w.summary IS NOT NULL
@@ -211,7 +316,7 @@ def _tagged(ctx, project=None, sprint=None, parent=None, status=None):
                par.summary AS parent_summary, par.labels AS parent_labels, par.components AS parent_components
         ORDER BY w.key LIMIT $limit
         """, parent=(parent or "").strip().upper() or None, status=(status or "").strip().lower() or None,
-        limit=TAGGED_TICKETS, **low, **_scope(ctx))
+        limit=TAGGED_TICKETS, **low, **_scope(ctx))]   # dicts: a Neo4j record can't take the tags
     for r in rows:
         # A subtask with no tag of its own belongs to its parent's team or area.
         r["tags"] = ticket_tags(r["summary"], r.get("labels"), r.get("components")) or \

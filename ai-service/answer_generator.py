@@ -60,12 +60,23 @@ def _not_found_message(result, question):
 _client = None
 
 
+GROQ_TIMEOUT = float(os.getenv("GROQ_TIMEOUT_SECONDS", "30"))
+GROQ_RETRIES = int(os.getenv("GROQ_MAX_RETRIES", "1"))
+
+
 def _get_client():
     global _client
     if _client is None:
         from groq import Groq
-        _client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        _client = Groq(api_key=os.getenv("GROQ_API_KEY"), timeout=GROQ_TIMEOUT, max_retries=GROQ_RETRIES)
     return _client
+
+
+def call_timeout():
+    """Seconds one model call may take: GROQ_TIMEOUT_SECONDS, or less when the question's time is short."""
+    import cancel
+    left = cancel.left()
+    return GROQ_TIMEOUT if left is None else max(1.0, min(GROQ_TIMEOUT, left))
 
 
 CATEGORY_LABELS = {"new": "to do", "indeterminate": "in progress", "done": "done"}
@@ -277,11 +288,19 @@ QUOTED_TEXT_RE = re.compile(r'["“”«»][^"“”«»]{8,}["“”«»]')
 TOKENS_BY_STAGE = {}   # where the tokens went, for measuring only
 
 
+TOKENS_CACHED = 0   # prompt tokens Groq served from its cache; they do not count toward the rate limit
+
+
 def count_tokens(completion, stage="answer"):
-    global TOKENS_USED
-    used = getattr(getattr(completion, "usage", None), "total_tokens", 0) or 0
+    global TOKENS_USED, TOKENS_CACHED
+    usage = getattr(completion, "usage", None)
+    used = getattr(usage, "total_tokens", 0) or 0
+    cached = getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", 0) or 0
     TOKENS_USED += used
+    TOKENS_CACHED += cached
     TOKENS_BY_STAGE[stage] = TOKENS_BY_STAGE.get(stage, 0) + used
+    import timing
+    timing.tokens(used, cached)
 
 
 _STAGE = "answer"   # which step is calling the model, for measuring only
@@ -292,13 +311,18 @@ def _complete(prompt):
     import cancel
     for model in filter(None, (GROQ_MODEL, os.getenv("GROQ_FALLBACK_MODEL"))):
         cancel.check()   # a cancelled question must not spend more tokens
+        import timing
         try:
-            completion = _get_client().chat.completions.create(
-                model=model, messages=[{"role": "user", "content": prompt}], temperature=0)
+            with timing.stage(_STAGE, llm=True):
+                completion = _get_client().chat.completions.create(
+                    model=model, messages=[{"role": "user", "content": prompt}], temperature=0,
+                    timeout=call_timeout())
             count_tokens(completion, _STAGE)
             return (completion.choices[0].message.content or "").translate(_TYPOGRAPHY)
         except Exception as e:
-            log.warning("LLM call failed: %s", type(e).__name__)
+            label = timing.error_label(e)
+            timing.error(label)
+            log.warning("LLM call failed: %s", label)
             if type(e).__name__ != "RateLimitError":
                 return None
     return None

@@ -81,7 +81,12 @@ Rules:
 - For tickets that are not ready, missing a description, assignee, story points or acceptance
   criteria, or backlog quality, call check_readiness.
 - For tickets that are stuck, bottlenecks, or what has been waiting longest, call find_stuck.
-- For a sprint summary, sprint progress or release notes, call summarize_sprint. To say why open
+- For which tickets are blocked, blockers, dependencies or what blocks a ticket, call find_blocked (with the
+  sprint or project, or the key). A ticket is blocked only when a link says so; To Do, an old status or
+  a missing assignee is not a blocker. When no link is recorded, say that no dependencies are recorded.
+- For a sprint summary, sprint progress or release notes, call summarize_sprint. Give the numbers, the
+  completion and the real blockers, and name at most ten tickets. When several sprints share the name,
+  ask which one. To say why open
   tickets are late, read the comments of the blocked ones.
 - When the question asks you to write something from the tickets, such as an email, a status
   update, release notes or a description, get the facts with the tools first, then write it in
@@ -151,9 +156,15 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {"project": TEXT, "sprint": TEXT, "issuetype": TEXT,
                                                         "min_days": {"type": "integer"}}}}},
     {"type": "function", "function": {
-        "name": "summarize_sprint", "description": "One sprint (name, or active / closed): dates, goal, counts by status, done "
-                                                   "tickets with who finished them and when, open tickets, and blocked ones.",
+        "name": "summarize_sprint", "description": "One sprint (its name, or active): state, dates, goal, total, counts by "
+                                                   "status, completion percent, blocked, overdue and unassigned tickets, then "
+                                                   "done and open tickets.",
         "parameters": {"type": "object", "required": ["sprint"], "properties": {"sprint": TEXT, "project": TEXT}}}},
+    {"type": "function", "function": {
+        "name": "find_blocked", "description": "Tickets blocked by another ticket through Jira links (blocks, depends on and "
+                                               "the like) and the tickets blocking them, unresolved while not done. Give a "
+                                               "sprint (its name, or active) and/or a project key, or one ticket key for what blocks it.",
+        "parameters": {"type": "object", "properties": {"sprint": TEXT, "project": TEXT, "key": TEXT}}}},
     {"type": "function", "function": {
         "name": "count_by_tag", "description": "Open and done tickets per tag (team or area from title tags, labels and "
                                                "components), most open first. Optional project, sprint and parent key.",
@@ -182,6 +193,7 @@ class Walk:
         self.urls = {}
         self.empty_searches = 0
         self.searches = {}   # search text -> whether it found anything
+        self.read = 0        # graph tools that answered (not search): "nothing is recorded" is an answer
 
     def _saw(self, key, url=None):
         self.urls[key.upper()] = url or self.urls.get(key.upper())
@@ -434,33 +446,109 @@ class Walk:
                   for i in result["items"]]
         return "\n".join(lines)
 
+    def _sprint_choices(self, choices):
+        return "Several sprints have this name; ask which one, or pass the project:\n" + "\n".join(
+            f"{c['name']} | {c['state']} | {c.get('start') or '?'} to {c.get('end') or '?'} | board {c.get('board')} "
+            f"| projects {', '.join(c['projects'])} | {c['n']} tickets" for c in choices)
+
     def summarize_sprint(self, arguments):
         import insights
+        arguments, problem = self._project_or_sprint(arguments)
+        if problem:
+            return problem
         name = str(arguments.get("sprint") or "").strip()[:100]
         if not name:
             return "Give a sprint name, or active."
         result = insights.sprint_summary(self.ctx, name, **self._filters(arguments, ("project",)))
         if not result:
-            return f"No sprint matches {name}."
+            return f"No sprint matches {name} in the allowed projects."
+        if "choices" in result:
+            return self._sprint_choices(result["choices"])
         sp = result["sprint"]
-        lines = [f"Sprint {sp['name']} ({sp['state']}), {sp.get('start') or '?'} to {sp.get('end') or '?'}"
-                 + (f", goal: {sp['goal']}" if sp.get("goal") else "")
-                 + f". {result['total']} tickets: " + ", ".join(f"{k} {v}" for k, v in result["counts"].items())]
+        # The numbers and the blockers come first: a long list is cut at the end of the tool result.
+        lines = [f"Sprint {sp['name']} | state {sp['state']} | {sp.get('start') or '?'} to {sp.get('end') or '?'}"
+                 + (f" | goal: {sp['goal']}" if sp.get("goal") else ""),
+                 f"Total {result['total']} tickets | {result['completion']}% done | by status: "
+                 + ", ".join(f"{k} {v}" for k, v in result["by_status"].items())
+                 + f" | open and unassigned: {result['unassigned']}"]
         if result["other_matches"]:
-            lines.append("Other sprints with this name: " + ", ".join(result["other_matches"]))
-        for group, title in (("done", "Done"), ("open", "Open"), ("blocked", "Blocked")):
-            for r in result[group]:
-                self._saw(r["key"], r.get("url"))
-                for blocker in r.get("blocked_by") or []:
-                    self._saw(blocker)
-        lines.append("Done:")
-        lines += [f"{r['key']} | {r['summary']} | assignee {r['assignee']}"
+            lines.append("Other sprints with a similar name: " + ", ".join(
+                f"{m['name']} ({m['state']})" for m in result["other_matches"]))
+        blocked = result["blocked"]
+        if blocked is None:
+            lines.append("Blockers: the links could not be read.")
+        elif not blocked["linked"]:
+            lines.append("Blockers: no blocking or dependency links are recorded for this sprint's tickets.")
+        else:
+            lines.append(f"Blocked by an unfinished ticket: {blocked['blocked']}")
+            lines += [self._blocked_line(r) for r in blocked["items"][:10]]
+        if result["overdue"]:
+            lines.append("Overdue open tickets: " + "; ".join(f"{r['key']} (due {str(r['due'])[:10]}, {r['status']})"
+                                                           for r in result["overdue"][:10]))
+        for r in result["done"] + result["open"]:
+            self._saw(r["key"], r.get("url"))
+        lines.append("Done (first 10):")
+        lines += [f"{r['key']} | {r['summary']} | {r['assignee']}"
                   + (f" | moved to {r['status']} by {r['moved_by']} on {str(r['moved_at'])[:10]}" if r.get("moved_by") else "")
-                  for r in result["done"]] or ["none"]
-        lines.append("Open:")
-        lines += [f"{r['key']} | {r['status']} | {r['assignee']} | {r['summary']}"
-                  + (f" | blocked by {', '.join(r['blocked_by'])}" if r["blocked_by"] else "")
-                  for r in result["open"]] or ["none"]
+                  for r in result["done"][:10]] or ["none"]
+        lines.append("Open (first 10):")
+        lines += [f"{r['key']} | {r['status']} | {r['assignee']} | {r['summary']}" for r in result["open"][:10]] or ["none"]
+        return "\n".join(lines)
+
+    def _blocked_line(self, r):
+        self._saw(r["key"], r.get("url"))
+        for b in r["by"]:
+            self._saw(b["key"], b.get("url"))
+        parts = [f"{b['key']} ({b['status']}{', done' if b['done'] else ''}) {b['summary']}" for b in r["by"]]
+        if r["hidden"]:
+            parts.append(f"{r['hidden']} unfinished ticket(s) outside your projects")
+        return f"{r['key']} | {r['status']} | {r['summary']} | blocked by: " + "; ".join(parts)
+
+    def _project_or_sprint(self, arguments):
+        """The model sometimes passes a sprint name ("Usergrid 37") as the project. A project that is not
+        an allowed project key is read as a sprint name when one matches, else refused, so a wrong
+        filter never reads as "nothing recorded"."""
+        project = str(arguments.get("project") or "").strip()
+        if not project:
+            return arguments, None
+        allowed = {p.upper(): p for p in self.ctx.allowed_projects}
+        if project.upper() in allowed:
+            return {**arguments, "project": allowed[project.upper()]}, None
+        import insights
+        if not arguments.get("sprint") and insights.find_sprints(self.ctx, project[:100]):
+            return {**{k: v for k, v in arguments.items() if k != "project"}, "sprint": project}, None
+        return arguments, (f"{project} is not one of the projects ({', '.join(sorted(allowed)[:30])}). "
+                           "Pass a sprint name as sprint.")
+
+    def find_blocked(self, arguments):
+        import insights
+        arguments, problem = self._project_or_sprint(arguments)
+        if problem:
+            return problem
+        key = str(arguments.get("key") or "").strip().upper()[:40] or None
+        filters = self._filters(arguments, ("project",))
+        sprint_uid, label = None, ""
+        if arguments.get("sprint") and not key:
+            found = insights.find_sprints(self.ctx, str(arguments["sprint"])[:100], filters.get("project"))
+            if not found:
+                return f"No sprint matches {arguments['sprint']} in the allowed projects."
+            same = [f for f in found if f["name"] == found[0]["name"] and f["state"] == found[0]["state"]]
+            if len(same) > 1:
+                return self._sprint_choices(found[:5])
+            sprint_uid, label = found[0]["uid"], f" in sprint {found[0]['name']} ({found[0]['state']})"
+        result = insights.blockers(self.ctx, sprint_uid=sprint_uid, key=key, include_done=bool(key), **filters)
+        if key:
+            if not result["items"]:
+                return f"No blocking or dependency links are recorded for {key}."
+            r = result["items"][0]
+            return (f"{r['key']} | {r['status']} | {r['summary']}\n"
+                    + ("Unresolved: it is blocked.\n" if r["blocked"] else "Nothing unresolved blocks it now.\n")
+                    + self._blocked_line(r))
+        if not result["linked"]:
+            return f"No blocking or dependency links are recorded{label}. A ticket in To Do is not blocked by that alone."
+        lines = [f"Tickets with blocking or dependency links{label}: {result['linked']}; "
+                 f"open and blocked by an unfinished ticket: {result['blocked']}"]
+        lines += [self._blocked_line(r) for r in result["items"]] or ["none is blocked now: every blocker is done."]
         return "\n".join(lines)
 
     def run(self, call):
@@ -469,12 +557,16 @@ class Walk:
                 "get_links": self.get_links, "get_worklogs": self.get_worklogs,
                 "get_attachments": self.get_attachments, "find_tickets": self.find_tickets,
                 "check_readiness": self.check_readiness, "find_stuck": self.find_stuck,
-                "summarize_sprint": self.summarize_sprint, "count_by_tag": self.count_by_tag,
+                "summarize_sprint": self.summarize_sprint, "find_blocked": self.find_blocked, "count_by_tag": self.count_by_tag,
                 "get_activity": self.get_activity, "over_estimate": self.over_estimate}.get(call.function.name)
         if not tool:
             return "Unknown tool."
+        import timing
         try:
-            result = tool(json.loads(call.function.arguments or "{}"))[:MAX_TOOL_CHARS]
+            with timing.stage("graph_tools"):
+                result = tool(json.loads(call.function.arguments or "{}"))[:MAX_TOOL_CHARS]
+            if call.function.name != "search_tickets":
+                self.read += 1
         except ValueError:
             result = "Bad tool arguments."
         # A key written inside a tool result (a link, an epic link, a comment) was returned by a tool too,
@@ -486,28 +578,52 @@ class Walk:
         return result
 
 
+FINAL_NUDGE = ("Answer now from the tool results above, without calling any tool. If they do not hold the "
+               "answer, say what is missing.")
+REPAIR_NUDGE = ("Your last tool call could not be read. Call one tool again with its name and arguments as plain "
+                "JSON that matches the tool's parameters, or answer if you can.")
+
+
 def _ask(messages, last_step):
     """The model's next message, or None. Another error gets one retry, because a tool call can come
-    back malformed. A rate limit moves on to GROQ_FALLBACK_MODEL when set."""
+    back malformed. A rate limit moves on to GROQ_FALLBACK_MODEL when set. On the last step the model
+    must answer: it is told so in words, because tool_choice "none" makes Groq refuse a tool call with
+    tool_use_failed and changes the cached prefix; a tool call then counts as no answer."""
+    import cancel
+    import timing
     models = [m for m in (ag.GROQ_MODEL, os.getenv("GROQ_FALLBACK_MODEL")) if m]
     retried = False
+    if last_step:   # asked in words: tool_choice stays "auto", so Groq's cached prefix still matches
+        messages = messages + [{"role": "user", "content": FINAL_NUDGE}]
     while models:
-        import cancel
-        cancel.check()   # a cancelled question must not spend more tokens
+        cancel.check()   # a cancelled or timed-out question must not spend more tokens
         try:
-            completion = ag._get_client().chat.completions.create(
-                model=models[0], messages=messages, temperature=0, tools=TOOLS,
-                tool_choice="none" if last_step else "auto")
+            with timing.stage("agent", llm=True):
+                completion = ag._get_client().chat.completions.create(
+                    model=models[0], messages=messages, temperature=0, tools=TOOLS,
+                    tool_choice="auto", timeout=ag.call_timeout())
             ag.count_tokens(completion, "agent")
-            return completion.choices[0].message
+            message = completion.choices[0].message
+            if last_step and message.tool_calls:
+                return None
+            return message
         except Exception as error:
-            log.warning("LLM call failed: %s", type(error).__name__)
+            label = timing.error_label(error)
+            timing.error(label)
+            log.warning("LLM call failed: %s", label)
             if type(error).__name__ == "RateLimitError":
                 models.pop(0)
             elif retried:
                 return None
             else:
                 retried = True
+                if "tool_use_failed" in label and os.getenv("DEBUG_TOOL_CALLS") == "1":   # lab only: model text
+                    body = getattr(error, "body", None) or {}
+                    inner = body.get("error", body) if isinstance(body, dict) else {}
+                    log.warning("failed generation: %s", str(inner.get("failed_generation"))[:400])
+                if "tool_use_failed" in label:
+                    # The same prompt at temperature 0 gives the same broken call, so say what went wrong.
+                    messages = messages + [{"role": "user", "content": REPAIR_NUDGE}]
     return None
 
 
@@ -559,6 +675,9 @@ def _checked(text, walk):
     if answer_text and not named and walk.searches:
         # It searched and says it found nothing that fits. Naming no ticket, it can't name a wrong one.
         return {"status": "no_results", "answer": answer_text, "source": "agent", "links": []}
+    if answer_text and not named and walk.read:
+        # A graph tool answered and the reply names no ticket, such as "no dependencies are recorded".
+        return {"status": "ok", "answer": answer_text, "source": "agent", "links": []}
     if not answer_text or not walk.urls or not named <= set(walk.urls):
         return None   # empty, nothing was read, or a key that no tool returned
     links = [{"key": key, "url": url} for key, url in walk.urls.items() if key in named and url]

@@ -25,6 +25,11 @@ class Cancelled(BaseException):
     """The request was cancelled by the backend. Not an Exception, so fallbacks don't catch it."""
 
 
+class TimeUp(BaseException):
+    """The question used its time (ASK_DEADLINE_SECONDS): no more model calls, so the service can
+    answer before the backend gives up waiting. Not an Exception, so fallbacks don't catch it."""
+
+
 def cancel(correlation_id):
     now = time.monotonic()
     with _lock:
@@ -35,17 +40,31 @@ def cancel(correlation_id):
         _cancelled[correlation_id] = now
 
 
-def start(correlation_id):
-    """Mark the running request. -> a token for finish()."""
-    return _current.set(correlation_id)
+_deadline = contextvars.ContextVar("syntrace_deadline", default=None)
+
+
+def start(correlation_id, seconds=None):
+    """Mark the running request, and when it must stop calling the model. -> a token for finish()."""
+    return _current.set(correlation_id), _deadline.set(time.monotonic() + seconds if seconds else None)
+
+
+def left():
+    """Seconds left before the deadline, or None without one."""
+    deadline = _deadline.get()
+    return None if deadline is None else deadline - time.monotonic()
 
 
 def finish(token):
-    _current.reset(token)
+    current, deadline = token
+    _deadline.reset(deadline)
+    _current.reset(current)
 
 
 def check():
     """Raise Cancelled when the running request was cancelled. Call it before every model call."""
+    remaining = left()
+    if remaining is not None and remaining <= 0:
+        raise TimeUp()
     correlation_id = _current.get()
     if correlation_id is None:
         return

@@ -29,7 +29,7 @@ import cache_version
 import cancel
 import conversation
 import names
-from answer_generator import generate_answer_result
+from answer_generator import _is_arabic, generate_answer_result
 from query_engine import AccessContext, run_query
 
 log = logging.getLogger("syntrace.service")
@@ -81,6 +81,11 @@ class AskResponse(CamelModel):
 
 
 CACHE_SECONDS = int(os.getenv("ASK_CACHE_SECONDS", "3600"))
+# Stop calling the model after this many seconds, so an answer comes back before the backend's own
+# timeout (AiService:TimeoutSeconds) cuts the request. Keep it a few seconds below that timeout.
+ASK_DEADLINE = float(os.getenv("ASK_DEADLINE_SECONDS", "75"))
+TIME_UP_AR = "السؤال ده محتاج وقت أطول من المسموح. جرب تحدده أكتر، زي اسم المشروع أو الـ sprint أو رقم التذكرة."
+TIME_UP_EN = "This question needs more time than allowed. Try narrowing it, for example with a project, sprint or ticket key."
 CACHE_SIZE = 500
 # Identical questions in one scope. The key holds the company's cache token, which the consumer
 # changes on every Jira change, so a saved answer never outlives the data it was built from.
@@ -149,7 +154,9 @@ def ask(request: AskRequest, x_internal_api_key: Optional[str] = Header(default=
         conversation.drop_last(request.company_id, request.employee_id, request.conversation_id,
                                request.edited_turns)
         turns = conversation.recent(request.company_id, request.employee_id, request.conversation_id)
-    started = cancel.start(correlation)
+    import timing
+    timer = timing.begin()
+    started = cancel.start(correlation, ASK_DEADLINE)
     try:
         cancel.check()   # cancelled before it started
         if request.added_to:
@@ -157,14 +164,22 @@ def ask(request: AskRequest, x_internal_api_key: Optional[str] = Header(default=
         else:
             asked = conversation.standalone(question, turns)
         result = _cached_answer(asked, ctx)
+    except cancel.TimeUp:
+        result = {"status": "no_results", "answer": TIME_UP_AR if _is_arabic(question) else TIME_UP_EN,
+                  "links": [], "source": "timeout"}
     except cancel.Cancelled:
-        log.info("cancelled correlation=%s", correlation)
+        log.info("cancelled correlation=%s %s", correlation, timing.summary())
+        timing.end(timer)
         raise HTTPException(409, "cancelled") from None
     except Exception as exc:
-        log.error("ask failed correlation=%s error=%s", correlation, type(exc).__name__)
+        log.error("ask failed correlation=%s error=%s %s", correlation, timing.error_label(exc), timing.summary())
+        timing.end(timer)
         raise HTTPException(503, "assistant is unavailable") from None
     finally:
         cancel.finish(started)
+    log.info("ask correlation=%s status=%s source=%s %s", correlation, result["status"], result.get("source"),
+             timing.summary())
+    timing.end(timer)
     try:
         result["answer"] = names.latinize(result["answer"], names.people(ctx))
     except Exception as exc:   # a name list problem must never fail the answer
