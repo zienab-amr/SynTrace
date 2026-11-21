@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
 using SynTrace.Application.Contracts;
 using SynTrace.Application.Contracts.Assistant;
@@ -104,6 +105,9 @@ namespace SynTrace.Infrastructure
             services.AddScoped<ICurrentEmployee, CurrentEmployee>();
             services.AddScoped<ICurrentRole, CurrentRole>();
             services.AddScoped<ITenantValidator, TenantValidator>();
+            services.RemoveAll<IRoleValidator<Role>>();
+
+            services.AddScoped<IRoleValidator<Role>, TenantRoleValidator>();
 
             //Repositories
             services.AddScoped<IEmployeeRepository, EmployeeRepository>();
