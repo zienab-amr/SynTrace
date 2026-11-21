@@ -1,166 +1,140 @@
-﻿using System.IdentityModel.Tokens.Jwt;
+using System.Data;
+using System.Globalization;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
-using SynTrace.Application.DTOs;
 using SynTrace.Application.DTOs.Responses;
+using SynTrace.Application.Exceptions;
 using SynTrace.Domain.Entities;
 using SynTrace.Domain.Interfaces;
-using Microsoft.EntityFrameworkCore;
 using SynTrace.Infrastructure.Persistence.Context;
-using Microsoft.AspNetCore.Identity;
 
-namespace SynTrace.Infrastructure.Identity
+namespace SynTrace.Infrastructure.Identity;
+
+public sealed class TokenService(IConfiguration config, SynTraceDbContext db) : ITokenService
 {
-    public class TokenService : ITokenService
+    public async Task<TokenResultDTO> GenerateAccessToken(Employee employee)
     {
-
-        private readonly IConfiguration _configuration;
-        private readonly SynTraceDbContext _context;
-        private readonly UserManager<Employee> _userManager;
-
-        public TokenService(IConfiguration configuration, SynTraceDbContext context, UserManager<Employee> userManager)
+        if (string.IsNullOrEmpty(employee.SecurityStamp))
+            throw new RequestFailureException(401, "Sign in again.");
+        var roleNames = await (from memberRole in db.UserRoles
+            join role in db.Roles on memberRole.RoleId equals role.Id
+            where memberRole.UserId == employee.Id && role.CompanyId == employee.CompanyId && role.Name != null
+            select role.Name!).ToListAsync();
+        var claims = new List<Claim>
         {
-            _configuration = configuration;
-            _context = context;
-            _userManager = userManager;
-        }
-        public async Task<TokenResultDTO> GenerateAccessToken(Employee request)
+            new(ClaimTypes.NameIdentifier, employee.Id),
+            new("CompanyId", employee.CompanyId),
+            new(JwtSessionValidator.VersionClaim, JwtSessionValidator.Version(employee.SecurityStamp))
+        };
+        claims.AddRange(roleNames.Select(role => new Claim(ClaimTypes.Role, role)));
+
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(
+            config["jwt:key"] ?? throw new InvalidOperationException("JWT signing is not configured.")));
+        var expires = DateTime.UtcNow.AddDays(Convert.ToDouble(config["jwt:DurationInDays"], CultureInfo.InvariantCulture));
+        var jwt = new JwtSecurityToken(
+            config["jwt:issuer"], config["jwt:audience"], claims, expires: expires,
+            signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256));
+        return new TokenResultDTO
         {
-            var claims = new List<Claim>
-            {
-                new Claim(ClaimTypes.NameIdentifier, request.Id.ToString()),
-
-                // Multi-Tenant
-                new Claim("CompanyId", request.CompanyId.ToString()),
-
-            };
-            var roles = await _userManager.GetRolesAsync(request);
-
-            foreach (var role in roles)
-            {
-                claims.Add(new Claim(ClaimTypes.Role, role));
-            }
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["jwt:key"]));
-
-            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
-            var expires = DateTime.UtcNow.AddDays(Convert.ToDouble(_configuration["jwt:DurationInDays"]));
-
-            var token = new JwtSecurityToken(
-                issuer: _configuration["jwt:issuer"],
-                audience: _configuration["jwt:audience"],
-                expires: expires,
-                claims: claims,
-                signingCredentials: creds
-            );
-
-            return new TokenResultDTO
-            {
-                AccessToken = new JwtSecurityTokenHandler().WriteToken(token),
-                AccessTokenExpiration = expires
-            };
-
-        }
-
-        public async Task<RefreshToken> GenerateRefreshToken()
-        {
-            var randomNumber = RandomNumberGenerator.GetBytes(64);
-
-            return new RefreshToken
-            {
-                Id = Guid.NewGuid().ToString(),
-                Token = Convert.ToBase64String(randomNumber),
-                CreatedOn = DateTime.UtcNow,
-                UpdatedOn = DateTime.UtcNow,
-                ExpiredDate = DateTime.UtcNow.AddDays(30)
-            };
-        }
-
-        public async Task<TokenResultDTO> GenerateTokens(Employee employee)
-        {
-            var accessToken = await GenerateAccessToken(employee);
-
-            var refreshToken = await GenerateRefreshToken();
-
-            refreshToken.EmployeeId = employee.Id;
-
-            await _context.RefreshTokens.AddAsync(refreshToken);
-
-            await _context.SaveChangesAsync();
-
-            return new TokenResultDTO
-            {
-                AccessToken = accessToken.AccessToken,
-                AccessTokenExpiration = accessToken.AccessTokenExpiration,
-
-                RefreshToken = refreshToken.Token,
-                RefreshTokenExpiration = refreshToken.ExpiredDate
-            };
-        }
-
-        public async Task<TokenResultDTO> RefreshTokens(string refreshToken)
-        {
-            var oldToken = await _context.RefreshTokens
-                .FirstOrDefaultAsync(x => x.Token == refreshToken);
-
-            if (oldToken == null)
-                throw new InvalidOperationException("Invalid refresh token.");
-
-            if (oldToken.IsRevoked)
-                throw new InvalidOperationException("Refresh token has been revoked.");
-
-            if (oldToken.IsExpired)
-                throw new InvalidOperationException("Refresh token has expired.");
-
-            var employee = await _context.Employees
-                .FirstOrDefaultAsync(x => x.Id == oldToken.EmployeeId);
-
-            if (employee == null)
-                throw new InvalidOperationException("Employee not found.");
-
-            // Revoke old token
-            oldToken.RevokedOn = DateTime.UtcNow;
-            oldToken.UpdatedOn = DateTime.UtcNow;
-
-            // Generate new tokens
-            var accessToken = await GenerateAccessToken(employee);
-
-            var newRefreshToken = await GenerateRefreshToken();
-
-            newRefreshToken.EmployeeId = employee.Id;
-
-            await _context.RefreshTokens.AddAsync(newRefreshToken);
-
-            await _context.SaveChangesAsync();
-
-            return new TokenResultDTO
-            {
-                AccessToken = accessToken.AccessToken,
-                AccessTokenExpiration = accessToken.AccessTokenExpiration,
-
-                RefreshToken = newRefreshToken.Token,
-                RefreshTokenExpiration = newRefreshToken.ExpiredDate
-            };
-        }
-
-        public async Task LogoutAsync(string refreshToken)
-        {
-            var token = await _context.RefreshTokens.FirstOrDefaultAsync(r => r.Token == refreshToken);
-
-            if (token == null)
-                throw new InvalidOperationException("Invalid refresh token.");
-
-            if (token.IsRevoked)
-                return;
-
-            token.RevokedOn = DateTime.UtcNow;
-            token.UpdatedOn = DateTime.UtcNow;
-
-
-            await _context.SaveChangesAsync();
-        }
+            AccessToken = new JwtSecurityTokenHandler().WriteToken(jwt),
+            AccessTokenExpiration = expires
+        };
     }
+
+    public Task<RefreshToken> GenerateRefreshToken()
+    {
+        var now = DateTime.UtcNow;
+        return Task.FromResult(new RefreshToken
+        {
+            Id = Guid.NewGuid().ToString(),
+            Token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64)),
+            CreatedOn = now, UpdatedOn = now, ExpiredDate = now.AddDays(30)
+        });
+    }
+
+    public async Task<TokenResultDTO> GenerateTokens(Employee employee)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        var current = await db.Employees.AsNoTracking().SingleOrDefaultAsync(x =>
+            x.Id == employee.Id && x.CompanyId == employee.CompanyId);
+        if (current is null || current.SecurityStamp != employee.SecurityStamp)
+            throw new RequestFailureException(401, "Sign in again.");
+
+        var response = await IssueAsync(current);
+        await transaction.CommitAsync();
+        return response;
+    }
+
+    public async Task<TokenResultDTO> RefreshTokens(string refreshToken)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        var now = DateTime.UtcNow;
+        var old = await FindRefreshTokenAsync(refreshToken);
+        if (old is null || old.IsRevoked || old.ExpiredDate <= now)
+            throw InvalidRefreshToken();
+
+        var employee = await db.Employees.AsNoTracking().SingleOrDefaultAsync(x => x.Id == old.EmployeeId);
+        if (employee is null)
+            throw InvalidRefreshToken();
+
+        var revoked = await db.RefreshTokens.Where(x => x.Id == old.Id && x.RevokedOn == null && x.ExpiredDate > now)
+            .ExecuteUpdateAsync(update => update.SetProperty(x => x.RevokedOn, now).SetProperty(x => x.UpdatedOn, now));
+        if (revoked != 1)
+            throw InvalidRefreshToken();
+
+        var response = await IssueAsync(employee);
+        await transaction.CommitAsync();
+        return response;
+    }
+
+    public async Task LogoutAsync(string refreshToken)
+    {
+        var token = await FindRefreshTokenAsync(refreshToken);
+        if (token is null)
+            return;
+
+        var now = DateTime.UtcNow;
+        await db.RefreshTokens.Where(x => x.Id == token.Id && x.RevokedOn == null)
+            .ExecuteUpdateAsync(update => update.SetProperty(x => x.RevokedOn, now).SetProperty(x => x.UpdatedOn, now));
+    }
+
+    private async Task<TokenResultDTO> IssueAsync(Employee employee)
+    {
+        var access = await GenerateAccessToken(employee);
+        var refresh = await GenerateRefreshToken();
+        refresh.EmployeeId = employee.Id;
+        var clientToken = refresh.Token;
+        refresh.Token = Digest(clientToken);
+        await db.RefreshTokens.AddAsync(refresh);
+        await db.SaveChangesAsync();
+        return new TokenResultDTO
+        {
+            AccessToken = access.AccessToken,
+            AccessTokenExpiration = access.AccessTokenExpiration,
+            RefreshToken = clientToken,
+            RefreshTokenExpiration = refresh.ExpiredDate
+        };
+    }
+
+    private async Task<RefreshToken?> FindRefreshTokenAsync(string candidate)
+    {
+        if (candidate.Length is < 64 or > 128 || candidate.Contains(':'))
+            return null;
+
+        var hash = Digest(candidate);
+        var matches = await db.RefreshTokens.AsNoTracking()
+            .Where(x => x.Token == hash || x.Token == candidate).Take(2).ToListAsync();
+        // Existing sessions can rotate their old stored tokens into digests.
+        return matches.FirstOrDefault(x => x.Token == hash || x.Token == candidate);
+    }
+
+    private static string Digest(string candidate) =>
+        "sha256:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(candidate)));
+
+    private static RequestFailureException InvalidRefreshToken() => new(401, "Invalid or expired refresh token.");
 }

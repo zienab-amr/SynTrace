@@ -1,11 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+using System.ComponentModel.DataAnnotations;
 using MediatR;
 using SynTrace.Application.DTOs.Responses;
 
-namespace SynTrace.Application.Features.Auth.Commands.RefreshToken
-{
-    public record RefreshTokenCommand(string RefreshToken) : IRequest<TokenResultDTO>;
-    
-}
+namespace SynTrace.Application.Features.Auth.Commands.RefreshToken;
+
+public sealed record RefreshTokenCommand([Required, StringLength(512)] string RefreshToken) : IRequest<TokenResultDTO>;

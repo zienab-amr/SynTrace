@@ -1,10 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+using System.ComponentModel.DataAnnotations;
 using MediatR;
-using SynTrace.Domain.Entities;
 
-namespace SynTrace.Application.Features.Auth.Commands.Logout
-{
-    public record LogoutCommand(string RefreshToken) : IRequest;
-}
+namespace SynTrace.Application.Features.Auth.Commands.Logout;
+
+public sealed record LogoutCommand([Required, StringLength(512)] string RefreshToken) : IRequest;
