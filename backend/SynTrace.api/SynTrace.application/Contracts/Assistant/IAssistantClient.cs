@@ -8,13 +8,15 @@ public enum AssistantFailure { None, BadRequest, Misconfigured, Unavailable }
 
 public sealed record AssistantResult(AssistantAnswer? Answer, AssistantFailure Failure);
 
+public sealed record AssistantProjectScope(IReadOnlyList<string> JiraKeys, IReadOnlyList<string> SynTraceProjectIds);
+
 public interface IAssistantClient
 {
     Task<AssistantResult> AskAsync(
         string question,
         string companyId,
         string employeeId,
-        IReadOnlyList<string> allowedProjects,
+        AssistantProjectScope scope,
         string correlationId,
         CancellationToken cancellationToken);
 }

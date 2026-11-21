@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
@@ -10,6 +11,7 @@ namespace SynTrace.Infrastructure.Services.Assistant;
 /// <summary>Calls the AI service. Question and answer text must never be logged.</summary>
 public sealed class AssistantClient : IAssistantClient
 {
+    public const string HttpClientName = "SynTrace.Assistant";
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly AiServiceOptions _options;
     private readonly ILogger<AssistantClient> _logger;
@@ -28,7 +30,7 @@ public sealed class AssistantClient : IAssistantClient
         string question,
         string companyId,
         string employeeId,
-        IReadOnlyList<string> allowedProjects,
+        AssistantProjectScope scope,
         string correlationId,
         CancellationToken cancellationToken)
     {
@@ -38,19 +40,29 @@ public sealed class AssistantClient : IAssistantClient
             return new(null, AssistantFailure.Misconfigured);
         }
 
+        var payload = new Dictionary<string, object>
+        {
+            ["question"] = question,
+            ["companyId"] = companyId,
+            ["employeeId"] = employeeId,
+            ["allowedProjects"] = scope.JiraKeys
+        };
+        if (_options.EnableSynTraceProjectScope)
+            payload["allowedSynTraceProjectIds"] = scope.SynTraceProjectIds;
+
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{_options.BaseUrl.TrimEnd('/')}/ask")
         {
-            Content = JsonContent.Create(new { question, companyId, employeeId, allowedProjects })
+            Content = JsonContent.Create(payload)
         };
         request.Headers.Add("X-Internal-Api-Key", _options.ApiKey);
         request.Headers.Add("X-Correlation-Id", correlationId);
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+        timeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(_options.TimeoutSeconds, 1, 180)));
 
         try
         {
-            var client = _httpClientFactory.CreateClient();
+            var client = _httpClientFactory.CreateClient(HttpClientName);
             client.Timeout = Timeout.InfiniteTimeSpan;   // the linked token above is the only timeout
             using var response = await client.SendAsync(request, timeout.Token);
 
@@ -73,6 +85,11 @@ public sealed class AssistantClient : IAssistantClient
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning("AI service timed out (correlation {CorrelationId}).", correlationId);
+            return new(null, AssistantFailure.Unavailable);
+        }
+        catch (JsonException)
+        {
+            _logger.LogWarning("AI service returned an invalid response (correlation {CorrelationId}).", correlationId);
             return new(null, AssistantFailure.Unavailable);
         }
         catch (HttpRequestException ex)

@@ -1,10 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using SynTrace.Application.Contracts;
 using SynTrace.Application.Contracts.Assistant;
-using SynTrace.Infrastructure.Persistence.Context;
+using SynTrace.Infrastructure.Services.Assistant;
+using SynTrace.Infrastructure.Options;
 
 namespace SynTrace.Api.Controllers
 {
@@ -20,19 +21,22 @@ namespace SynTrace.Api.Controllers
 
         private readonly ICurrentTenant _tenant;
         private readonly ICurrentEmployee _employee;
-        private readonly SynTraceDbContext _db;
+        private readonly AssistantProjectAccess _projectAccess;
         private readonly IAssistantClient _assistant;
+        private readonly AiServiceOptions _options;
 
         public AssistantController(
             ICurrentTenant tenant,
             ICurrentEmployee employee,
-            SynTraceDbContext db,
-            IAssistantClient assistant)
+            AssistantProjectAccess projectAccess,
+            IAssistantClient assistant,
+            IOptions<AiServiceOptions> options)
         {
             _tenant = tenant;
             _employee = employee;
-            _db = db;
+            _projectAccess = projectAccess;
             _assistant = assistant;
+            _options = options.Value;
         }
 
         [HttpPost("ask")]
@@ -45,14 +49,14 @@ namespace SynTrace.Api.Controllers
 
             // The company and projects come from the JWT and the database, never from the client.
             var companyId = _tenant.CompanyId;
-            var projects = await _db.JiraProjects.AsNoTracking()
-                .Where(p => p.CompanyId == companyId && p.Key != null)
-                .Select(p => p.Key!)
-                .ToListAsync(cancellationToken);
+            var scope = await _projectAccess.GetScopeAsync(companyId, _employee.EmployeeId, cancellationToken);
+            if (scope.JiraKeys.Count == 0 &&
+                (!_options.EnableSynTraceProjectScope || scope.SynTraceProjectIds.Count == 0))
+                return Forbid();
 
-            var correlationId = Request.Headers["X-Correlation-Id"].FirstOrDefault() ?? Guid.NewGuid().ToString("N");
+            var correlationId = Guid.NewGuid().ToString("N");
             var result = await _assistant.AskAsync(
-                question, companyId, _employee.EmployeeId, projects, correlationId, cancellationToken);
+                question, companyId, _employee.EmployeeId, scope, correlationId, cancellationToken);
 
             return result.Failure switch
             {
