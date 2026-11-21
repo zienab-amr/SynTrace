@@ -1,60 +1,33 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
 using MediatR;
-using Microsoft.AspNetCore.Identity;
 using SynTrace.Application.Contracts;
-using SynTrace.Application.Contracts.Auth;
+using SynTrace.Application.Exceptions;
 using SynTrace.Domain.Interfaces;
 
-namespace SynTrace.Application.Features.Employee.Commands.CreateEmployee
+namespace SynTrace.Application.Features.Employee.Commands.CreateEmployee;
+
+public sealed class CreateEmployeeCommandHandler(IEmployeeRepository repository, ICurrentTenant tenant)
+    : IRequestHandler<CreateEmployeeCommand, Domain.Entities.Employee>
 {
-    public class CreateEmployeeCommandHandler : IRequestHandler<CreateEmployeeCommand, SynTrace.Domain.Entities.Employee>
+    public async Task<Domain.Entities.Employee> Handle(CreateEmployeeCommand request, CancellationToken cancellationToken)
     {
-        private readonly IEmployeeRepository _repository;
-        private readonly IRoleService _roleService;
-        private readonly ICurrentTenant _currentTenant;
-        public CreateEmployeeCommandHandler(IEmployeeRepository repository, IRoleService roleService, ICurrentTenant currentTenant)
+        var roleId = request.RoleId ?? request.Role;
+        if (string.IsNullOrWhiteSpace(roleId))
+            throw new RequestFailureException(400, "RoleId is required.");
+
+        var employee = new Domain.Entities.Employee
         {
-            _repository = repository;
-            _roleService = roleService;
-            _currentTenant = currentTenant;
-        }
+            FirstName = request.FirstName.Trim(),
+            LastName = request.LastName.Trim(),
+            Email = request.Email.Trim(),
+            UserName = request.Email.Trim(),
+            PhoneNumber = request.PhoneNumber,
+            CompanyId = tenant.CompanyId,
+            LockoutEnabled = true
+        };
+        var result = await repository.CreateEmployeeAsync(employee, request.Password, roleId);
+        if (!result.Succeeded)
+            throw new RequestFailureException(400, string.Join(" ", result.Errors.Select(e => e.Description)));
 
-        public async Task<SynTrace.Domain.Entities.Employee> Handle(CreateEmployeeCommand request, CancellationToken cancellationToken)
-        {
-            if (request == null)
-                throw new Exception("error , please try again");
-            var check = await _repository.GetEmployeeByEmailAsync(request.Email);
-
-            if (check != null)
-                throw new Exception("Sorry, this email already exist");
-
-            var employee = new SynTrace.Domain.Entities.Employee
-            {
-                FirstName = request.FirstName,
-                LastName = request.LastName,
-                Email = request.Email,
-                UserName = request.Email,
-                PhoneNumber = request.PhoneNumber,
-                CompanyId = _currentTenant.CompanyId
-            };
-            var result = await _repository.CreateEmployeeAsync(employee, request.Password);
-
-            if (!result.Succeeded)
-            {
-                throw new InvalidOperationException(
-                    string.Join(", ", result.Errors.Select(e => e.Description)));
-            }
-
-            var roleResult = await _roleService.AssignRoleAsync(employee, request.Role);
-            if (!roleResult.Succeeded)
-            {
-                throw new InvalidOperationException(
-                    string.Join(", ", roleResult.Errors.Select(e => e.Description)));
-            }
-
-            return employee;
-        }
+        return employee;
     }
 }
