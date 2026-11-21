@@ -108,6 +108,7 @@ namespace SynTrace.Infrastructure
             services.AddScoped<IOAuthStateRepository, OAuthStateRepository>();
             services.AddGitHubOAuth(configuration);
             services.AddGitHubSync(configuration, runWorker: false);
+            services.AddGitHubMessaging(configuration, runBackgroundJobs: false);
 
             //Http Client
             services.AddHttpClient();

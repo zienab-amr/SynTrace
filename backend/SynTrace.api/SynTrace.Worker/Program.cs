@@ -22,6 +22,7 @@ builder.Services.Configure<RabbitMqTopologyOptions>(
 builder.Services.AddJiraEventProcessing(builder.Configuration);
 builder.Services.AddGitHubOAuth(builder.Configuration, workerOnly: true);
 builder.Services.AddGitHubSync(builder.Configuration, runWorker: true);
+builder.Services.AddGitHubMessaging(builder.Configuration, runBackgroundJobs: true);
 
 // Register background worker
 builder.Services.AddHostedService<Worker>();
