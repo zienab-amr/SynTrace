@@ -1,4 +1,5 @@
-﻿using MediatR;
+using MediatR;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using SynTrace.Application.Contracts.Auth;
@@ -13,6 +14,7 @@ namespace SynTrace_api.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [EnableRateLimiting("auth-sensitive")]
     public class AuthController : ControllerBase
     {
         private readonly IMediator _mediator;

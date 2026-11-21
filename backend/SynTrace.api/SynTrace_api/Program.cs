@@ -66,6 +66,10 @@ builder.Services.AddOpenApi(options =>
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("auth-sensitive", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1) }));
     // Each question costs an LLM call, so the limit is per employee.
     options.AddPolicy(AssistantController.RateLimitPolicy, context =>
         RateLimitPartition.GetFixedWindowLimiter(
