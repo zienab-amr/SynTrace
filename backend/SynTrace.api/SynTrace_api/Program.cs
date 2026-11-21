@@ -1,12 +1,13 @@
+using SynTrace.Infrastructure.Services.Assistant;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
-using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Authorization;
+using SynTrace.Infrastructure.Integrations.GitHub;
 using SynTrace.Api.Controllers;
 using Scalar.AspNetCore;
 using SynTrace.Application;
 using SynTrace.Infrastructure;
 using SynTrace.Infrastructure.Identity;
-using SynTrace.Domain.Entities;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -15,6 +16,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddApplicationDI();
 builder.Services.AddInfrastructureDI(builder.Configuration);
 builder.Services.AddControllers();
+builder.Services.AddScoped<AssistantProjectAccess>();
+builder.Services.AddHttpClient(AssistantClient.HttpClientName)
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IAuthorizationHandler, CurrentCompanyAdminHandler>();
+builder.Services.AddAuthorizationBuilder().AddPolicy(CurrentCompanyAdminHandler.Policy, policy =>
+    policy.RequireAuthenticatedUser().AddRequirements(new CurrentCompanyAdminRequirement()));
 
 builder.Services.AddCors(options =>
 {
@@ -53,15 +60,7 @@ builder.Services.AddRateLimiter(options =>
 });
 
 var app = builder.Build();
-
-//using (var scope = app.Services.CreateScope())
-//{
-//    var roleManager =
-//        scope.ServiceProvider
-//            .GetRequiredService<RoleManager<Role>>();
-
-//    await RoleSeeder.SeedRolesAsync(roleManager);
-//}
+app.UseExceptionHandler();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

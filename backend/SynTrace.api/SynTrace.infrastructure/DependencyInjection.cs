@@ -116,6 +116,7 @@ namespace SynTrace.Infrastructure
             services.AddGitHubOAuth(configuration);
             services.AddGitHubSync(configuration, runWorker: false);
             services.AddGitHubMessaging(configuration, runBackgroundJobs: false);
+            services.AddScoped<ProjectIntegrationAccess>();
 
             //Http Client
             services.AddHttpClient();
