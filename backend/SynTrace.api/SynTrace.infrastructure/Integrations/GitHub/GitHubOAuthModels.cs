@@ -35,8 +35,8 @@ public static class GitHubOAuthModels
         {
             entity.ToTable("GitHubEmployeeIdentities");
             entity.HasKey(x => new { x.CompanyId, x.EmployeeId });
-            entity.Property(x => x.CompanyId).HasMaxLength(128);
-            entity.Property(x => x.EmployeeId).HasMaxLength(256);
+            entity.Property(x => x.CompanyId).HasMaxLength(450);
+            entity.Property(x => x.EmployeeId).HasMaxLength(450);
             entity.Property(x => x.GitHubLogin).HasMaxLength(256);
             entity.HasIndex(x => new { x.CompanyId, x.GitHubUserId }).IsUnique();
             entity.HasOne<Company>().WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.NoAction);

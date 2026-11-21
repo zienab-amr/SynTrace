@@ -35,8 +35,8 @@ namespace SynTrace.Infrastructure.Migrations
                 name: "GitHubEmployeeIdentities",
                 columns: table => new
                 {
-                    CompanyId = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
-                    EmployeeId = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
+                    CompanyId = table.Column<string>(type: "nvarchar(450)", maxLength: 450, nullable: false),
+                    EmployeeId = table.Column<string>(type: "nvarchar(450)", maxLength: 450, nullable: false),
                     GitHubUserId = table.Column<long>(type: "bigint", nullable: false),
                     GitHubLogin = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),

@@ -420,12 +420,12 @@ namespace SynTrace.Infrastructure.Migrations
             modelBuilder.Entity("SynTrace.Domain.Entities.GitHub.GitHubEmployeeIdentity", b =>
                 {
                     b.Property<string>("CompanyId")
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("EmployeeId")
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
