@@ -1,103 +1,53 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+using System.Data;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using SynTrace.Application.DTOs.Requests;
 using SynTrace.Application.DTOs.Responses;
+using SynTrace.Application.Exceptions;
 using SynTrace.Domain.Entities;
 using SynTrace.Domain.Interfaces;
 using SynTrace.Infrastructure.Persistence.Context;
 
-namespace SynTrace.Infrastructure.Identity
+namespace SynTrace.Infrastructure.Identity;
+
+public sealed class RegisterService(
+    SynTraceDbContext db, UserManager<Employee> users, IOTPService codes, RoleManager<Role> roles) : IRegisterService
 {
-    public class RegisterService : IRegisterService
+    public async Task<RegisterResponseDTO> CreateFirstEmployeeAsync(RegisterRequestDTO request)
     {
-        private readonly SynTraceDbContext _context;
-        private readonly UserManager<Employee> _userManager;
-        private readonly IOTPService _otpService;
-        private readonly RoleManager<Role> _roleManager;
-        public RegisterService(SynTraceDbContext context, UserManager<Employee> userManager, IOTPService otpService, RoleManager<Role> roleManager)
+        var email = request.Email.Trim();
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        if (!await codes.ConsumeRegistrationAsync(email, request.VerificationToken, request.OTP))
         {
-            _context = context;
-            _userManager = userManager;
-            _otpService = otpService;
-            _roleManager = roleManager;
-        }
-        public async Task<RegisterResponseDTO> CreateFirstEmployeeAsync(RegisterRequestDTO requestDto)
-        {
-            if (requestDto == null)
-                throw new ArgumentNullException(nameof(requestDto));
-
-            var existingEmail = await _userManager.FindByEmailAsync(requestDto.Email);
-
-            if(existingEmail != null)
-                throw new InvalidOperationException("Email already exists.");
-
-            if (!_otpService.IsEmailVerified(requestDto.Email))
-            {
-                throw new InvalidOperationException(
-                    "Email must be verified before registration.");
-            }
-
-            var company = new Company
-            {
-                CompanyId = Guid.NewGuid().ToString(),
-                CompanyName = requestDto.CompanyName
-            };
-
-            _context.Companies.Add(company);
-
-            var employee = new Employee
-            {
-                FirstName = requestDto.FirstName,
-                LastName = requestDto.LastName,
-                Email = requestDto.Email,
-                UserName = requestDto.Email,
-                PhoneNumber = requestDto.PhoneNumber,
-                Company = company,
-            };
-
-            var result = await _userManager.CreateAsync(employee, requestDto.Password);
-
-            if (!result.Succeeded)
-            {
-                throw new InvalidOperationException(
-                    string.Join(", ", result.Errors.Select(e => e.Description)));
-            }
-
-            var adminRole = new Role
-            {
-                Name = "Admin",
-                CompanyId = company.CompanyId
-            };
-
-            var roleResult = await _roleManager.CreateAsync(adminRole);
-
-            if (!roleResult.Succeeded)
-            {
-                throw new InvalidOperationException(
-                    string.Join(", ", roleResult.Errors.Select(e => e.Description)));
-            }
-
-            var assignrole= await _userManager.AddToRoleAsync(employee, "Admin");
-
-            if (!assignrole.Succeeded)
-            {
-                throw new InvalidOperationException(
-                    string.Join(", ", assignrole.Errors.Select(e => e.Description)));
-            }
-
-            _otpService.RemoveEmailVerification(requestDto.Email);
-
-            var responseDto = new RegisterResponseDTO
-            {
-                EmployeeId = employee.Id,
-                CompanyId = company.CompanyId,
-                Email = employee.Email
-            };
-            return responseDto;
-
+            await transaction.CommitAsync();
+            throw new RequestFailureException(400, "Valid email verification is required.");
         }
 
+        if (await users.FindByNameAsync(email) is not null)
+            throw new RequestFailureException(409, "An account already exists for this email.");
+
+        var company = new Company { CompanyId = Guid.NewGuid().ToString(), CompanyName = request.CompanyName.Trim() };
+        db.Companies.Add(company);
+        var employee = new Employee
+        {
+            FirstName = request.FirstName.Trim(), LastName = request.LastName.Trim(),
+            Email = email, UserName = email, PhoneNumber = request.PhoneNumber,
+            EmailConfirmed = true, Company = company, LockoutEnabled = true
+        };
+        EnsureSuccess(await users.CreateAsync(employee, request.Password));
+
+        var admin = new Role { Name = "Admin", CompanyId = company.CompanyId };
+        EnsureSuccess(await roles.CreateAsync(admin));
+        db.UserRoles.Add(new IdentityUserRole<string> { UserId = employee.Id, RoleId = admin.Id });
+        await db.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return new RegisterResponseDTO { EmployeeId = employee.Id, CompanyId = company.CompanyId, Email = employee.Email };
+    }
+
+    private static void EnsureSuccess(IdentityResult result)
+    {
+        if (!result.Succeeded)
+            throw new RequestFailureException(400, string.Join(" ", result.Errors.Select(error => error.Description)));
     }
 }

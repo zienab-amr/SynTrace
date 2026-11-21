@@ -1,20 +1,30 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+using System.ComponentModel.DataAnnotations;
 
-namespace SynTrace.Application.DTOs.Requests
+namespace SynTrace.Application.DTOs.Requests;
+
+public sealed class RegisterRequestDTO
 {
-    public class RegisterRequestDTO
-    {
-        public string CompanyName { get; set; } = string.Empty;
+    [Required, StringLength(200)]
+    public string CompanyName { get; set; } = string.Empty;
 
-        public string FirstName { get; set; } = string.Empty;
-        public string LastName { get; set; } = string.Empty;
+    [Required, StringLength(100)]
+    public string FirstName { get; set; } = string.Empty;
 
-        public string Email { get; set; } = string.Empty;
+    [Required, StringLength(100)]
+    public string LastName { get; set; } = string.Empty;
 
-        public string? PhoneNumber { get; set; }
+    [Required, EmailAddress, StringLength(256)]
+    public string Email { get; set; } = string.Empty;
 
-        public string Password { get; set; } = string.Empty;
-    }
+    [StringLength(32)]
+    public string? PhoneNumber { get; set; }
+
+    [Required, StringLength(128)]
+    public string Password { get; set; } = string.Empty;
+
+    [StringLength(64)]
+    public string? VerificationToken { get; set; }
+
+    [RegularExpression("[0-9]{6}")]
+    public string? OTP { get; set; }
 }

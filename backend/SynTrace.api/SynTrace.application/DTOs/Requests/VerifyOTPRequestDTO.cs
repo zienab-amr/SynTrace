@@ -1,12 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+using System.ComponentModel.DataAnnotations;
 
-namespace SynTrace.Application.DTOs.Requests
+namespace SynTrace.Application.DTOs.Requests;
+
+public sealed class VerifyOTPRequestDTO
 {
-    public class VerifyOTPRequestDTO
-    {
-        public string Email { get; set; } = string.Empty;
-        public string OTP { get; set; } = string.Empty;
-    }
+    [Required, EmailAddress, StringLength(256)]
+    public string Email { get; set; } = string.Empty;
+
+    [Required, RegularExpression("[0-9]{6}")]
+    public string OTP { get; set; } = string.Empty;
 }

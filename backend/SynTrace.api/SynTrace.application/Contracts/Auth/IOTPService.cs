@@ -1,17 +1,13 @@
-﻿using SynTrace.Application.DTOs.Requests;
+using SynTrace.Application.DTOs.Requests;
 
-namespace SynTrace.Domain.Interfaces
+namespace SynTrace.Domain.Interfaces;
+
+public sealed record OtpVerificationResult(bool Verified, string? VerificationToken);
+
+public interface IOTPService
 {
-    public interface IOTPService
-    {
-        public string GenerateOTP();
-
-        public Task SendOTP(OTPRequestDTO requestDto);
-
-        public Task<bool> VerifyOTP(VerifyOTPRequestDTO requestDto);
-
-        public bool IsEmailVerified(string email);
-
-        public void RemoveEmailVerification(string email);
-    }
+    Task SendOTP(OTPRequestDTO requestDto, CancellationToken cancellationToken = default);
+    Task<OtpVerificationResult> VerifyOTP(VerifyOTPRequestDTO requestDto, CancellationToken cancellationToken = default);
+    Task<bool> ConsumeRegistrationAsync(string email, string? verificationToken, string? code, CancellationToken cancellationToken = default);
+    Task<bool> ConsumePasswordResetAsync(string email, string employeeId, string code, CancellationToken cancellationToken = default);
 }
