@@ -1,4 +1,5 @@
-﻿using System;
+using SynTrace.Application.Exceptions;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using MediatR;
@@ -17,7 +18,7 @@ namespace SynTrace.Application.Features.Employee.Queries.GetEmployeeById
         {
             var employee = await _repository.GetEmployeeByIdAsync(request.EmployeeId);
             if (employee == null)
-                throw new Exception("Employee not found");
+                throw new RequestFailureException(404, "Employee was not found.");
 
             return employee;
 

@@ -1,18 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+using System.ComponentModel.DataAnnotations;
 using MediatR;
 
-namespace SynTrace.Application.Features.Employee.Commands.UpdateEmployee
+namespace SynTrace.Application.Features.Employee.Commands.UpdateEmployee;
+
+public sealed class UpdateEmployeeCommand : IRequest<Domain.Entities.Employee>
 {
-    public class UpdateEmployeeCommand : IRequest<SynTrace.Domain.Entities.Employee>
-    {
-        public string EmployeeId { get; set; }
-
-        public string FirstName { get; set; }
-        public string LastName { get; set; }
-        public string PhoneNumber { get; set; }
-        public string Email { get; set; }
-
-    }
+    [Required, StringLength(100)] public string EmployeeId { get; set; } = string.Empty;
+    [Required, StringLength(100)] public string FirstName { get; set; } = string.Empty;
+    [Required, StringLength(100)] public string LastName { get; set; } = string.Empty;
+    [Phone, StringLength(40)] public string? PhoneNumber { get; set; }
+    [EmailAddress, StringLength(256)] public string? Email { get; set; }
 }

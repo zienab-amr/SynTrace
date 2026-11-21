@@ -1,4 +1,5 @@
-﻿using System;
+using SynTrace.Application.Exceptions;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using MediatR;
@@ -19,18 +20,21 @@ namespace SynTrace.Application.Features.Employee.Commands.UpdateEmployee
 
             if (employee == null)
             {
-                throw new Exception("Sorry, not found this Employee");
+                throw new RequestFailureException(404, "Employee was not found.");
             }
 
-            employee.FirstName = request.FirstName;
-            employee.LastName = request.LastName;
+            if (request.Email is not null && !string.Equals(employee.Email, request.Email.Trim(), StringComparison.OrdinalIgnoreCase))
+                throw new RequestFailureException(400, "Changing an account email requires separate verification.");
+
+            employee.FirstName = request.FirstName.Trim();
+            employee.LastName = request.LastName.Trim();
             employee.PhoneNumber = request.PhoneNumber;
 
             var result = await _repository.UpdateEmployeeAsync(employee);
 
             if (!result.Succeeded)
             {
-                throw new InvalidOperationException(
+                throw new RequestFailureException(409,
                     string.Join(", ", result.Errors.Select(e => e.Description)));
             }
 
