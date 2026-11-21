@@ -10,6 +10,8 @@ namespace SynTrace.Domain.Entities
         public string FirstName { get; set; }
         public string LastName { get; set; }
         public string CompanyId { get; set; }
-        public Company Company { get; set; }
+        public Company Company { get; set; } = null!;
+
+        public ICollection<EmployeeProject> EmployeeProjects { get; set; } = new List<EmployeeProject>();
     }
 }
