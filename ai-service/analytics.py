@@ -55,26 +55,33 @@ kind:
 - "search": finding tickets by topic or meaning, and any question about one ticket that is
   described instead of named by key, such as its comments, status or owner. A bare work topic with no verb, such as
   "meeting transcripts" or "login", is a search.
+  Questions about meetings, what a client asked for, decisions, notes or the background of a task
+  are also a search.
   So are questions about what one person did on a day or in a period (their activity), the time
   logged on one ticket with dates, and tickets that took longer than their estimate.
   So are questions about a team's or area's tickets, such as backend, Flutter or AI tasks or
   subtasks, and comparisons between teams or areas.
   So are questions about tickets that are not ready or miss a description, assignee, estimate or
-  acceptance criteria, stuck tickets or bottlenecks, a summary of a sprint or release notes.
+  acceptance criteria, stuck tickets or bottlenecks, a summary of a sprint or release notes, and
+  client requirements that have no ticket.
   So are questions about blocked tickets, blockers or dependencies (what blocks what), even when they
   name a sprint or a project: a blocker is a link between tickets, never a status or a ticket list.
+  So are questions about the team's GitHub repositories: commits, pull requests, branches, merges,
+  who changed the code, and where or how something is done in the code.
 - "compound": two or three different questions in one. Set questions to a list where each one
   makes sense alone, in the user's language, with names repeated instead of pronouns. When a later
   part means the person or thing an earlier part will find, write TOP_RESULT in its place.
 - "chat": a greeting, small talk, or asking what the assistant is or can do.
 - "thanks": thanking the assistant, with nothing else asked.
 - "action": asking the assistant to change Jira: create, edit, move, assign, close, delete or
-  comment on tickets, or log time. Asking how to do it yourself is "general", not "action".
+  comment on tickets, or log time, or to change GitHub (merge, close or comment on a pull request).
+  Asking how to do it yourself is "general", not "action".
 - "general": anything that does not need the team's Jira data: general knowledge, software, Agile
   or Scrum concepts, how Jira works, writing, rewording or translating text the user gives,
   brainstorming, and topics such as weather, food or sports.
   A question about the team's tickets, people, sprints or projects is never "general", even if a
   name is not in the list. Writing about a ticket, such as an email about the login bug, is "search".
+
 
 For "search", also set search_text: the topic as short English keywords, because tickets may be
 in English. Example: "شاشات الموبايل" -> "mobile app screens".
@@ -151,6 +158,10 @@ Examples:
 "Which issues in SCRUM Sprint 4 are blocked by unresolved dependencies?" -> {{"kind":"search","search_text":"blocked dependencies"}}
 "إيه التاسكات المتعطلة في السبرنت الحالي؟" -> {{"kind":"search","search_text":"blocked tickets"}}
 "Summarize SCRUM Sprint 4 in SYNT." -> {{"kind":"search","search_text":"sprint summary"}}
+"مين عمل PR للـ SYNT-12؟" -> {{"kind":"search","search_text":"pull request SYNT-12"}}
+"How many tickets are done in Jira but have no merged pull request?" -> {{"kind":"search","search_text":"done tickets without merged pull request"}}
+"Where is the login validated in the code?" -> {{"kind":"search","search_text":"login validation code"}}
+"يعني إيه pull request؟" -> {{"kind":"general"}}
 "How many tickets are in Sprint 4?" -> {{"kind":"aggregate","sprint":"Sprint 4"}}
 "How is the weather?" -> {{"kind":"general"}}
 "hi" -> {{"kind":"chat"}}

@@ -1104,11 +1104,20 @@ def apply_issue_link(tx, link, tenant_id, site_id, remove=False):
     return True
 
 
-def delete_tenant(tx, tenant_id, limit=1000):
-    """One batch of a company's whole graph (integration disconnected). -> nodes removed."""
+# Meeting notes are not Jira data: disconnecting Jira keeps them. Their links to tickets go with the tickets.
+# Kept when a company disconnects Jira: they come from meetings and the backend's knowledge sources.
+MEETING_LABELS = ("Source", "MeetingItem", "SourceChunk", "DraftTask",
+                  "KnowledgeSource", "KnowledgeEvidence", "KnowledgeCursor",
+                  "GitHubRepository", "Commit", "PullRequest", "CodeFile", "CodeChunk", "GitHubRevoked",
+                  "GitHubUser")
+
+
+def delete_tenant(tx, tenant_id, limit=1000, keep_labels=()):
+    """One batch of a company's graph (integration disconnected), except nodes with `keep_labels`.
+    -> nodes removed."""
     require_tenant(tenant_id)
-    return tx.run("MATCH (n) WHERE n.tenant_id = $t WITH n LIMIT $limit "
-                  "DETACH DELETE n RETURN count(*) AS n", t=tenant_id, limit=limit).single()["n"]
+    return tx.run("MATCH (n) WHERE n.tenant_id = $t AND none(l IN labels(n) WHERE l IN $keep) WITH n LIMIT $limit "
+                  "DETACH DELETE n RETURN count(*) AS n", t=tenant_id, limit=limit, keep=list(keep_labels)).single()["n"]
 
 
 def upsert_project(tx, project, tenant_id, site_id=None):

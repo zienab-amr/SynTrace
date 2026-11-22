@@ -14,7 +14,10 @@ OLD_CONSTRAINTS = ["workitem_key_unique", "person_account_unique",
                    "project_key_unique", "sprint_id_unique"]
 
 UID_LABELS = ["WorkItem", "Person", "Project", "Sprint", "Comment", "Worklog",
-              "Attachment", "ChangeEvent", "IssueType", "Board", "FieldCatalog"]
+              "Attachment", "ChangeEvent", "IssueType", "Board", "FieldCatalog",
+              "Source", "MeetingItem", "SourceChunk", "KnowledgeSource", "KnowledgeEvidence",
+              "GitHubRepository", "Commit", "PullRequest", "CodeFile", "CodeChunk", "GitHubRevoked",
+              "GitHubUser"]
 
 INDEXES = [
     "CREATE INDEX workitem_tenant_key IF NOT EXISTS FOR (n:WorkItem) ON (n.tenant_id, n.key)",
@@ -23,6 +26,14 @@ INDEXES = [
     "CREATE INDEX workitem_jira_id IF NOT EXISTS FOR (n:WorkItem) ON (n.tenant_id, n.jira_site_id, n.jira_id)",
     "CREATE INDEX project_tenant_key IF NOT EXISTS FOR (n:Project) ON (n.tenant_id, n.key)",
     "CREATE INDEX change_issue IF NOT EXISTS FOR (n:ChangeEvent) ON (n.issue_key)",
+    "CREATE INDEX source_scope IF NOT EXISTS FOR (n:Source) ON (n.tenant_id, n.project_key, n.status)",
+    "CREATE INDEX knowledge_scope IF NOT EXISTS FOR (n:KnowledgeSource) ON (n.tenant_id, n.syntrace_project_id)",
+    "CREATE INDEX knowledge_cursor IF NOT EXISTS FOR (n:KnowledgeCursor) ON (n.tenant_id)",
+    "CREATE INDEX commit_scope IF NOT EXISTS FOR (n:Commit) ON (n.tenant_id, n.syntrace_project_id)",
+    "CREATE INDEX pull_request_scope IF NOT EXISTS FOR (n:PullRequest) ON (n.tenant_id, n.syntrace_project_id)",
+    "CREATE INDEX code_chunk_scope IF NOT EXISTS FOR (n:CodeChunk) ON (n.tenant_id, n.syntrace_project_id)",
+    "CREATE INDEX github_binding IF NOT EXISTS FOR (n:GitHubRepository) ON (n.tenant_id, n.binding_id)",
+    "CREATE INDEX github_user IF NOT EXISTS FOR (n:GitHubUser) ON (n.tenant_id, n.github_id)",
 ]
 
 WORKITEM_IDENTITY_CONSTRAINT = (

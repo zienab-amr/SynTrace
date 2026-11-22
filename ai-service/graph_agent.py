@@ -29,6 +29,15 @@ MAX_TOOL_CHARS = int(os.getenv("GRAPH_AGENT_TOOL_CHARS", "2500"))
 SEARCH_HITS = 5
 TIE_SCORE = 0.03
 TRACE = []   # this question's tool calls, for measuring only
+# A question about commits, pull requests or code gets its GitHub lookup before the model's first step:
+# left to choose, the model answered from the Jira ticket instead.
+GITHUB_WORDS = re.compile(r"\b(commits?|pull[ -]?requests?|PRs?|merged?|merging|branch(?:es)?|repo(?:sitory)?|github|"
+                          r"code|source|implemented|defined|كوميت|كومت|برانش|ريبو|الكود|كود|ميرج)\b", re.I)
+PROGRESS_WORDS = re.compile(r"\b(epic|story|stories|sub-?tasks?|progress|how far|إبيك|الإبيك|ستوري|الستوري|"
+                            r"وصل[تة]? لفين|وصلنا لفين)\b", re.I)
+CODE_WORDS = re.compile(r"\b(code|file|defined|implemented|function|class|method|الكود|كود|فايل|ملف)\b", re.I)
+# What only GitHub data can say: an answer with these and no GitHub tool result came from the model's memory.
+GITHUB_CLAIM = re.compile(r"github\.com/\S+/(?:pull|commit|blob)/|\b(?:PR|pull request)\s*#?\d+|\bcommit\s+[0-9a-f]{7,40}\b", re.I)
 SEARCH_MIN_SCORE = float(os.getenv("GRAPH_AGENT_MIN_SCORE", "0.2"))
 MAX_EMPTY_SEARCHES = 2
 FIELD_CHARS = 600
@@ -38,7 +47,8 @@ HISTORY_FETCH = 100
 HISTORY_SHOWN = 20
 LISTED_TICKETS = 25
 
-SYSTEM = """You answer questions about Jira tickets from a knowledge graph, using the tools.
+SYSTEM = """You answer questions about Jira tickets, approved meeting notes and the team's GitHub repositories from a
+knowledge graph, using the tools.
 Rules:
 - You are read-only. When the user asks you to change Jira (assign, move, close, reopen, create,
   edit, delete, comment on a ticket or log time on it), call change_request and nothing else. A
@@ -61,6 +71,9 @@ Rules:
   is the closest match. Treat results as not found only when none of them is about the question.
 - Never run the same search twice.
 - If two tickets fit the question about equally, name both instead of choosing one.
+- For what a client asked for, what a meeting decided, or the background of a task, call
+  search_meetings. Name each meeting you use by its title and date. If meetings disagree, give the
+  newest first and mention the older one with its date. Jira tickets show the current state.
 - If the tools don't hold the answer, say that plainly. Never guess.
 - When the question asks why a ticket is stuck, what its latest news is, or what was agreed or
   decided about it, read its newest comments with get_comments as well as its links, and give
@@ -88,6 +101,27 @@ Rules:
   completion and the real blockers, and name at most ten tickets. When several sprints share the name,
   ask which one. To say why open
   tickets are late, read the comments of the blocked ones.
+- For client requirements or action items from meetings that have no Jira ticket, call
+  uncovered_requirements.
+- For the ticket of a commit or pull request and its family (its story or epic above it, the subtasks
+  under it), call github_activity with the sha or the number: it returns them. Name the type and status of
+  each ticket you mention.
+- For how far an epic or story is in code (its subtasks or stories merged, waiting or not started),
+  call code_progress with its key. Give the totals first, then the tickets that are not merged yet.
+- For whether the repository is synced or fully indexed, or why code is missing from search, call
+  github_status. When code search finds nothing and github_status says files were not indexed, say so.
+- When the question compares Jira with GitHub (done tickets whose code was not merged, merged work
+  whose ticket is still open, status that does not match the code), call jira_vs_github. Give the
+  counts first, then up to ten tickets with their pull requests.
+- For commits, pull requests, branches, merges, code reviews waiting, or who changed code, call
+  github_activity, with the ticket key when the question names one. Name every pull request by its
+  number ("PR #65") and every commit by its short sha, as the tool wrote them, in Arabic replies too and
+  even when the question only asks who made it ("PR #65 عمله mp911de"). Never name a pull
+  request, commit or link that no tool returned in this conversation. Whether a ticket's work was
+  merged comes from its pull requests, not from its Jira status. For where or how something is done
+  in the code, call search_code and name the file path and lines. GitHub logins are not Jira names:
+  copy them as written and never say they are the same person, unless the tool result shows the
+  login with "(Jira: name)": that person linked both accounts in SynTrace, so use the Jira name.
 - When the question asks you to write something from the tickets, such as an email, a status
   update, release notes or a description, get the facts with the tools first, then write it in
   full (it may be longer than the usual reply). For open tickets, call find_tickets with status
@@ -146,6 +180,11 @@ TOOLS = [
         "name": "get_attachments", "description": "One ticket's attachments: file names, types, sizes, uploader and date. File contents are not available.",
         "parameters": KEY_ONLY}},
     {"type": "function", "function": {
+        "name": "search_meetings", "description": "Approved meeting transcripts, meeting notes, notes and client PDFs closest to the "
+                                                  "query: requirements, decisions, action items, blockers and open questions, with "
+                                                  "each source's title and date, newest first.",
+        "parameters": {"type": "object", "required": ["query"], "properties": {"query": TEXT}}}},
+    {"type": "function", "function": {
         "name": "check_readiness", "description": "Open tickets that are not ready to work on, with what each one misses: "
                                                   "description, assignee, story points, acceptance criteria. Optional project, "
                                                   "sprint (name or active) and issue type filters.",
@@ -170,6 +209,47 @@ TOOLS = [
                                                "components), most open first. Optional project, sprint and parent key.",
         "parameters": {"type": "object", "properties": {"project": TEXT, "sprint": TEXT, "parent": TEXT}}}},
     {"type": "function", "function": {
+        "name": "uncovered_requirements", "description": "Approved client requirements and action items from meetings that "
+                                                         "are linked to no Jira ticket, newest meeting first. Optional project.",
+        "parameters": {"type": "object", "properties": {"project": TEXT}}}},
+    {"type": "function", "function": {
+        "name": "github_activity", "description": "Pull requests and default-branch commits of the team's GitHub repositories, "
+                                                  "newest first, with totals: state, author login, branches, dates, files and "
+                                                  "the tickets they mention. Optional ticket key (the work done on that ticket), "
+                                                  "pull request number, commit sha, repository name, author, state (open, "
+                                                  "merged or closed), kind (pull_request or commit), text in titles or "
+                                                  "messages, since_days, from_date and to_date (YYYY-MM or YYYY-MM-DD; "
+                                                  "with state merged they mean when it was merged), and idle_days "
+                                                  "(open pull requests untouched for "
+                                                  "that many days: stuck reviews). To learn about the ticket a pull request or "
+                                                  "commit mentions, then call get_ticket with that key.",
+        "parameters": {"type": "object", "properties": {"key": TEXT, "number": {"type": "integer"}, "sha": TEXT,
+                                                        "repository": TEXT, "author": TEXT, "state": TEXT, "kind": TEXT,
+                                                        "text": TEXT, "since_days": {"type": "integer"},
+                                                        "idle_days": {"type": "integer"}, "from_date": TEXT,
+                                                        "to_date": TEXT}}}},
+    {"type": "function", "function": {
+        "name": "code_progress", "description": "The code of an epic or story: the ticket and every ticket under it "
+                                                "(stories, subtasks), each with its Jira status and its pull requests "
+                                                "and commits, with totals: merged, pull request open, commits only, no code.",
+        "parameters": KEY_ONLY}},
+    {"type": "function", "function": {
+        "name": "github_status", "description": "The connected GitHub repositories: last sync, whether everything is "
+                                                "indexed and searchable, files not indexed and why, counts of commits, "
+                                                "pull requests and code files.",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {
+        "name": "jira_vs_github", "description": "Tickets whose Jira status and GitHub disagree: done in Jira with no "
+                                                 "merged pull request and no commit, a merged pull request while the "
+                                                 "ticket is still open in Jira, or done with a pull request still open. "
+                                                 "Optional project key.",
+        "parameters": {"type": "object", "properties": {"project": TEXT}}}},
+    {"type": "function", "function": {
+        "name": "search_code", "description": "Code of the default branch, pull requests and commits closest to the query "
+                                              "(what the code does, a feature, a function or file name): file path, lines, "
+                                              "a code excerpt and the link.",
+        "parameters": {"type": "object", "required": ["query"], "properties": {"query": TEXT}}}},
+    {"type": "function", "function": {
         "name": "find_tickets", "description": "Tickets matching all the filters given, with the total count: project key, "
                                                "issue type (epic, story, bug, subtask...), status name, or open (every status that is not done), "
                                                "done, new (to do) or indeterminate (in progress), "
@@ -193,6 +273,9 @@ class Walk:
         self.urls = {}
         self.empty_searches = 0
         self.searches = {}   # search text -> whether it found anything
+        self.meetings = set()   # titles of meeting sources the model read
+        self.github = False     # a GitHub tool returned data
+        self.prs_by = {}        # GitHub login -> pull request numbers the tools returned, to name them in the reply
         self.read = 0        # graph tools that answered (not search): "nothing is recorded" is an answer
 
     def _saw(self, key, url=None):
@@ -381,6 +464,37 @@ class Walk:
             self._saw(item["key"], item.get("url"))
         return "\n".join(ag.relation_lines(key, items))
 
+    def search_meetings(self, arguments):
+        """Approved meeting sources of this service and the backend's published knowledge sources."""
+        import knowledge_worker
+        import meeting_notes
+        query = str(arguments.get("query") or "")[:300]
+        hits, knowledge, failed = [], [], 0
+        tried = 1 + bool(getattr(self.ctx, "syntrace_projects", ()))   # knowledge needs allowed SynTrace projects
+        try:
+            hits = meeting_notes.search_meetings(query, self.ctx)
+        except Exception as error:
+            log.warning("meeting search failed: %s", type(error).__name__)
+            failed += 1
+        if tried == 2:
+            try:
+                knowledge = knowledge_worker.search_knowledge(query, self.ctx)
+            except Exception as error:
+                log.warning("knowledge search failed: %s", type(error).__name__)
+                failed += 1
+        if not hits and not knowledge:
+            return "Meeting search is unavailable." if failed == tried else "No approved meeting notes match."
+        for hit in hits:
+            self.meetings.add(hit["title"] or "untitled")
+            for item in hit["items"]:
+                for link in (item or {}).get("links", []):
+                    self._saw(link["key"], link.get("url"))
+        for hit in knowledge:
+            self.meetings.add(hit["title"] or "untitled")
+        parts = ([meeting_notes.meetings_context(hits)] if hits else []) + \
+            ([knowledge_worker.knowledge_context(knowledge)] if knowledge else [])
+        return "\n".join(parts)
+
     def _filters(self, arguments, names=("project", "sprint", "issuetype")):
         return {n: str(arguments[n])[:100] for n in names if arguments.get(n)}
 
@@ -551,21 +665,123 @@ class Walk:
         lines += [self._blocked_line(r) for r in result["items"]] or ["none is blocked now: every blocker is done."]
         return "\n".join(lines)
 
+    def uncovered_requirements(self, arguments):
+        import insights
+        result = insights.uncovered_requirements(self.ctx, **self._filters(arguments, ("project",)))
+        if not result["total"]:
+            return "Every approved requirement and action item from meetings is linked to a Jira ticket."
+        for i in result["items"]:
+            self.meetings.add(i["title"] or "untitled")
+        lines = [f"{result['total']} approved meeting items have no Jira ticket:"]
+        lines += [f"{i['type']} | {i['text']} | meeting \"{i['title'] or 'untitled'}\" {i['date'] or ''}"
+                  + (f" | owner {i['owner']}" if i.get("owner") else "") for i in result["items"]]
+        return "\n".join(lines)
+
+    def github_activity(self, arguments):
+        import github_graph
+        from query_engine import run_query
+        if not getattr(self.ctx, "syntrace_projects", ()):
+            return "No GitHub repository is available to this user."
+        key = arguments.get("key")
+        if key and not _key(arguments):
+            return f"{key} is not a ticket key."
+        since = arguments.get("since_days")
+        result = github_graph.activity(
+            self.ctx, run_query, key=_key(arguments) if key else None, author=arguments.get("author"),
+            state=arguments.get("state"), kind=arguments.get("kind"), text=arguments.get("text"),
+            since_days=since if isinstance(since, int) and since > 0 else None, number=arguments.get("number"),
+            sha=arguments.get("sha"), repository=arguments.get("repository"),
+            idle_days=arguments.get("idle_days") if isinstance(arguments.get("idle_days"), int) and arguments["idle_days"] > 0 else None,
+            from_date=arguments.get("from_date"), to_date=arguments.get("to_date"))
+        for p in result["pull_requests"]:
+            self.prs_by.setdefault(str(p.get("author") or ""), set()).add(p["number"])
+        if not result["pull_requests"] and not result["commits"]:
+            what = f" mention {_key(arguments)}" if key else " match"
+            return f"No pull requests or commits{what} in the connected GitHub repositories."
+        self.github = True
+        text = github_graph.activity_context(result)
+        if arguments.get("number") or arguments.get("sha"):
+            # One pull request or commit: show where its tickets sit (story, epic) and what is under them.
+            keys = [k for item in result["pull_requests"] + result["commits"] for k in item.get("keys") or []]
+            family = github_graph.ticket_family(self.ctx, run_query, keys)
+            if family:
+                for t in family:
+                    for k in [t["key"]] + [a["key"] for a in t["above"]] + [c["key"] for c in t["under"]]:
+                        self._saw(k)
+                text += "\n" + github_graph.ticket_family_context(family)
+        return text
+
+    def code_progress(self, arguments):
+        import github_graph
+        from query_engine import run_query
+        if not getattr(self.ctx, "syntrace_projects", ()):
+            return "No GitHub repository is available to this user."
+        key = _key(arguments)
+        result = github_graph.code_progress(self.ctx, run_query, key) if key else None
+        if not result:
+            return f"Ticket {arguments.get('key')} was not found."
+        self.github = True
+        for item in [result["root"]] + result["children"]:
+            self._saw(item["key"])
+        return github_graph.code_progress_context(result)
+
+    def github_status(self, arguments):
+        import github_graph
+        from query_engine import run_query
+        if not getattr(self.ctx, "syntrace_projects", ()):
+            return "No GitHub repository is available to this user."
+        self.github = True
+        return github_graph.indexing_status_context(github_graph.indexing_status(self.ctx, run_query))
+
+    def jira_vs_github(self, arguments):
+        import github_graph
+        from query_engine import run_query
+        if not getattr(self.ctx, "syntrace_projects", ()):
+            return "No GitHub repository is available to this user."
+        result = github_graph.jira_vs_github(self.ctx, run_query, project=arguments.get("project"))
+        self.github = True
+        if not any(result["counts"].values()):
+            return "Jira and GitHub agree: every ticket with a pull request matches its Jira status."
+        return github_graph.jira_vs_github_context(result)
+
+    def search_code(self, arguments):
+        import github_graph
+        from embeddings import embed_texts
+        from query_engine import run_query
+        if not getattr(self.ctx, "syntrace_projects", ()):
+            return "No GitHub repository is available to this user."
+        query = str(arguments.get("query") or "")[:300]
+        try:
+            hits = github_graph.search_code(query, self.ctx, run_query, embed_texts)
+        except Exception as error:
+            log.warning("code search failed: %s", type(error).__name__)
+            return "Code search is unavailable."
+        if not hits:
+            return "No code, pull request or commit matches."
+        self.github = True
+        return github_graph.code_context(hits)
+
     def run(self, call):
         tool = {"search_tickets": self.search_tickets, "get_ticket": self.get_ticket,
                 "get_comments": self.get_comments, "get_history": self.get_history,
                 "get_links": self.get_links, "get_worklogs": self.get_worklogs,
                 "get_attachments": self.get_attachments, "find_tickets": self.find_tickets,
+                "search_meetings": self.search_meetings,
                 "check_readiness": self.check_readiness, "find_stuck": self.find_stuck,
-                "summarize_sprint": self.summarize_sprint, "find_blocked": self.find_blocked, "count_by_tag": self.count_by_tag,
-                "get_activity": self.get_activity, "over_estimate": self.over_estimate}.get(call.function.name)
+                "summarize_sprint": self.summarize_sprint, "find_blocked": self.find_blocked,
+                "count_by_tag": self.count_by_tag,
+                "get_activity": self.get_activity, "over_estimate": self.over_estimate,
+                "uncovered_requirements": self.uncovered_requirements,
+                "github_activity": self.github_activity, "search_code": self.search_code,
+                "jira_vs_github": self.jira_vs_github, "code_progress": self.code_progress,
+                "github_status": self.github_status}.get(call.function.name)
         if not tool:
             return "Unknown tool."
         import timing
         try:
             with timing.stage("graph_tools"):
                 result = tool(json.loads(call.function.arguments or "{}"))[:MAX_TOOL_CHARS]
-            if call.function.name != "search_tickets":
+            if call.function.name not in ("search_tickets", "search_meetings", "search_code"):
                 self.read += 1
         except ValueError:
             result = "Bad tool arguments."
@@ -638,12 +854,15 @@ def answer(question, ctx):
                else "\nThe question is in English: reply in English.")
     messages = [{"role": "system", "content": system}, {"role": "user", "content": question}]
     try:
+        messages += _github_first_step(question, walk)
         for step in range(MAX_STEPS):
             message = _ask(messages, step == MAX_STEPS - 1)
             if message is None:
                 return None
             if not message.tool_calls:
                 # An answer that fails the check after a search would only be repeated by the normal path.
+                if not walk.github and GITHUB_CLAIM.search(message.content or ""):
+                    return _no_github_answer(question)   # PR numbers or commits no tool returned
                 return _checked(message.content, walk) or (_not_found(question) if walk.searches else None)
             messages.append({"role": "assistant", "content": message.content or "", "tool_calls": [
                 {"id": c.id, "type": "function",
@@ -659,8 +878,44 @@ def answer(question, ctx):
         if walk.searches:   # it searched and found no answer, and the normal path would only repeat that
             return _not_found(question)
     except Exception as error:   # the normal path still answers if the graph or a tool fails
-        log.warning("graph agent failed: %s", type(error).__name__)
+        # The Neo4j or tool error text (no question text, no secrets), so a broken query can be found.
+        log.warning("graph agent failed: %s: %s", type(error).__name__, str(error)[:300])
     return None
+
+
+def _github_first_step(question, walk):
+    """-> the assistant tool call and its result, when the question is about GitHub; else []."""
+    if not GITHUB_WORDS.search(question):
+        return []
+    from types import SimpleNamespace
+    keys = ag.KEY_RE.findall(question.upper())
+    pr = re.search(r"(?:pull request|PR)\s*#?\s*(\d+)", question, re.I)
+    sha = re.search(r"\bcommit\s+([0-9a-f]{7,40})\b", question, re.I)
+    if pr or sha:   # the question starts from GitHub and may lead to a ticket
+        name = "github_activity"
+        arguments = {"number": int(pr.group(1))} if pr else {"sha": sha.group(1).lower()}
+        repo = re.search(r"\b(?:in|of|from)\s+(?:the\s+)?([\w.-]+/[\w.-]+|[\w.-]*-[\w.-]+)\s+(?:repo|repository)", question, re.I)
+        if repo:
+            arguments["repository"] = repo.group(1)
+    elif keys and PROGRESS_WORDS.search(question):
+        name, arguments = "code_progress", {"key": keys[0]}   # an epic's work is in its children's PRs
+    elif keys:
+        name, arguments = "github_activity", {"key": keys[0]}
+    elif CODE_WORDS.search(question):
+        name, arguments = "search_code", {"query": question[:300]}
+    else:
+        return []
+    call = SimpleNamespace(id="github_first", function=SimpleNamespace(name=name, arguments=json.dumps(arguments)))
+    return [{"role": "assistant", "content": "", "tool_calls": [
+                {"id": call.id, "type": "function", "function": {"name": name, "arguments": call.function.arguments}}]},
+            {"role": "tool", "tool_call_id": call.id, "content": walk.run(call)}]
+
+
+def _no_github_answer(question):
+    text = ("مفيش pull request ولا commit متسجل للموضوع ده في الـ GitHub repositories اللي متاحة ليك."
+            if ag._is_arabic(question) else
+            "There is no pull request or commit recorded for this in the GitHub repositories you can access.")
+    return {"status": "no_results", "answer": text, "source": "github", "links": []}
 
 
 def _not_found(question):
@@ -669,9 +924,29 @@ def _not_found(question):
     return {"status": "no_results", "answer": text, "source": "agent", "links": []}
 
 
+def _with_pr_numbers(text, walk):
+    """A reply that names a pull request's author but not the pull request gets its number next to the
+    name, when the tools returned exactly one pull request by that person ("mp911de" -> "mp911de (PR #65)")."""
+    for login, numbers in walk.prs_by.items():
+        if not login or len(numbers) != 1 or login not in text:
+            continue
+        number = next(iter(numbers))
+        if not re.search(rf"#\s*{number}\b", text):
+            text = text.replace(login, f"{login} (PR #{number})", 1)
+    return text
+
+
 def _checked(text, walk):
-    answer_text = (text or "").translate(ag._TYPOGRAPHY).strip()
+    answer_text = _with_pr_numbers((text or "").translate(ag._TYPOGRAPHY).strip(), walk)
     named = set(ag.KEY_RE.findall(answer_text.upper()))
+    if answer_text and walk.meetings and named <= set(walk.urls):
+        # An answer from meeting notes may name no ticket; any key it names must still be one it read.
+        return {"status": "ok", "answer": answer_text, "source": "meeting",
+                "links": [{"key": key, "url": url} for key, url in walk.urls.items() if key in named and url]}
+    if answer_text and walk.github and named <= set(walk.urls):
+        # From pull requests, commits or code: any ticket key it names came from a tool.
+        return {"status": "ok", "answer": answer_text, "source": "github",
+                "links": [{"key": key, "url": url} for key, url in walk.urls.items() if key in named and url]}
     if answer_text and not named and walk.searches:
         # It searched and says it found nothing that fits. Naming no ticket, it can't name a wrong one.
         return {"status": "no_results", "answer": answer_text, "source": "agent", "links": []}

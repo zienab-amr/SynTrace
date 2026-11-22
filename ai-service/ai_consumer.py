@@ -95,10 +95,14 @@ class CatalogStore:
 
 
 def tenants_missing_embeddings():
+    from meeting_notes import tenants_missing_chunk_embeddings
     from query_engine import run_query
     rows = run_query("MATCH (w:WorkItem) WHERE w.summary IS NOT NULL AND w.embedding_hash IS NULL "
                      "RETURN DISTINCT w.tenant_id AS tenant")
-    return [r["tenant"] for r in rows if r["tenant"]]
+    tenants = [r["tenant"] for r in rows if r["tenant"]]
+    import github_graph
+    return list(dict.fromkeys(tenants + tenants_missing_chunk_embeddings()
+                              + github_graph.tenants_missing_embeddings(run_query)))
 
 
 def _bump_after_embed(tenant):
@@ -107,8 +111,16 @@ def _bump_after_embed(tenant):
 
 
 def embed_tenant(tenant):
+    """Tickets, then approved meeting chunks the service could not embed when they were approved."""
     from build_embeddings import embed_work_items_detailed
-    return embed_work_items_detailed(tenant)
+    from meeting_notes import embed_source_chunks
+    import github_graph
+    from embeddings import embed_texts
+    from query_engine import run_query
+    stored, failed = embed_work_items_detailed(tenant)
+    chunks_stored, chunks_failed = embed_source_chunks(tenant)
+    github_stored = github_graph.embed_pending(tenant, run_query, embed_texts)   # code, pull requests, commits
+    return stored + chunks_stored + github_stored, failed + chunks_failed
 
 
 class EmbeddingWorker:
@@ -252,7 +264,7 @@ class EventProcessor:
     def _disconnect(self, tenant):
         while True:
             with self.session_factory() as session:
-                if not session.execute_write(lambda tx: ingest.delete_tenant(tx, tenant)):
+                if not session.execute_write(lambda tx: ingest.delete_tenant(tx, tenant, keep_labels=ingest.MEETING_LABELS)):
                     break
         self.catalog.forget(tenant)
 
@@ -301,9 +313,10 @@ def connect(s):
 
 
 class Consumer:
-    def __init__(self, processor=None, settings=None):
+    def __init__(self, processor=None, settings=None, declare=None):
         self.processor = processor or EventProcessor()
         self.settings = settings or Settings()
+        self.declare = declare   # a queue this service owns declares its topology on every connect
         self.stopping = False
         self._executor = ThreadPoolExecutor(max_workers=1)
 
@@ -329,7 +342,9 @@ class Consumer:
         try:
             channel = connection.channel()
             channel.confirm_delivery()
-            if os.getenv("AI_DECLARE_TOPOLOGY") == "1":
+            if self.declare:
+                self.declare(channel, self.settings)
+            elif os.getenv("AI_DECLARE_TOPOLOGY") == "1":
                 declare_topology(channel, self.settings)
             channel.basic_qos(prefetch_count=1)
             log.info("consuming %s", self.settings.queue)
@@ -365,8 +380,18 @@ def main():
     embeddings = EmbeddingWorker()
     embeddings.start()
     consumer = Consumer(EventProcessor(embed=embeddings.request))
-    signal.signal(signal.SIGINT, consumer.stop)
-    signal.signal(signal.SIGTERM, consumer.stop)
+    consumers = [consumer]
+    if os.getenv("GITHUB_CONSUMER", "1") == "1":   # GitHub events on their own connection and thread
+        import github_consumer
+        github = github_consumer.consumer(embed=embeddings.request)
+        consumers.append(github)
+        threading.Thread(target=github.run, name="github-consumer", daemon=True).start()
+
+    def stop(*_):
+        for c in consumers:
+            c.stop()
+    signal.signal(signal.SIGINT, stop)
+    signal.signal(signal.SIGTERM, stop)
     consumer.run()
 
 

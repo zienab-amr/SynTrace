@@ -13,13 +13,15 @@ import json
 import logging
 import os
 import secrets
+import threading
 import time
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Dict, List, Literal, Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Header, HTTPException, Response
+from fastapi import FastAPI, Header, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
@@ -33,7 +35,25 @@ from answer_generator import _is_arabic, generate_answer_result
 from query_engine import AccessContext, run_query
 
 log = logging.getLogger("syntrace.service")
-app = FastAPI(title="SynTrace AI", docs_url=None, redoc_url=None, openapi_url=None)
+
+
+def _resume_meetings():
+    try:
+        import meeting_notes
+        resumed = meeting_notes.resume_processing()
+        if resumed:
+            log.info("resumed %d meeting sources left processing", resumed)
+    except Exception as exc:   # Neo4j not up yet: the sources resume on the next start
+        log.warning("could not resume meeting processing: %s", type(exc).__name__)
+
+
+@asynccontextmanager
+async def _lifespan(_app):
+    threading.Thread(target=_resume_meetings, daemon=True).start()
+    yield
+
+
+app = FastAPI(title="SynTrace AI", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
 
 
 class CamelModel(BaseModel):
@@ -45,6 +65,10 @@ class AskRequest(CamelModel):
     company_id: str = Field(min_length=1, max_length=200)
     employee_id: str = Field(min_length=1, max_length=200)
     allowed_projects: List[str] = Field(default_factory=list, max_length=5000)
+    # SynTrace project ids the backend allows (AiService:EnableSynTraceProjectScope): the only scope for
+    # approved knowledge sources. Without them no knowledge source is searched.
+    allowed_syntrace_project_ids: List[str] = Field(default_factory=list, max_length=5000,
+                                                   alias="allowedSynTraceProjectIds")  # the backend's casing
     jira_account_id: Optional[str] = Field(default=None, max_length=200)
     # One chat in the app. Follow-up questions are read in the context of the same chat only.
     conversation_id: Optional[str] = Field(default=None, max_length=200)
@@ -99,7 +123,8 @@ def _cached_answer(question, ctx):
     if version is None:   # Neo4j can't say whether data changed, so don't trust saved answers
         return generate_answer_result(question, ctx)
     # Today's date is in the key because "overdue" and "this week" change at midnight.
-    key = (ctx.tenant_id, version, datetime.now(timezone.utc).date(), ctx.allowed_projects, ctx.jira_account_id,
+    key = (ctx.tenant_id, version, datetime.now(timezone.utc).date(), ctx.allowed_projects, ctx.syntrace_projects,
+           ctx.jira_account_id,
            " ".join(question.lower().split()))
     now = time.monotonic()
     cached = _answers.get(key)
@@ -147,7 +172,8 @@ def ask(request: AskRequest, x_internal_api_key: Optional[str] = Header(default=
     if not question:
         raise HTTPException(400, "question is empty")
     ctx = AccessContext(request.company_id, tuple(p.strip().upper() for p in request.allowed_projects if p.strip()),
-                        request.jira_account_id)
+                        request.jira_account_id,
+                        tuple(sorted({p.strip() for p in request.allowed_syntrace_project_ids if p.strip()})))
     if request.history:
         turns = conversation.from_history([(t.question, t.answer) for t in request.history])
     else:
@@ -194,6 +220,138 @@ def ask(request: AskRequest, x_internal_api_key: Optional[str] = Header(default=
     return AskResponse(status=result["status"], answer=result["answer"], links=result["links"],
                        correlation_id=correlation,
                        source=result.get("source") or ("ticket" if result["status"] == "ok" else None))
+
+
+# ---------- Meeting notes ----------
+# The backend checks the user's role (PO or PM for writes) and sends the company and projects from
+# the JWT. This service checks that the source's project is one of them.
+
+class MeetingRequest(CamelModel):
+    company_id: str = Field(min_length=1, max_length=200)
+    allowed_projects: List[str] = Field(default_factory=list, max_length=5000)
+    source_id: str = Field(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9_.:-]+$")
+    project_key: str = Field(min_length=1, max_length=100)
+    source_type: Literal["online", "offline", "note", "pdf"]
+    title: Optional[str] = Field(default=None, max_length=300)
+    meeting_date: Optional[str] = Field(default=None, max_length=40)
+    text: Optional[str] = Field(default=None, max_length=400_000)
+    pdf_base64: Optional[str] = Field(default=None, max_length=14_000_000)
+    created_by: Optional[str] = Field(default=None, max_length=200)
+    linked_source_id: Optional[str] = Field(default=None, max_length=200)
+
+
+class ReviewRequest(CamelModel):
+    company_id: str = Field(min_length=1, max_length=200)
+    allowed_projects: List[str] = Field(default_factory=list, max_length=5000)
+    reviewer_id: str = Field(min_length=1, max_length=200)
+    approve: List[str] = Field(default_factory=list, max_length=500)
+    delete: List[str] = Field(default_factory=list, max_length=500)
+    links: Dict[str, List[str]] = Field(default_factory=dict, max_length=500)   # item id -> confirmed suggested keys
+
+
+def _meeting_ctx(company_id, projects):
+    return AccessContext(company_id, tuple(p.strip().upper() for p in projects if p.strip()))
+
+
+def _meeting_call(work, correlation):
+    import meeting_notes
+    try:
+        return work(meeting_notes)
+    except meeting_notes.MeetingError as exc:
+        if exc.status >= 500:
+            log.error("meeting call failed correlation=%s error=%s", correlation, exc)
+        raise HTTPException(exc.status, str(exc)) from None
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.error("meeting call failed correlation=%s error=%s", correlation, type(exc).__name__)
+        raise HTTPException(503, "meeting notes are unavailable") from None
+
+
+def _meeting_response(result, correlation):
+    """camelCase for the backend."""
+    source, items = result["source"], result["items"]
+    body = {
+        "sourceId": source["source_id"], "sourceType": source["source_type"], "title": source["title"],
+        "meetingDate": source["meeting_date"], "projectKey": source["project_key"], "status": source["status"],
+        "linkedSourceId": source.get("linked_source_id"), "error": source.get("error"),
+        "unresolvedReferences": source.get("unresolved_keys") or [],
+        "rejectedItems": source.get("rejected_items") or 0,
+        "summary": source.get("summary"), "analysisError": source.get("analysis_error"),
+        "scope": {"agreed": (source.get("scope") or {}).get("agreed") or [],
+                  "outOfScope": (source.get("scope") or {}).get("out_of_scope") or [],
+                  "open": (source.get("scope") or {}).get("open") or []},
+        "items": [{"id": i["uid"], "type": i["type"], "text": i["text"], "evidence": i["evidence"],
+                   "owner": i["owner"], "due": i["due"], "needsReview": i["needs_review"], "status": i["status"],
+                   "jiraLinks": i["links"], "suggestedLinks": i.get("suggested") or [],
+                   "speaker": i.get("speaker"), "relation": i.get("relation"),
+                   "relatedKeys": i.get("related_keys") or [], "relationNote": i.get("relation_note"),
+                   "relatedEarlier": [{"id": e["uid"], "type": e["type"], "text": e["text"], "meetingDate": e["date"],
+                                       "title": e["title"]} for e in i.get("earlier") or []],
+                   "drafts": [{"id": d["uid"], "title": d["title"], "description": d.get("description"),
+                               "acceptance": d.get("acceptance") or [], "subtasks": d.get("subtasks") or [],
+                               "storyPoints": d.get("story_points"), "estimateHours": d.get("estimate_hours"),
+                               "estimateBasedOn": d.get("estimate_based_on") or [], "status": d.get("status")}
+                              for d in i.get("drafts") or []]} for i in items],
+        "correlationId": correlation,
+    }
+    if "indexed" in result:
+        body["indexed"] = result["indexed"]
+    return body
+
+
+@app.post("/meetings", status_code=202)
+def create_meeting(request: MeetingRequest, x_internal_api_key: Optional[str] = Header(default=None),
+                   x_correlation_id: Optional[str] = Header(default=None)):
+    """Accept a transcript, notes or PDF and extract its items in the background. The reply comes at once
+    with status `processing`; GET /meetings/{id} shows `pending_review` (or `failed` with an error) when
+    it is done. Sending the same sourceId again restarts it, until it is approved."""
+    _authorize(x_internal_api_key)
+    correlation = x_correlation_id or uuid.uuid4().hex
+    ctx = _meeting_ctx(request.company_id, request.allowed_projects)
+    result = _meeting_call(lambda m: m.submit_source(
+        ctx, request.source_id, request.project_key, request.source_type, request.title, request.meeting_date,
+        request.text, request.pdf_base64, request.created_by, request.linked_source_id), correlation)
+    return _meeting_response(result, correlation)
+
+
+@app.get("/meetings/{source_id}")
+def get_meeting(source_id: str, company_id: str = Query(alias="companyId", min_length=1),
+                allowed_projects: str = Query(alias="allowedProjects", default=""),
+                x_internal_api_key: Optional[str] = Header(default=None),
+                x_correlation_id: Optional[str] = Header(default=None)):
+    """allowedProjects is a comma-separated list."""
+    _authorize(x_internal_api_key)
+    correlation = x_correlation_id or uuid.uuid4().hex
+    ctx = _meeting_ctx(company_id, allowed_projects.split(","))
+    return _meeting_response(_meeting_call(lambda m: m.get_source(ctx, source_id), correlation), correlation)
+
+
+@app.post("/meetings/{source_id}/review")
+def review_meeting(source_id: str, request: ReviewRequest, x_internal_api_key: Optional[str] = Header(default=None),
+                   x_correlation_id: Optional[str] = Header(default=None)):
+    """Approve or delete items, and confirm suggested tickets with `links`. When no item is left pending,
+    the source is approved and searchable, without the text of the deleted items."""
+    _authorize(x_internal_api_key)
+    correlation = x_correlation_id or uuid.uuid4().hex
+    ctx = _meeting_ctx(request.company_id, request.allowed_projects)
+    result = _meeting_call(lambda m: m.review_source(ctx, source_id, request.approve, request.delete,
+                                                     request.reviewer_id, request.links), correlation)
+    _answers.clear()   # cached answers must not hide newly approved meetings
+    return _meeting_response(result, correlation)
+
+
+@app.delete("/meetings/{source_id}", status_code=204)
+def delete_meeting(source_id: str, company_id: str = Query(alias="companyId", min_length=1),
+                   allowed_projects: str = Query(alias="allowedProjects", default=""),
+                   x_internal_api_key: Optional[str] = Header(default=None),
+                   x_correlation_id: Optional[str] = Header(default=None)):
+    _authorize(x_internal_api_key)
+    correlation = x_correlation_id or uuid.uuid4().hex
+    ctx = _meeting_ctx(company_id, allowed_projects.split(","))
+    _meeting_call(lambda m: m.delete_source(ctx, source_id), correlation)
+    _answers.clear()
+    return Response(status_code=204)
 
 
 @app.delete("/ask/{correlation_id}", status_code=204)

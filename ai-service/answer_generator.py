@@ -696,6 +696,11 @@ def _keyless_question_result(question, ctx, allow_compound=True):
             return answer
         plan = None   # the answer named the team's tickets, so the graph answers instead
     if plan and plan["kind"] == "aggregate":
+        import graph_agent
+        if graph_agent.GITHUB_WORDS.search(question):
+            # Jira counts know nothing of pull requests or commits: the agent's GitHub tools answer it.
+            plan = dict(plan, kind="search")
+    if plan and plan["kind"] == "aggregate":
         try:
             return _aggregate_result(question, plan, ctx)
         except Exception as e:
@@ -756,7 +761,34 @@ def _agent_result(question, ctx):
 
 
 def generate_answer_result(question, ctx):
-    """-> {"status": ok|not_found|no_results|search_unavailable, "answer": str, "links": [...]}."""
+    """-> {"status": ok|not_found|no_results|search_unavailable, "answer": str, "links": [...]}.
+    Every answer, whichever path wrote it, passes the GitHub fact check."""
+    return _github_checked(_generate_answer_result(question, ctx), question, ctx)
+
+
+def _github_checked(result, question, ctx):
+    """An answer naming a pull request or commit that this asker's repositories don't hold (the model
+    remembered it from public GitHub) is replaced: that fact did not come from SynTrace."""
+    answer = (result or {}).get("answer") or ""
+    if "github" not in answer.lower() and not re.search(r"\b(PR|pull request|commit)\b", answer, re.I):
+        return result
+    try:
+        import github_graph
+        from query_engine import run_query
+        missing = github_graph.unverified_claims(answer, ctx, run_query)
+    except Exception as error:   # the check failing must not hide a correct answer
+        log.warning("github fact check failed: %s", type(error).__name__)
+        return result
+    if not missing:
+        return result
+    log.warning("answer named GitHub items not in the graph (%d); replaced", len(missing))
+    text = ("مفيش pull request ولا commit متسجل للموضوع ده في الـ GitHub repositories اللي متاحة ليك."
+            if _is_arabic(question) else
+            "There is no pull request or commit recorded for this in the GitHub repositories you can access.")
+    return {"status": "no_results", "answer": text, "source": "github", "links": []}
+
+
+def _generate_answer_result(question, ctx):
     import general
     import intent
     wanted = intent.route(question)   # by meaning, before any model call or ticket lookup

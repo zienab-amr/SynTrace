@@ -40,10 +40,10 @@ CHAT_EN = ("Hi! I'm SynTrace. I answer questions about your team's Jira tickets.
            "I can also explain Agile and Jira concepts or help you write a description or an email.")
 THANKS_AR = "العفو! لو محتاج حاجة تانية عن التذاكر أنا موجود."
 THANKS_EN = "You're welcome! Ask me anything else about your tickets."
-ACTION_AR = ("أنا read-only دلوقتي، مش بقدر أعمل أو أعدل أو أحرك تذاكر في Jira. "
-             "أقدر أوريك حالة التذكرة أو أكتبلك الـ description أو الـ comment وإنت تحطه بنفسك.")
-ACTION_EN = ("I'm read-only for now, so I can't create, edit or move Jira tickets. "
-             "I can show you a ticket's state, or draft the description or comment for you to paste.")
+ACTION_AR = ("أنا read-only دلوقتي، مش بقدر أعمل أو أعدل أو أحرك تذاكر في Jira، ولا أعمل merge أو أعلق على pull requests. "
+             "أقدر أوريك حالة التذكرة أو الـ PR، أو أكتبلك الـ description أو الـ comment وإنت تحطه بنفسك.")
+ACTION_EN = ("I'm read-only for now, so I can't create, edit or move Jira tickets, or merge or comment on pull requests. "
+             "I can show you a ticket's or pull request's state, or draft the description or comment for you to paste.")
 NOTE_AR = "\n(إجابة عامة، مش من بيانات Jira بتاعتكم)"
 NOTE_EN = "\n(General answer, not from your Jira data)"
 UNAVAILABLE_AR = "مش قادر أجاوب السؤال ده دلوقتي، جرب تاني كمان شوية."
