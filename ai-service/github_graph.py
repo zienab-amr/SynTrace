@@ -442,6 +442,10 @@ def activity(ctx, run_query, key=None, author=None, state=None, kind=None, text=
     if (from_date and not params["from"]) or (to_date and not params["to"]):
         return empty                              # a date it can't read: nothing rather than everything
     params["bindings"] = None
+    if not params["repo"] and params["text"] and params["text"].upper() in ctx.allowed_projects:
+        # "DAEMON pull requests merged in September": the model put the Jira project in the text search,
+        # where "be" would match any title containing those letters. It names the project, not words.
+        params["repo"], params["text"] = params["text"], None
     if params["repo"] and params["repo"].upper() in ctx.allowed_projects:
         # A Jira project named as the repository ("DATACASS pull requests"): its repositories are the
         # ones whose commits and pull requests name its tickets.

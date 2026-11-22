@@ -265,11 +265,19 @@ def _key(arguments):
     return key if re.fullmatch(r"[A-Z][A-Z0-9_]*-\d+", key) else None
 
 
+def _named_projects(question, ctx):
+    """Jira project keys of the asker's projects that the question names as a whole word (not inside a
+    ticket key like BE-706)."""
+    words = set(re.findall(r"(?<![A-Za-z0-9-])([A-Za-z][A-Za-z0-9]{1,15})(?![A-Za-z0-9]|-\d)", question or ""))
+    return sorted({w.upper() for w in words if w.isupper() or w.upper() == w} & set(ctx.allowed_projects))
+
+
 class Walk:
     """One question's tool calls, and every ticket they showed."""
 
-    def __init__(self, ctx):
+    def __init__(self, ctx, question=""):
         self.ctx = ctx
+        self.question = question or ""
         self.urls = {}
         self.empty_searches = 0
         self.searches = {}   # search text -> whether it found anything
@@ -686,6 +694,12 @@ class Walk:
         if key and not _key(arguments):
             return f"{key} is not a ticket key."
         since = arguments.get("since_days")
+        if not any(arguments.get(f) for f in ("key", "repository", "text", "number", "sha")):
+            # "Which BE pull requests were merged in January?": the model may drop the project. The question
+            # names exactly one of the asker's Jira projects as a word, so the search stays in it.
+            named = _named_projects(self.question, self.ctx)
+            if len(named) == 1:
+                arguments = dict(arguments, repository=named[0])
         result = github_graph.activity(
             self.ctx, run_query, key=_key(arguments) if key else None, author=arguments.get("author"),
             state=arguments.get("state"), kind=arguments.get("kind"), text=arguments.get("text"),
@@ -845,7 +859,7 @@ def _ask(messages, last_step):
 
 def answer(question, ctx):
     """-> the same result shape as generate_answer_result, or None to use the normal path."""
-    walk = Walk(ctx)
+    walk = Walk(ctx, question)
     TRACE.clear()
     from datetime import date
     today = date.today()
