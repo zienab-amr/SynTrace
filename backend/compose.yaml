@@ -88,7 +88,8 @@ services:
       GmailSMTP__AppPassword: "${SYNTRACE_SMTP_APP_PASSWORD:-}"
       AiService__BaseUrl: "${SYNTRACE_AI_BASE_URL:-}"
       AiService__ApiKey: "${SYNTRACE_AI_API_KEY:-}"
-      AiService__EnableSynTraceProjectScope: "${SYNTRACE_AI_PROJECT_SCOPE:-false}"
+      AiService__EnableSynTraceProjectScope: "${SYNTRACE_AI_PROJECT_SCOPE:-true}"
+      AiService__TimeoutSeconds: "90"
     restart: unless-stopped
 
   worker:
