@@ -19,6 +19,11 @@ class MessageBubble extends StatelessWidget {
     this.onEdit,
   });
 
+  TextDirection _getDirectionality(String text) {
+    final arabicRegex = RegExp(r'[\u0600-\u06FF]');
+    return arabicRegex.hasMatch(text) ? TextDirection.rtl : TextDirection.ltr;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isUser = message.role == ChatRole.user;
@@ -27,8 +32,7 @@ class MessageBubble extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Column(
-          crossAxisAlignment:
-              isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             if (!isUser && message.steps.isNotEmpty) ...[
               ConstrainedBox(
@@ -41,8 +45,7 @@ class MessageBubble extends StatelessWidget {
             ],
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment:
-                  isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+              mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
               children: [
                 if (isUser && message.hasError && onRetry != null) ...[
                   _buildFailedIcon(context),
@@ -61,9 +64,7 @@ class MessageBubble extends StatelessWidget {
                     constraints: BoxConstraints(
                       maxWidth: MediaQuery.of(context).size.width * 0.85,
                     ),
-                    child: isUser
-                        ? _buildUserBubble(context)
-                        : _buildAiBubble(context),
+                    child: isUser ? _buildUserBubble(context) : _buildAiBubble(context),
                   ),
                 ),
               ],
@@ -153,9 +154,7 @@ class MessageBubble extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: message.hasError
-            ? AppColors.error.withOpacity(0.7)
-            : AppColors.primary,
+        color: message.hasError ? AppColors.error.withOpacity(0.7) : AppColors.primary,
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(18),
           topRight: Radius.circular(18),
@@ -187,19 +186,12 @@ class MessageBubble extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.error_outline,
-              color: AppColors.error,
-              size: 18,
-            ),
+            const Icon(Icons.error_outline, color: AppColors.error, size: 18),
             const SizedBox(width: 10),
             Flexible(
               child: Text(
                 message.content,
-                style: const TextStyle(
-                  color: AppColors.error,
-                  fontSize: 13,
-                ),
+                style: const TextStyle(color: AppColors.error, fontSize: 13),
               ),
             ),
           ],
@@ -224,7 +216,7 @@ class MessageBubble extends StatelessWidget {
             )
           else if (message.content.isNotEmpty)
             Directionality(
-              textDirection: TextDirection.rtl,
+              textDirection: _getDirectionality(message.content),
               child: MarkdownBody(
                 data: message.content,
                 selectable: true,
@@ -252,49 +244,17 @@ class MessageBubble extends StatelessWidget {
       h2Align: WrapAlignment.start,
       h3Align: WrapAlignment.start,
       listBulletPadding: const EdgeInsets.only(left: 0, right: 8),
-      h2: TextStyle(
-        color: theme.colorScheme.onSurface,
-        fontSize: 17,
-        fontWeight: FontWeight.bold,
-        height: 1.4,
-      ),
-      h3: TextStyle(
-        color: theme.colorScheme.onSurface,
-        fontSize: 15,
-        fontWeight: FontWeight.w600,
-        height: 1.4,
-      ),
-      p: TextStyle(
-        color: theme.colorScheme.onSurface.withOpacity(0.85),
-        fontSize: 14,
-        height: 1.6,
-      ),
-      strong: TextStyle(
-        color: theme.colorScheme.onSurface,
-        fontWeight: FontWeight.bold,
-      ),
-      listBullet: TextStyle(
-        color: AppColors.primary,
-        fontSize: 14,
-        height: 1.6,
-        fontWeight: FontWeight.bold,
-      ),
-      code: TextStyle(
-        color: AppColors.secondary,
-        backgroundColor: theme.scaffoldBackgroundColor,
-        fontFamily: 'monospace',
-        fontSize: 13,
-      ),
-      codeblockDecoration: BoxDecoration(
-        color: theme.scaffoldBackgroundColor,
-        borderRadius: BorderRadius.circular(8),
-      ),
+      h2: TextStyle(color: theme.colorScheme.onSurface, fontSize: 17, fontWeight: FontWeight.bold, height: 1.4),
+      h3: TextStyle(color: theme.colorScheme.onSurface, fontSize: 15, fontWeight: FontWeight.w600, height: 1.4),
+      p: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.85), fontSize: 14, height: 1.6),
+      strong: TextStyle(color: theme.colorScheme.onSurface, fontWeight: FontWeight.bold),
+      listBullet: TextStyle(color: AppColors.primary, fontSize: 14, height: 1.6, fontWeight: FontWeight.bold),
+      code: TextStyle(color: AppColors.secondary, backgroundColor: theme.scaffoldBackgroundColor, fontFamily: 'monospace', fontSize: 13),
+      codeblockDecoration: BoxDecoration(color: theme.scaffoldBackgroundColor, borderRadius: BorderRadius.circular(8)),
       blockquoteDecoration: BoxDecoration(
         color: AppColors.primary.withOpacity(0.08),
         borderRadius: BorderRadius.circular(8),
-        border: const Border(
-          right: BorderSide(color: AppColors.primary, width: 3),
-        ),
+        border: const Border(right: BorderSide(color: AppColors.primary, width: 3)),
       ),
     );
   }
@@ -315,10 +275,7 @@ class _BlinkingCursorState extends State<_BlinkingCursor>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    )..repeat(reverse: true);
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 600))..repeat(reverse: true);
   }
 
   @override
@@ -331,11 +288,7 @@ class _BlinkingCursorState extends State<_BlinkingCursor>
   Widget build(BuildContext context) {
     return FadeTransition(
       opacity: _controller,
-      child: Container(
-        width: 2,
-        height: 16,
-        color: widget.color,
-      ),
+      child: Container(width: 2, height: 16, color: widget.color),
     );
   }
 }

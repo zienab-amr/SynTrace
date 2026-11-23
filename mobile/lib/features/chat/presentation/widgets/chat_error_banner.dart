@@ -27,11 +27,7 @@ class ChatErrorBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(
-            _getIcon(),
-            color: AppColors.error,
-            size: 18,
-          ),
+          Icon(_getIcon(), color: AppColors.error, size: 18),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -52,22 +48,12 @@ class ChatErrorBanner extends StatelessWidget {
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              child: const Text(
-                'Retry',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              child: const Text('Retry', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
             ),
           if (onDismiss != null)
             IconButton(
               onPressed: onDismiss,
-              icon: Icon(
-                Icons.close,
-                color: theme.colorScheme.onSurface.withOpacity(0.5),
-                size: 18,
-              ),
+              icon: Icon(Icons.close, color: theme.colorScheme.onSurface.withOpacity(0.5), size: 18),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
               tooltip: 'Dismiss',
@@ -79,18 +65,14 @@ class ChatErrorBanner extends StatelessWidget {
 
   IconData _getIcon() {
     switch (error.type) {
-      case ChatErrorType.network:
-        return Icons.wifi_off;
-      case ChatErrorType.server:
-        return Icons.cloud_off;
-      case ChatErrorType.timeout:
-        return Icons.schedule;
-      case ChatErrorType.emptyResponse:
-        return Icons.chat_bubble_outline;
-      case ChatErrorType.unauthorized:
-        return Icons.lock_outline;
-      case ChatErrorType.unknown:
-        return Icons.error_outline;
+      case ChatErrorType.network: return Icons.wifi_off;
+      case ChatErrorType.server: return Icons.cloud_off;
+      case ChatErrorType.timeout: return Icons.schedule;
+      case ChatErrorType.emptyResponse: return Icons.chat_bubble_outline;
+      case ChatErrorType.unauthorized: return Icons.lock_outline;
+      case ChatErrorType.forbidden: return Icons.block;
+      case ChatErrorType.badRequest: return Icons.warning_amber_rounded;
+      case ChatErrorType.unknown: return Icons.error_outline;
     }
   }
 }

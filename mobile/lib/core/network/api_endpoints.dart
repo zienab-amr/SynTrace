@@ -5,6 +5,7 @@ class ApiEndpoints {
   // Base URL
   // ═══════════════════════════════════════════════════════════
   static const String baseUrl = 'https://jackeline-cibarious-supergallantly.ngrok-free.dev/api';
+
   // ═══════════════════════════════════════════════════════════
   // Auth
   // ═══════════════════════════════════════════════════════════

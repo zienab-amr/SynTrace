@@ -8,6 +8,7 @@ import 'package:syntrace/features/chat/data/models/chat_message.dart';
 import 'package:syntrace/features/chat/data/models/chat_session.dart';
 import 'package:syntrace/features/chat/data/models/jira_card_model.dart';
 import 'chat_state.dart';
+import 'package:uuid/uuid.dart';
 
 class ChatCubit extends Cubit<ChatState> {
   ChatCubit() : super(const ChatInitial());
@@ -30,7 +31,7 @@ class ChatCubit extends Cubit<ChatState> {
         emit(const ChatLoaded(sessions: []));
       }
     } catch (e) {
-      _emitError(ChatErrorType.unknown);
+      emit(const ChatLoaded(sessions: []));
     }
   }
 
@@ -70,16 +71,13 @@ class ChatCubit extends Cubit<ChatState> {
           return [userMsg, aiMsg];
         }).expand((e) => e).toList();
 
-        emit(current.copyWith(
-          messages: messages,
-          isSending: false,
-        ));
+        emit(current.copyWith(messages: messages, isSending: false));
       } else {
         emit(current.copyWith(isSending: false));
       }
     } catch (e) {
       emit(current.copyWith(isSending: false));
-      _emitError(ChatErrorType.unknown);
+      _handleDioError(e, 'Failed to load messages');
     }
   }
 
@@ -100,7 +98,7 @@ class ChatCubit extends Cubit<ChatState> {
     if (state is! ChatLoaded) return;
     final current = state as ChatLoaded;
 
-    String messageId = DateTime.now().millisecondsSinceEpoch.toString();
+    String messageId = const Uuid().v4();
     final userMessage = ChatMessage(
       id: messageId,
       role: ChatRole.user,
@@ -140,6 +138,7 @@ class ChatCubit extends Cubit<ChatState> {
         ApiEndpoints.askAssistant,
         data: data,
         cancelToken: _cancelToken, 
+        options: Options(receiveTimeout: const Duration(seconds: 110)),
       );
 
       if (response.statusCode == 200) {
@@ -159,21 +158,13 @@ class ChatCubit extends Cubit<ChatState> {
             final links = responseData['links'] as List;
             for (var link in links) {
               if (link is Map) {
-                String priorityStr = 'Medium';
-                if (link['priority'] != null) {
-                  if (link['priority'] is Map) {
-                    priorityStr = link['priority']['name']?.toString() ?? 'Medium';
-                  } else {
-                    priorityStr = link['priority'].toString();
-                  }
-                }
                 jiraCards.add(JiraCardModel(
-                  issueKey: link['key']?.toString() ?? 'KEY',
-                  summary: link['summary']?.toString() ?? 'Jira Ticket',
-                  status: link['status']?.toString() ?? 'Open',
-                  statusCategory: link['statusCategory']?.toString() ?? 'todo',
-                  priority: priorityStr,
-                  issueType: link['type']?.toString() ?? 'Task',
+                  issueKey: link['key']?.toString() ?? '',
+                  summary: link['summary']?.toString() ?? '',
+                  status: link['status']?.toString() ?? '',
+                  statusCategory: link['statusCategory']?.toString() ?? '',
+                  priority: link['priority']?.toString() ?? '',
+                  issueType: link['type']?.toString() ?? '',
                   url: link['url']?.toString() ?? '',
                 ));
               }
@@ -183,7 +174,7 @@ class ChatCubit extends Cubit<ChatState> {
           aiResponseText = responseData.toString();
         }
 
-        final aiMessageId = 'ai-${DateTime.now().millisecondsSinceEpoch}';
+        final aiMessageId = 'ai-${const Uuid().v4()}';
         final aiMessage = ChatMessage(
           id: aiMessageId,
           role: ChatRole.ai,
@@ -200,22 +191,39 @@ class ChatCubit extends Cubit<ChatState> {
           isStreaming: true,
         ));
 
-        await _streamResponse(
-          messageId: aiMessageId,
-          fullText: aiResponseText,
-        );
-        
+        await _streamResponse(messageId: aiMessageId, fullText: aiResponseText);
         _activeMessageId = null;
       } else {
         throw Exception('Server returned ${response.statusCode}');
       }
-    } on DioException catch (e) {
-      if (e.type == DioExceptionType.cancel) {
-        return;
-      }
-      _emitError(ChatErrorType.network, failedText: text);
     } catch (e) {
-      _emitError(ChatErrorType.unknown, failedText: text);
+      if (e is DioException && e.type == DioExceptionType.cancel) return;
+      _handleDioError(e, text);
+    }
+  }
+
+  void _handleDioError(dynamic e, String failedText) {
+    if (e is DioException) {
+      if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.connectionError) {
+        _emitError(ChatErrorType.network, failedText: failedText);
+      } else if (e.type == DioExceptionType.receiveTimeout) {
+        _emitError(ChatErrorType.timeout, failedText: failedText);
+      } else {
+        final status = e.response?.statusCode;
+        if (status == 401) {
+          _emitError(ChatErrorType.unauthorized, failedText: failedText);
+        } else if (status == 403) {
+          _emitError(ChatErrorType.forbidden, failedText: failedText);
+        } else if (status == 400) {
+          _emitError(ChatErrorType.badRequest, failedText: failedText);
+        } else if (status != null && status >= 500) {
+          _emitError(ChatErrorType.server, failedText: failedText);
+        } else {
+          _emitError(ChatErrorType.unknown, failedText: failedText);
+        }
+      }
+    } else {
+      _emitError(ChatErrorType.unknown, failedText: failedText);
     }
   }
 
@@ -229,7 +237,7 @@ class ChatCubit extends Cubit<ChatState> {
     List<ChatMessage> updatedMessages = current.messages.sublist(0, index);
 
     final userMessage = ChatMessage(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: const Uuid().v4(),
       role: ChatRole.user,
       content: newText,
       timestamp: DateTime.now(),
@@ -253,6 +261,7 @@ class ChatCubit extends Cubit<ChatState> {
       final response = await ApiClient.instance.post(
         ApiEndpoints.askAssistant,
         data: data,
+        options: Options(receiveTimeout: const Duration(seconds: 110)),
       );
 
       if (response.statusCode == 200) {
@@ -260,7 +269,7 @@ class ChatCubit extends Cubit<ChatState> {
         String aiResponseText = responseData['answer']?.toString() ?? '';
         
         final aiMessage = ChatMessage(
-          id: 'ai-${DateTime.now().millisecondsSinceEpoch}',
+          id: 'ai-${const Uuid().v4()}',
           role: ChatRole.ai,
           content: aiResponseText,
           timestamp: DateTime.now(),
@@ -273,7 +282,7 @@ class ChatCubit extends Cubit<ChatState> {
         ));
       }
     } catch (e) {
-      _emitError(ChatErrorType.unknown, failedText: newText);
+      _handleDioError(e, newText);
     }
   }
 
@@ -360,7 +369,12 @@ class ChatCubit extends Cubit<ChatState> {
     if (failedText == null) return;
 
     final messages = List<ChatMessage>.from(current.messages);
+    
     if (messages.isNotEmpty && messages.last.hasError) {
+      messages.removeLast();
+    }
+    
+    if (messages.isNotEmpty && messages.last.role == ChatRole.user) {
       messages.removeLast();
     }
 

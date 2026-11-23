@@ -10,6 +10,8 @@ enum ChatErrorType
   timeout,       
   emptyResponse, 
   unauthorized,  
+  forbidden,
+  badRequest,
   unknown,      
 }
 
@@ -27,61 +29,25 @@ class ChatError extends Equatable {
   factory ChatError.fromType(ChatErrorType type, {String? failedText}) {
     switch (type) {
       case ChatErrorType.network:
-        return ChatError(
-          type: type,
-          message: 'Check your internet connection',
-          failedMessageText: failedText,
-        );
+        return ChatError(type: type, message: 'Check your internet connection', failedMessageText: failedText);
       case ChatErrorType.server:
-        return ChatError(
-          type: type,
-          message: 'Server is temporarily unavailable',
-          failedMessageText: failedText,
-        );
+        return ChatError(type: type, message: 'AI Service is temporarily unavailable', failedMessageText: failedText);
       case ChatErrorType.timeout:
-        return ChatError(
-          type: type,
-          message: 'AI took too long to respond',
-          failedMessageText: failedText,
-        );
+        return ChatError(type: type, message: 'AI request took too long. Please try again.', failedMessageText: failedText);
       case ChatErrorType.emptyResponse:
-        return ChatError(
-          type: type,
-          message: 'AI returned an empty response',
-          failedMessageText: failedText,
-        );
+        return ChatError(type: type, message: 'AI returned an empty response', failedMessageText: failedText);
       case ChatErrorType.unauthorized:
-        return ChatError(
-          type: type,
-          message: 'Session expired. Please log in again.',
-        );
+        return ChatError(type: type, message: 'Session expired. Please log in again.');
+      case ChatErrorType.forbidden:
+        return ChatError(type: type, message: 'Access denied. You do not have permission.', failedMessageText: failedText);
+      case ChatErrorType.badRequest:
+        return ChatError(type: type, message: 'Invalid request. Please check your input.', failedMessageText: failedText);
       case ChatErrorType.unknown:
-        return ChatError(
-          type: type,
-          message: 'Something went wrong. Please try again.',
-          failedMessageText: failedText,
-        );
+        return ChatError(type: type, message: 'Something went wrong. Please try again.', failedMessageText: failedText);
     }
   }
-  bool get canRetry =>
-      type != ChatErrorType.unauthorized;
 
-  String get iconName {
-    switch (type) {
-      case ChatErrorType.network:
-        return 'wifi_off';
-      case ChatErrorType.server:
-        return 'cloud_off';
-      case ChatErrorType.timeout:
-        return 'schedule';
-      case ChatErrorType.emptyResponse:
-        return 'chat_bubble_outline';
-      case ChatErrorType.unauthorized:
-        return 'lock_outline';
-      case ChatErrorType.unknown:
-        return 'error_outline';
-    }
-  }
+  bool get canRetry => type != ChatErrorType.unauthorized && type != ChatErrorType.forbidden;
 
   @override
   List<Object?> get props => [type, message, failedMessageText];
