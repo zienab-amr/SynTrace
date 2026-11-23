@@ -40,6 +40,8 @@ Rules:
 - If the follow-up already stands on its own, return it unchanged.
 - Otherwise replace words such as "it", "its", "this ticket", "them", "the same", "بتاعتها", "دي", "ده",
   "هو", "هي" with the ticket keys, people or sprints they refer to in the earlier questions and answers.
+- When the user quoted parts of earlier answers ("QUOTED" below), words such as "this", "these", "ده",
+  "دي", "the second one" refer to the quoted text first.
 - Keep the language and wording of the follow-up. Copy ticket keys and names exactly.
 - Do not answer the question and do not add anything it does not ask.
 Return only the rewritten question."""
@@ -124,6 +126,21 @@ def drop_last(company, user, chat, count):
         turns = _memory.get(_key(company, user, chat))
         for _ in range(min(count, len(turns or []))):
             turns.pop()
+
+
+QUOTED_LABEL = "QUOTED (parts of earlier answers the user selected and replied to)"
+MAX_QUOTE_CHARS = 1000
+
+
+def quoted(excerpts):
+    """The parts the user selected and replied to, as one more turn: the newest context, so "this" in
+    the question points at them. They only help understanding the question; access is checked as usual."""
+    excerpts = [" ".join(e.split())[:MAX_QUOTE_CHARS] for e in excerpts or [] if e and e.strip()]
+    if not excerpts:
+        return []
+    text = "\n".join(f'"{e}"' for e in excerpts)
+    keys = list(dict.fromkeys(ag.KEY_RE.findall(text.upper())))[:5]
+    return [(time.monotonic(), QUOTED_LABEL, text, keys)]
 
 
 def from_history(pairs):

@@ -18,7 +18,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Dict, List, Literal, Optional
+from typing import Annotated, Dict, List, Literal, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, Query, Response
@@ -73,7 +73,8 @@ class AskRequest(CamelModel):
     # One chat in the app. Follow-up questions are read in the context of the same chat only.
     conversation_id: Optional[str] = Field(default=None, max_length=200)
     # The chat's last questions and answers, oldest first, when the backend keeps the chat history.
-    # When it is sent, the service uses it instead of its own short memory.
+    # When the field is sent, even as [], it is the whole context: the service's own short memory is not
+    # used (it could belong to another chat after a restart or a load balancer move).
     history: List["Turn"] = Field(default_factory=list, max_length=conversation.MAX_TURNS * 2)
     # The user edited an earlier question: how many of the chat's last questions to forget first,
     # counting the edited one. Only needed while the backend does not send history.
@@ -81,6 +82,10 @@ class AskRequest(CamelModel):
     # Messages the user sent before this one that have no answer yet, oldest first. They are answered
     # together with this one; the backend cancels their own requests with DELETE /ask/{correlationId}.
     added_to: List[str] = Field(default_factory=list, max_length=5)
+    # Parts of earlier messages the user selected and replied to (Reply in the app), oldest first. Only
+    # context for understanding the question: they come from the app, so they prove nothing about access;
+    # what may be read is still decided by the company and projects above.
+    quoted_excerpts: List[Annotated[str, Field(max_length=2000)]] = Field(default_factory=list, max_length=5)
 
 
 class Turn(CamelModel):
@@ -131,6 +136,7 @@ def _cached_answer(question, ctx):
     if cached and now - cached[0] < CACHE_SECONDS:
         return cached[1]
     result = generate_answer_result(question, ctx)
+    cancel.check()   # a cancelled request's answer is not saved
     if result["status"] == "ok":
         if len(_answers) >= CACHE_SIZE:
             _answers.pop(next(iter(_answers)))
@@ -174,7 +180,8 @@ def ask(request: AskRequest, x_internal_api_key: Optional[str] = Header(default=
     ctx = AccessContext(request.company_id, tuple(p.strip().upper() for p in request.allowed_projects if p.strip()),
                         request.jira_account_id,
                         tuple(sorted({p.strip() for p in request.allowed_syntrace_project_ids if p.strip()})))
-    if request.history:
+    history_sent = "history" in request.model_fields_set
+    if history_sent:
         turns = conversation.from_history([(t.question, t.answer) for t in request.history])
     else:
         conversation.drop_last(request.company_id, request.employee_id, request.conversation_id,
@@ -185,11 +192,14 @@ def ask(request: AskRequest, x_internal_api_key: Optional[str] = Header(default=
     started = cancel.start(correlation, ASK_DEADLINE)
     try:
         cancel.check()   # cancelled before it started
+        if request.quoted_excerpts:   # what the user replied to is the newest context
+            turns = turns + conversation.quoted(request.quoted_excerpts)
         if request.added_to:
             asked = conversation.merge([m[:2000] for m in request.added_to] + [question], turns)
         else:
             asked = conversation.standalone(question, turns)
         result = _cached_answer(asked, ctx)
+        cancel.check()   # cancelled while answering: this answer must not be returned or remembered
     except cancel.TimeUp:
         result = {"status": "no_results", "answer": TIME_UP_AR if _is_arabic(question) else TIME_UP_EN,
                   "links": [], "source": "timeout"}
@@ -210,7 +220,7 @@ def ask(request: AskRequest, x_internal_api_key: Optional[str] = Header(default=
         result["answer"] = names.latinize(result["answer"], names.people(ctx))
     except Exception as exc:   # a name list problem must never fail the answer
         log.warning("name check failed: %s", type(exc).__name__)
-    if result["status"] == "ok" and not request.history:
+    if result["status"] == "ok" and not history_sent:
         conversation.remember(request.company_id, request.employee_id, request.conversation_id,
                               asked, result["answer"], result["links"])
     _record_unanswered(question, request.company_id, result["status"], correlation)
