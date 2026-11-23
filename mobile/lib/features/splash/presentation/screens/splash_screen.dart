@@ -26,16 +26,9 @@ class _SplashScreenState extends State<SplashScreen> {
 
     try {
       final isLoggedIn = await SecureStorageService.instance.isLoggedIn();
-      final isOnboarded = await SecureStorageService.instance
-          .isOnboardingCompleted();
-      final userRole = await SecureStorageService.instance.getUserRole();
 
       if (isLoggedIn) {
-        if (userRole?.toLowerCase() == 'admin' && !isOnboarded) {
-          context.go(AppRoutes.onboarding);
-        } else {
-          context.go(AppRoutes.dashboard);
-        }
+        context.go(AppRoutes.dashboard);
       } else {
         context.go(AppRoutes.login);
       }
