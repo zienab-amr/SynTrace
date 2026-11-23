@@ -37,6 +37,7 @@ namespace SynTrace.Infrastructure.Persistence.Context
             ConfigureClient(modelBuilder);
             ConfigureProject(modelBuilder);
             ConfigureEmployeeProject(modelBuilder);
+            ConfigureConversations(modelBuilder);
 
             ConfigureTenantEntities(modelBuilder);
 
@@ -59,6 +60,7 @@ namespace SynTrace.Infrastructure.Persistence.Context
             ConfigureTenantOwned<Project>(modelBuilder);
             ConfigureTenantOwned<MeetingNote>(modelBuilder);
             ConfigureTenantOwned<EmployeeProject>(modelBuilder);
+            ConfigureTenantOwned<Conversation>(modelBuilder);
 
             ConfigureTenantOwned<JiraProject>(modelBuilder);
             ConfigureTenantOwned<JiraIssue>(modelBuilder);
@@ -405,6 +407,70 @@ namespace SynTrace.Infrastructure.Persistence.Context
             });
         }
 
+        private static void ConfigureConversations(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Conversation>(entity =>
+            {
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.Title)
+                    .IsRequired()
+                    .HasMaxLength(200);
+
+                entity.HasIndex(x => new
+                {
+                    x.CompanyId,
+                    x.EmployeeId,
+                    x.UpdatedAt
+                });
+
+                entity.Property(c => c.NextSequenceNumber)
+                    .IsRequired();
+
+                entity.Property(c => c.RowVersion)
+                    .IsRowVersion();
+            });
+
+            modelBuilder.Entity<ConversationMessage>(entity =>
+            {
+                entity.HasKey(x => x.ConversationMessageId);
+
+                entity.HasOne(x => x.Conversation)
+                    .WithMany(x => x.Messages)
+                    .HasForeignKey(x => x.ConversationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.Property(x => x.Question)
+                    .IsRequired();
+
+                entity.Property(x => x.Answer)
+                    .IsRequired();
+
+                entity.Property(x => x.Status)
+                    .IsRequired()
+                    .HasMaxLength(50);
+
+                entity.Property(x => x.ClientMessageId).HasMaxLength(64);
+                entity.Property(x => x.CorrelationId).HasMaxLength(100);
+                entity.HasIndex(x => x.ClientMessageId)
+                    .IsUnique()
+                    .HasFilter("[ClientMessageId] IS NOT NULL");
+
+                entity.HasIndex(x => new
+                {
+                    x.ConversationId,
+                    x.SequenceNumber
+                })
+                .IsUnique();
+
+                entity.HasIndex(x => new
+                {
+                    x.ConversationId,
+                    x.CreatedAt
+                });
+            });
+        }
+
         #region DbSets
 
         public DbSet<Company> Companies { get; set; }
@@ -415,6 +481,8 @@ namespace SynTrace.Infrastructure.Persistence.Context
         public DbSet<MeetingNote> MeetingNotes { get; set; }
         public DbSet<Role> Roles { get; set; }
         public DbSet<RefreshToken> RefreshTokens { get; set; }
+        public DbSet<Conversation> Conversations { get; set; }
+        public DbSet<ConversationMessage> ConversationMessages { get; set; }
 
         // Jira
         public DbSet<OAuthState> OAuthStates { get; set; }
