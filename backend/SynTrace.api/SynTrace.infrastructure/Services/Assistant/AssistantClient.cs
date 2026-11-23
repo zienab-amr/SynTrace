@@ -32,6 +32,12 @@ public sealed class AssistantClient : IAssistantClient
         string employeeId,
         AssistantProjectScope scope,
         string correlationId,
+        string? jiraAccountId,
+        string conversationId,
+        IReadOnlyList<AssistantHistoryTurn> history,
+        IReadOnlyList<string> addedTo,
+        IReadOnlyList<string> quotedExcerpts,
+        bool clearAiMemory,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(_options.BaseUrl) || string.IsNullOrWhiteSpace(_options.ApiKey))
@@ -45,8 +51,18 @@ public sealed class AssistantClient : IAssistantClient
             ["question"] = question,
             ["companyId"] = companyId,
             ["employeeId"] = employeeId,
-            ["allowedProjects"] = scope.JiraKeys
+            ["allowedProjects"] = scope.JiraKeys,
+            ["jiraAccountId"] = jiraAccountId!,
+            ["conversationId"] = conversationId,
+            // The AI accepts question/answer pairs in chronological order.
+            ["history"] = history.Select(turn => new { question = turn.Question, answer = turn.Answer }).ToArray(),
+            ["addedTo"] = addedTo,
+            // Selected excerpts are extra context, NOT completed chat turns.
+            ["quotedExcerpts"] = quotedExcerpts
         };
+        // When history is empty after an edit, AI's in-process memory must be cleared.
+        // In the currently deployed AI implementation, [] falls back to process memory.
+        if (clearAiMemory) payload["editedTurns"] = 50;
         if (_options.EnableSynTraceProjectScope)
             payload["allowedSynTraceProjectIds"] = scope.SynTraceProjectIds;
 
@@ -79,12 +95,14 @@ public sealed class AssistantClient : IAssistantClient
             {
                 HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity => new(null, AssistantFailure.BadRequest),
                 HttpStatusCode.Unauthorized => new(null, AssistantFailure.Misconfigured),
+                HttpStatusCode.Conflict => new(null, AssistantFailure.Cancelled),
                 _ => new(null, AssistantFailure.Unavailable)
             };
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning("AI service timed out (correlation {CorrelationId}).", correlationId);
+            await CancelAsync(correlationId, CancellationToken.None);
             return new(null, AssistantFailure.Unavailable);
         }
         catch (JsonException)
@@ -97,6 +115,37 @@ public sealed class AssistantClient : IAssistantClient
             _logger.LogWarning("AI service is unreachable: {Error} (correlation {CorrelationId}).",
                 ex.GetType().Name, correlationId);
             return new(null, AssistantFailure.Unavailable);
+        }
+    }
+
+    public async Task CancelAsync(string correlationId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(_options.BaseUrl) || string.IsNullOrWhiteSpace(_options.ApiKey))
+            return;
+        // Independent timeout: the user's original HTTP request is often already cancelled.
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(3));
+        using var request = new HttpRequestMessage(HttpMethod.Delete,
+            $"{_options.BaseUrl.TrimEnd('/')}/ask/{Uri.EscapeDataString(correlationId)}");
+        request.Headers.Add("X-Internal-Api-Key", _options.ApiKey);
+        request.Headers.Add("X-Correlation-Id", correlationId);
+        try
+        {
+            var client = _httpClientFactory.CreateClient(HttpClientName);
+            client.Timeout = Timeout.InfiniteTimeSpan;
+            using var response = await client.SendAsync(request, timeout.Token);
+            if (!response.IsSuccessStatusCode)
+                _logger.LogWarning("AI cancellation rejected for {CorrelationId} with {StatusCode}",
+                    correlationId, (int)response.StatusCode);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("AI cancellation timed out for {CorrelationId}", correlationId);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning("AI cancellation failed ({ExceptionType}) for {CorrelationId}",
+                ex.GetType().Name, correlationId);
         }
     }
 }
