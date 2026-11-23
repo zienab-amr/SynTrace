@@ -27,7 +27,7 @@ class JiraCardModel extends Equatable {
       summary: json['summary'] as String? ?? '',
       status: json['status'] as String? ?? 'Todo',
       statusCategory: json['statusCategory'] as String? ?? 'todo',
-      priority: json['priority'] as String? ?? 'Medium',
+      priority: json['priority'] as String? ?? '',
       issueType: json['issueType'] as String? ?? 'Task',
       assigneeName: json['assigneeName'] as String?,
       url: json['url'] as String? ?? '',

@@ -21,6 +21,7 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final _scrollController = ScrollController();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+  final _chatInputKey = GlobalKey<ChatInputState>();
 
   bool _isSidebarOpen = true;
 
@@ -39,11 +40,8 @@ class _ChatScreenState extends State<ChatScreen> {
   void _scrollToBottom({bool instant = false}) {
     Future.delayed(const Duration(milliseconds: 50), () {
       if (!_scrollController.hasClients) return;
-
       if (instant) {
-        _scrollController.jumpTo(
-          _scrollController.position.maxScrollExtent,
-        );
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
       } else {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
@@ -75,10 +73,7 @@ class _ChatScreenState extends State<ChatScreen> {
         return LayoutBuilder(
           builder: (context, constraints) {
             final isWide = constraints.maxWidth >= 900;
-
-            if (isWide) {
-              return _buildWebLayout(context, state);
-            }
+            if (isWide) return _buildWebLayout(context, state);
             return _buildMobileLayout(context, state);
           },
         );
@@ -107,24 +102,15 @@ class _ChatScreenState extends State<ChatScreen> {
                     ? ChatHistoryPanel(
                         sessions: sessions,
                         selectedId: selectedId,
-                        onNewChat: () {
-                          context.read<ChatCubit>().newChat();
-                        },
-                        onSessionTap: (session) {
-                          context.read<ChatCubit>().openSession(session);
-                        },
+                        onNewChat: () => context.read<ChatCubit>().newChat(),
+                        onSessionTap: (session) => context.read<ChatCubit>().openSession(session),
                       )
                     : const SizedBox.shrink(),
               ),
             ),
           ),
           Expanded(
-            child: _buildChatArea(
-              context,
-              state,
-              isMobile: false,
-              showSidebarToggle: true,
-            ),
+            child: _buildChatArea(context, state, isMobile: false, showSidebarToggle: true),
           ),
         ],
       ),
@@ -153,25 +139,13 @@ class _ChatScreenState extends State<ChatScreen> {
           },
         ),
       ),
-      body: _buildChatArea(
-        context,
-        state,
-        isMobile: true,
-        showSidebarToggle: false,
-      ),
+      body: _buildChatArea(context, state, isMobile: true, showSidebarToggle: false),
     );
   }
 
-  Widget _buildChatArea(
-    BuildContext context,
-    ChatState state, {
-    required bool isMobile,
-    required bool showSidebarToggle,
-  }) {
+  Widget _buildChatArea(BuildContext context, ChatState state, {required bool isMobile, required bool showSidebarToggle}) {
     if (state is ChatLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppColors.primary),
-      );
+      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
     }
 
     if (state is ChatErrorState) {
@@ -185,23 +159,21 @@ class _ChatScreenState extends State<ChatScreen> {
     return Column(
       children: [
         _buildChatHeader(context, state, isMobile, showSidebarToggle),
-
         if (state.hasError)
           ChatErrorBanner(
             error: state.error!,
             onRetry: () => context.read<ChatCubit>().retryLastMessage(),
             onDismiss: () => context.read<ChatCubit>().dismissError(),
           ),
-
         Expanded(child: _buildMessages(context, state)),
-
         Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 800),
             child: ChatInput(
-              onSend: (text) => context.read<ChatCubit>().sendMessage(text),
+              key: _chatInputKey,
+              onSend: (text, quotes) => context.read<ChatCubit>().sendMessage(text, quotedExcerpts: quotes),
               enabled: true,
-              isLoading: state.isSending,
+              isLoading: false,
             ),
           ),
         ),
@@ -214,10 +186,14 @@ class _ChatScreenState extends State<ChatScreen> {
       return _buildEmptyState(context);
     }
 
+    final lastMessage = state.messages.isNotEmpty ? state.messages.last : null;
+    final showTyping = state.isSending &&
+        (lastMessage == null || lastMessage.role == ChatRole.user);
+
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      itemCount: state.messages.length + (state.isSending ? 1 : 0),
+      itemCount: state.messages.length + (showTyping ? 1 : 0),
       itemBuilder: (context, index) {
         if (index == state.messages.length) {
           return Center(
@@ -237,14 +213,12 @@ class _ChatScreenState extends State<ChatScreen> {
               message: message,
               onRetry: () => context.read<ChatCubit>().retryLastMessage(),
               onDelete: () => context.read<ChatCubit>().deleteFailedMessage(),
-              onEdit: message.role == ChatRole.user 
-                  ? (newText) {
-                      context.read<ChatCubit>().editMessage(
-                        message.id,
-                        newText,
-                      );
-                    }
+              onEdit: message.role == ChatRole.user
+                  ? (newText) => context.read<ChatCubit>().editMessage(message.id, newText)
                   : null,
+              onReply: (quotedText) {
+                _chatInputKey.currentState?.addQuote(quotedText);
+              },
             ),
           ),
         );
@@ -252,14 +226,8 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildChatHeader(
-    BuildContext context,
-    ChatLoaded state,
-    bool isMobile,
-    bool showSidebarToggle,
-  ) {
+  Widget _buildChatHeader(BuildContext context, ChatLoaded state, bool isMobile, bool showSidebarToggle) {
     final theme = Theme.of(context);
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Row(
@@ -267,55 +235,26 @@ class _ChatScreenState extends State<ChatScreen> {
           if (isMobile)
             IconButton(
               onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-              icon: Icon(
-                Icons.menu,
-                color: theme.colorScheme.onSurface,
-                size: 22,
-              ),
+              icon: Icon(Icons.menu, color: theme.colorScheme.onSurface, size: 22),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
-              tooltip: 'Chat history',
             ),
-
           if (showSidebarToggle)
             IconButton(
-              onPressed: () {
-                setState(() => _isSidebarOpen = !_isSidebarOpen);
-              },
-              icon: Icon(
-                _isSidebarOpen ? Icons.menu_open : Icons.menu,
-                color: theme.colorScheme.onSurface.withOpacity(0.7),
-                size: 22,
-              ),
+              onPressed: () => setState(() => _isSidebarOpen = !_isSidebarOpen),
+              icon: Icon(_isSidebarOpen ? Icons.menu_open : Icons.menu, color: theme.colorScheme.onSurface.withOpacity(0.7), size: 22),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
-              tooltip: _isSidebarOpen ? 'Hide chat history' : 'Show chat history',
             ),
-
           if (isMobile || showSidebarToggle) const SizedBox(width: 12),
-
-          Text(
-            'AI Assistant',
-            style: TextStyle(
-              color: theme.colorScheme.onSurface,
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-
+          Text('AI Assistant', style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 15, fontWeight: FontWeight.w600)),
           const Spacer(),
-
           if (state.messages.isNotEmpty)
             IconButton(
               onPressed: () => context.read<ChatCubit>().clearChat(),
-              icon: Icon(
-                Icons.refresh,
-                color: theme.colorScheme.onSurface.withOpacity(0.6),
-                size: 20,
-              ),
+              icon: Icon(Icons.refresh, color: theme.colorScheme.onSurface.withOpacity(0.6), size: 20),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
-              tooltip: 'Clear chat',
             ),
         ],
       ),
@@ -324,7 +263,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildEmptyState(BuildContext context) {
     final theme = Theme.of(context);
-
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -336,55 +274,25 @@ class _ChatScreenState extends State<ChatScreen> {
               height: 80,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [
-                    AppColors.primary.withOpacity(0.15),
-                    AppColors.secondary.withOpacity(0.15),
-                  ],
-                ),
+                gradient: LinearGradient(colors: [AppColors.primary.withOpacity(0.15), AppColors.secondary.withOpacity(0.15)]),
               ),
-              child: const Center(
-                child: Icon(
-                  Icons.auto_awesome,
-                  color: AppColors.primary,
-                  size: 36,
-                ),
-              ),
+              child: const Center(child: Icon(Icons.auto_awesome, color: AppColors.primary, size: 36)),
             ),
             const SizedBox(height: 24),
-            Text(
-              'How can I help you?',
-              style: TextStyle(
-                color: theme.colorScheme.onSurface,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            Text('How can I help you?', style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Text(
               'Ask me anything about your projects,\ncommits, bugs, or team.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: theme.colorScheme.onSurface.withOpacity(0.5),
-                fontSize: 13,
-                height: 1.5,
-              ),
+              style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5), fontSize: 13, height: 1.5),
             ),
             const SizedBox(height: 32),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               alignment: WrapAlignment.center,
-              children: [
-                'Show me the dependency chain for Task #1847',
-                'Why is Sprint 14 delayed?',
-                'Show recent bugs',
-                'Who worked on auth?',
-              ].map((s) {
-                return _Suggestion(
-                  text: s,
-                  onTap: () => context.read<ChatCubit>().sendMessage(s),
-                );
+              children: ['Show me the dependency chain for Task #1847', 'Why is Sprint 14 delayed?', 'Show recent bugs', 'Who worked on auth?'].map((s) {
+                return _Suggestion(text: s, onTap: () => context.read<ChatCubit>().sendMessage(s));
               }).toList(),
             ),
           ],
@@ -395,32 +303,19 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildErrorState(BuildContext context, String message) {
     final theme = Theme.of(context);
-
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.error_outline,
-              color: AppColors.error,
-              size: 48,
-            ),
+            const Icon(Icons.error_outline, color: AppColors.error, size: 48),
             const SizedBox(height: 16),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: theme.colorScheme.onSurface.withOpacity(0.7),
-              ),
-            ),
+            Text(message, textAlign: TextAlign.center, style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.7))),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: () => context.read<ChatCubit>().loadChat(),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-              ),
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
               child: const Text('Retry'),
             ),
           ],
@@ -439,7 +334,6 @@ class _Suggestion extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -450,17 +344,9 @@ class _Suggestion extends StatelessWidget {
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: theme.dividerColor.withOpacity(0.5),
-            ),
+            border: Border.all(color: theme.dividerColor.withOpacity(0.5)),
           ),
-          child: Text(
-            text,
-            style: TextStyle(
-              color: theme.colorScheme.onSurface.withOpacity(0.8),
-              fontSize: 12,
-            ),
-          ),
+          child: Text(text, style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.8), fontSize: 12)),
         ),
       ),
     );

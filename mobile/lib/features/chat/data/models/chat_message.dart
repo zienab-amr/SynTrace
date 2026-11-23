@@ -34,6 +34,7 @@ class ChatMessage extends Equatable {
   final bool hasError;
   final List<ProgressStep> steps;
   final List<JiraCardModel> jiraCards;
+  final List<String> quotedExcerpts;
 
   const ChatMessage({
     required this.id,
@@ -44,6 +45,7 @@ class ChatMessage extends Equatable {
     this.hasError = false,
     this.steps = const [],
     this.jiraCards = const [],
+    this.quotedExcerpts = const [],
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
@@ -62,6 +64,10 @@ class ChatMessage extends Equatable {
               ?.map((e) => JiraCardModel.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      quotedExcerpts: (json['quotedExcerpts'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
     );
   }
 
@@ -75,6 +81,7 @@ class ChatMessage extends Equatable {
       'hasError': hasError,
       'steps': steps.map((e) => e.toJson()).toList(),
       'jiraCards': jiraCards.map((e) => e.toJson()).toList(),
+      'quotedExcerpts': quotedExcerpts,
     };
   }
 
@@ -83,6 +90,7 @@ class ChatMessage extends Equatable {
     bool? isStreaming,
     bool? hasError,
     List<ProgressStep>? steps,
+    List<String>? quotedExcerpts,
   }) {
     return ChatMessage(
       id: id,
@@ -93,10 +101,11 @@ class ChatMessage extends Equatable {
       hasError: hasError ?? this.hasError,
       steps: steps ?? this.steps,
       jiraCards: jiraCards,
+      quotedExcerpts: quotedExcerpts ?? this.quotedExcerpts,
     );
   }
 
   @override
   List<Object?> get props =>
-      [id, role, content, timestamp, isStreaming, hasError, steps, jiraCards];
+      [id, role, content, timestamp, isStreaming, hasError, steps, jiraCards, quotedExcerpts];
 }
