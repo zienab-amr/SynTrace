@@ -3,6 +3,8 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using MediatR;
+using SynTrace.Application.Features.Knowledge.Queries.GetKnowledgeCompanies;
 using Microsoft.Extensions.Options;
 using SynTrace.Application.Contracts.Knowledge;
 using SynTrace.Infrastructure.Options;
@@ -14,8 +16,13 @@ namespace SynTrace.Api.Controllers;
 [AllowAnonymous] // The existing AI service key is required on every action.
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 [Route("api/internal/knowledge")]
-public sealed class InternalKnowledgeController(KnowledgeSourceService sources, IOptions<AiServiceOptions> options) : ControllerBase
+public sealed class InternalKnowledgeController(KnowledgeSourceService sources, IOptions<AiServiceOptions> options,
+    IMediator mediator) : ControllerBase
 {
+    [HttpGet("companies")]
+    public Task<IActionResult> Companies(CancellationToken ct) =>
+        RunAsync(async () => Ok(new { items = await mediator.Send(new GetKnowledgeCompaniesQuery(), ct) }));
+
     [HttpGet("pending")]
     public Task<IActionResult> Pending([FromQuery, Required, StringLength(450)] string companyId,
         [FromQuery, Range(1, 25)] int take = 5, CancellationToken ct = default) =>
