@@ -8,6 +8,7 @@ import 'package:syntrace/features/chat/data/models/chat_message.dart';
 import 'package:syntrace/features/chat/data/models/chat_session.dart';
 import 'package:syntrace/features/chat/data/models/jira_card_model.dart';
 import 'chat_state.dart';
+import 'package:uuid/uuid.dart';
 
 class ChatCubit extends Cubit<ChatState> {
   ChatCubit() : super(const ChatInitial());
@@ -97,7 +98,7 @@ class ChatCubit extends Cubit<ChatState> {
     if (state is! ChatLoaded) return;
     final current = state as ChatLoaded;
 
-    String messageId = DateTime.now().millisecondsSinceEpoch.toString();
+    String messageId = const Uuid().v4();
     final userMessage = ChatMessage(
       id: messageId,
       role: ChatRole.user,
@@ -173,7 +174,7 @@ class ChatCubit extends Cubit<ChatState> {
           aiResponseText = responseData.toString();
         }
 
-        final aiMessageId = 'ai-${DateTime.now().millisecondsSinceEpoch}';
+        final aiMessageId = 'ai-${const Uuid().v4()}';
         final aiMessage = ChatMessage(
           id: aiMessageId,
           role: ChatRole.ai,
@@ -236,7 +237,7 @@ class ChatCubit extends Cubit<ChatState> {
     List<ChatMessage> updatedMessages = current.messages.sublist(0, index);
 
     final userMessage = ChatMessage(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: const Uuid().v4(),
       role: ChatRole.user,
       content: newText,
       timestamp: DateTime.now(),
@@ -268,7 +269,7 @@ class ChatCubit extends Cubit<ChatState> {
         String aiResponseText = responseData['answer']?.toString() ?? '';
         
         final aiMessage = ChatMessage(
-          id: 'ai-${DateTime.now().millisecondsSinceEpoch}',
+          id: 'ai-${const Uuid().v4()}',
           role: ChatRole.ai,
           content: aiResponseText,
           timestamp: DateTime.now(),
