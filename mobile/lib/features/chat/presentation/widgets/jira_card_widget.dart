@@ -16,6 +16,9 @@ class JiraCardWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final hasSummary = card.summary.isNotEmpty;
+    final hasStatus = card.status.isNotEmpty && card.status != 'Unknown';
+    final hasPriority = card.priority.isNotEmpty && card.priority != 'None';
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -45,11 +48,7 @@ class JiraCardWidget extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Icon(
-                      _getTypeIcon(),
-                      size: 14,
-                      color: _getTypeColor(),
-                    ),
+                    Icon(_getTypeIcon(), size: 14, color: _getTypeColor()),
                     const SizedBox(width: 6),
                     Text(
                       card.issueKey,
@@ -61,47 +60,38 @@ class JiraCardWidget extends StatelessWidget {
                       ),
                     ),
                     const Spacer(),
-                    _buildPriorityBadge(theme),
+                    if (hasPriority) _buildPriorityBadge(theme),
                   ],
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  card.summary,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: theme.colorScheme.onSurface,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    height: 1.4,
+                if (hasSummary) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    card.summary,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurface,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      height: 1.4,
+                    ),
                   ),
-                ),
+                ],
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    _buildStatusBadge(theme),
+                    if (hasStatus) _buildStatusBadge(theme),
                     const Spacer(),
                     if (card.assigneeName != null && card.assigneeName!.isNotEmpty) ...[
-                      Icon(
-                        Icons.person_outline,
-                        size: 12,
-                        color: theme.colorScheme.onSurface.withOpacity(0.4),
-                      ),
+                      Icon(Icons.person_outline, size: 12, color: theme.colorScheme.onSurface.withOpacity(0.4)),
                       const SizedBox(width: 4),
                       Text(
                         card.assigneeName!,
-                        style: TextStyle(
-                          color: theme.colorScheme.onSurface.withOpacity(0.5),
-                          fontSize: 11,
-                        ),
+                        style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5), fontSize: 11),
                       ),
                       const SizedBox(width: 8),
                     ],
-                    Icon(
-                      Icons.open_in_new,
-                      size: 12,
-                      color: theme.colorScheme.onSurface.withOpacity(0.4),
-                    ),
+                    Icon(Icons.open_in_new, size: 12, color: theme.colorScheme.onSurface.withOpacity(0.4)),
                   ],
                 ),
               ],
@@ -113,121 +103,71 @@ class JiraCardWidget extends StatelessWidget {
   }
 
   Widget _buildPriorityBadge(ThemeData theme) {
-    if (card.priority.isEmpty || card.priority == 'None') {
-      return const SizedBox.shrink();
-    }
     final color = _getPriorityColor();
     final icon = _getPriorityIcon();
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(6),
-      ),
+      decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(6)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 12, color: color),
           const SizedBox(width: 4),
-          Text(
-            card.priority,
-            style: TextStyle(
-              color: color,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+          Text(card.priority, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w700)),
         ],
       ),
     );
   }
 
   Widget _buildStatusBadge(ThemeData theme) {
-    if (card.status.isEmpty || card.status == 'Unknown') {
-      return const SizedBox.shrink();
-    }
     final color = _getStatusColor();
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        card.status,
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
+      decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(6)),
+      child: Text(card.status, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w600)),
     );
   }
 
   Color _getTypeColor() {
     switch (card.issueType.toLowerCase()) {
-      case 'bug':
-        return AppColors.error;
-      case 'story':
-        return AppColors.secondary;
-      case 'epic':
-        return const Color(0xFF9B59B6);
-      default:
-        return AppColors.primary;
+      case 'bug': return AppColors.error;
+      case 'story': return AppColors.secondary;
+      case 'epic': return const Color(0xFF9B59B6);
+      default: return AppColors.primary;
     }
   }
 
   IconData _getTypeIcon() {
     switch (card.issueType.toLowerCase()) {
-      case 'bug':
-        return Icons.bug_report_outlined;
-      case 'story':
-        return Icons.bookmark_outline;
-      case 'epic':
-        return Icons.bolt;
-      case 'sub-task':
-      case 'subtask':
-        return Icons.call_split;
-      default:
-        return Icons.task_alt;
+      case 'bug': return Icons.bug_report_outlined;
+      case 'story': return Icons.bookmark_outline;
+      case 'epic': return Icons.bolt;
+      case 'sub-task': case 'subtask': return Icons.call_split;
+      default: return Icons.task_alt;
     }
   }
 
   Color _getPriorityColor() {
     switch (card.priority.toLowerCase()) {
-      case 'highest':
-      case 'critical':
-        return Colors.red;
-      case 'high':
-        return Colors.orange;
-      case 'medium':
-        return Colors.blue;
-      case 'low':
-        return Colors.teal;
-      case 'lowest':
-        return Colors.grey;
-      default:
-        return AppColors.textMuted;
+      case 'highest': case 'critical': return Colors.red;
+      case 'high': return Colors.orange;
+      case 'medium': return Colors.blue;
+      case 'low': return Colors.teal;
+      case 'lowest': return Colors.grey;
+      default: return AppColors.textMuted;
     }
   }
 
   IconData _getPriorityIcon() {
     switch (card.priority.toLowerCase()) {
-      case 'highest':
-      case 'critical':
-        return Icons.keyboard_double_arrow_up;
-      case 'high':
-        return Icons.arrow_upward;
-      case 'medium':
-        return Icons.drag_handle;
-      case 'low':
-        return Icons.arrow_downward;
-      case 'lowest':
-        return Icons.keyboard_double_arrow_down;
-      default:
-        return Icons.remove;
+      case 'highest': case 'critical': return Icons.keyboard_double_arrow_up;
+      case 'high': return Icons.arrow_upward;
+      case 'medium': return Icons.drag_handle;
+      case 'low': return Icons.arrow_downward;
+      case 'lowest': return Icons.keyboard_double_arrow_down;
+      default: return Icons.remove;
     }
   }
 
@@ -235,15 +175,9 @@ class JiraCardWidget extends StatelessWidget {
     final status = card.status.toLowerCase();
     final category = card.statusCategory.toLowerCase();
 
-    if (category == 'done' || status == 'done' || status == 'closed') {
-      return Colors.green;
-    }
-    if (category == 'indeterminate' || status == 'in progress' || status == 'in_progress') {
-      return Colors.blue;
-    }
-    if (status == 'blocked') {
-      return Colors.red;
-    }
+    if (category == 'done' || status == 'done' || status == 'closed') return Colors.green;
+    if (category == 'indeterminate' || status == 'in progress' || status == 'in_progress') return Colors.blue;
+    if (status == 'blocked') return Colors.red;
     return Colors.grey;
   }
 }
