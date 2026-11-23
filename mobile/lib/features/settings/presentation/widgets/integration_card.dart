@@ -47,15 +47,19 @@ class IntegrationCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      isConnected
-                          ? 'Connected'
-                          : (isConnecting ? 'Connecting...' : 'Not connected'),
+                      integration.suspended
+                          ? 'Suspended'
+                          : (isConnected
+                              ? 'Connected'
+                              : (isConnecting ? 'Connecting...' : 'Not connected')),
                       style: TextStyle(
-                        color: isConnected
-                            ? AppColors.secondary
-                            : (isConnecting
-                                ? AppColors.warning
-                                : theme.colorScheme.onSurface.withOpacity(0.4)),
+                        color: integration.suspended
+                            ? AppColors.warning
+                            : (isConnected
+                                ? AppColors.secondary
+                                : (isConnecting
+                                    ? AppColors.warning
+                                    : theme.colorScheme.onSurface.withOpacity(0.4))),
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),

@@ -27,6 +27,7 @@ import 'package:syntrace/features/role/presentation/screens/roles_screen.dart';
 import 'package:syntrace/features/settings/presentation/cubit/integrations_cubit.dart';
 import 'package:syntrace/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:syntrace/features/settings/presentation/screens/jira_callback_screen.dart';
+import 'package:syntrace/features/settings/presentation/screens/github_callback_screen.dart';
 import 'package:syntrace/features/settings/presentation/screens/settings_screen.dart';
 import 'package:syntrace/features/splash/presentation/screens/splash_screen.dart';
 import 'package:syntrace/features/onboarding/presentation/cubit/onboarding_cubit.dart';
@@ -94,6 +95,20 @@ final appRouter = GoRouter(
         return BlocProvider(
           create: (context) => IntegrationsCubit(),
           child: JiraCallbackScreen(status: status, pendingId: pendingId),
+        );
+      },
+    ),
+    GoRoute(
+      path: AppRoutes.githubCallback,
+      builder: (context, state) {
+        final status = state.uri.queryParameters['status'] ?? '';
+        final completionId = state.uri.queryParameters['completionId'];
+        return BlocProvider(
+          create: (context) => IntegrationsCubit(),
+          child: GitHubCallbackScreen(
+            status: status,
+            completionId: completionId,
+          ),
         );
       },
     ),

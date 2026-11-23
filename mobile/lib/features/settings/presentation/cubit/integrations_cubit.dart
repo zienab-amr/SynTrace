@@ -1,133 +1,104 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:syntrace/core/models/user_model.dart';
-import 'package:syntrace/core/network/api_client.dart';
-import 'package:syntrace/core/network/api_endpoints.dart';
 import 'package:syntrace/core/services/current_user_service.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:syntrace/features/settings/data/integrations_repository.dart';
+import 'package:syntrace/features/settings/data/models/github_model.dart';
 import 'package:syntrace/features/settings/data/models/integration_model.dart';
-import 'integrations_state.dart';
+import 'package:syntrace/features/settings/presentation/cubit/integrations_state.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class IntegrationsCubit extends Cubit<IntegrationsState> {
-  IntegrationsCubit() : super(const IntegrationsInitial());
-
+  final IntegrationsRepository repository;
   List<IntegrationModel> _current = [];
-  List<IntegrationModel> get current => _current;
+
+  IntegrationsCubit({IntegrationsRepository? repository})
+      : repository = repository ?? IntegrationsRepository(),
+        super(const IntegrationsInitial());
+
+  List<IntegrationModel> get current => List.unmodifiable(_current);
+
+  bool get isAdmin => CurrentUserService.instance.user?.role == UserRole.admin;
 
   Future<void> loadIntegrations() async {
     emit(const IntegrationsLoading());
-
     _current = const [
       IntegrationModel(
         type: IntegrationType.jira,
         name: 'Jira',
         description: 'Sync issues, sprints, and backlogs',
-        status: IntegrationStatus.disconnected,
       ),
       IntegrationModel(
         type: IntegrationType.github,
         name: 'GitHub',
-        description: 'Connect commits, PRs, and branches',
-        status: IntegrationStatus.disconnected,
+        description: 'Connect commits, pull requests, and branches',
       ),
     ];
 
     await _checkJiraStatus();
-    emit(IntegrationsLoaded(List.from(_current)));
+    await _checkGitHubStatus();
+    _emitLoaded();
   }
 
   Future<void> _checkJiraStatus() async {
     try {
-      final response = await ApiClient.instance.get(
-        ApiEndpoints.jiraSyncStatus,
-      );
-
+      final response = await repository.checkJiraStatus();
       if (response.statusCode == 200 && response.data is Map) {
-        final data = response.data as Map<String, dynamic>;
-        final site = data['site']?.toString();
+        final data = Map<String, dynamic>.from(response.data as Map);
+        final account = data['site']?.toString();
         _updateStatus(
           IntegrationType.jira,
           IntegrationStatus.connected,
-          accountName: (site != null && site.isNotEmpty)
-              ? site
-              : 'Jira Workspace',
+          accountName: account == null || account.isEmpty ? 'Jira Workspace' : account,
+        );
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _checkGitHubStatus() async {
+    try {
+      final response = isAdmin
+          ? await repository.getGitHubCompanyStatus()
+          : await repository.getGitHubEmployeeStatus();
+      if (response.statusCode != 200 || response.data is! Map) return;
+      final data = Map<String, dynamic>.from(response.data as Map);
+
+      if (isAdmin) {
+        final status = GitHubCompanyStatus.fromJson(data);
+        _updateStatus(
+          IntegrationType.github,
+          status.connected
+              ? IntegrationStatus.connected
+              : IntegrationStatus.disconnected,
+          accountName: status.accountLogin,
+          suspended: status.suspended,
         );
       } else {
-        _updateStatus(IntegrationType.jira, IntegrationStatus.disconnected);
+        final status = GitHubEmployeeStatus.fromJson(data);
+        _updateStatus(
+          IntegrationType.github,
+          status.connected
+              ? IntegrationStatus.connected
+              : IntegrationStatus.disconnected,
+          accountName: status.githubLogin,
+        );
       }
-    } catch (e) {
-      _updateStatus(IntegrationType.jira, IntegrationStatus.disconnected);
+    } catch (_) {}
+  }
+
+  Future<void> connect(IntegrationType type) async {
+    if (type == IntegrationType.jira) {
+      await connectJira();
+    } else {
+      await connectGitHub();
     }
   }
 
   Future<void> connectJira() async {
-    emit(const IntegrationsLoading());
-
-    try {
-      final user = CurrentUserService.instance.user;
-      final isAdmin = user?.role == UserRole.admin;
-
-      final endpoint = isAdmin
-          ? ApiEndpoints.jiraConnect
-          : ApiEndpoints.jiraConnectEmployee;
-
-      print(
-        'Connecting Jira via endpoint: $endpoint',
-      ); 
-
-      final response = await ApiClient.instance.get(
-        endpoint,
-        options: Options(
-          followRedirects: false,
-          validateStatus: (status) => status != null && status < 400,
-        ),
-      );
-
-      if (response.statusCode == 409) {
-        _updateStatus(IntegrationType.jira, IntegrationStatus.connected);
-        emit(const IntegrationsError('Jira is already connected.'));
-        emit(IntegrationsLoaded(List.from(_current)));
-        return;
-      }
-
-      if (response.data is Map && response.data['message'] != null) {
-        emit(IntegrationsError(response.data['message'].toString()));
-        emit(IntegrationsLoaded(List.from(_current)));
-        return;
-      }
-
-      String? authUrl;
-      final data = response.data;
-
-      if (data is String && data.startsWith('http')) {
-        authUrl = data.trim();
-      } else if (data is Map) {
-        authUrl =
-            data['url']?.toString() ??
-            data['authorizeUrl']?.toString() ??
-            data['authUrl']?.toString();
-      }
-
-      if (authUrl == null || !authUrl.startsWith('http')) {
-        emit(
-          const IntegrationsError('Server did not return a valid Jira URL.'),
-        );
-        emit(IntegrationsLoaded(List.from(_current)));
-        return;
-      }
-
-      final uri = Uri.parse(authUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, webOnlyWindowName: '_self');
-        emit(IntegrationsLoaded(List.from(_current)));
-      } else {
-        emit(const IntegrationsError('Could not open browser.'));
-        emit(IntegrationsLoaded(List.from(_current)));
-      }
-    } catch (e) {
-      emit(IntegrationsError('Failed to connect to Jira: $e'));
-      emit(IntegrationsLoaded(List.from(_current)));
-    }
+    await _openConnectUrl(
+      () => repository.connectJira(employee: !isAdmin),
+      'Jira',
+    );
   }
 
   Future<void> handleJiraCallback(String status, String? pendingId) async {
@@ -135,106 +106,154 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
       await loadIntegrations();
     } else if (status == 'select-site' && pendingId != null) {
       await _fetchPendingSites(pendingId);
+    } else {
+      _emitError('Jira authorization was cancelled or denied.');
     }
   }
 
   Future<void> _fetchPendingSites(String pendingId) async {
     emit(const IntegrationsLoading());
     try {
-      final response = await ApiClient.instance.get(
-        ApiEndpoints.jiraPendingSites,
-        queryParameters: {'pendingId': pendingId},
-      );
-
-      if (response.statusCode == 200 && response.data != null) {
-        final data = response.data;
-        List<dynamic> rawSites = [];
-
-        if (data is List) {
-          rawSites = data;
-        } else if (data is Map) {
-          rawSites =
-              data['data'] as List? ??
-              data['items'] as List? ??
-              data['sites'] as List? ??
-              [];
-        }
-
-        if (rawSites.isNotEmpty) {
-          final sites = rawSites.map((e) => e as Map<String, dynamic>).toList();
-          emit(
-            IntegrationsSiteSelectionRequired(
-              sites: sites,
-              pendingId: pendingId,
-            ),
-          );
-        } else {
-          emit(const IntegrationsError('No sites found for this account.'));
-          emit(IntegrationsLoaded(List.from(_current)));
-        }
-      } else {
-        emit(const IntegrationsError('Failed to fetch Jira sites.'));
-        emit(IntegrationsLoaded(List.from(_current)));
+      final response = await repository.fetchJiraPendingSites(pendingId);
+      if (response.statusCode != 200 || response.data == null) {
+        _emitError('Failed to fetch Jira sites.');
+        return;
       }
-    } catch (e) {
-      emit(IntegrationsError('Error fetching sites: $e'));
-      emit(IntegrationsLoaded(List.from(_current)));
+
+      final data = response.data;
+      final List<dynamic> rawSites;
+      if (data is List) {
+        rawSites = data;
+      } else if (data is Map) {
+        rawSites = (data['data'] ?? data['items'] ?? data['sites'] ?? []) as List<dynamic>;
+      } else {
+        rawSites = const [];
+      }
+
+      final sites = rawSites
+          .whereType<Map>()
+          .map((site) => Map<String, dynamic>.from(site))
+          .toList();
+      if (sites.isEmpty) {
+        _emitError('No Jira sites found for this account.');
+        return;
+      }
+
+      emit(
+        IntegrationsSiteSelectionRequired(
+          sites: sites,
+          pendingId: pendingId,
+        ),
+      );
+    } catch (error) {
+      _emitError('Failed to fetch Jira sites: $error');
     }
   }
 
   Future<void> completeJiraConnection(String pendingId, String cloudId) async {
     emit(const IntegrationsLoading());
     try {
-      final response = await ApiClient.instance.post(
-        ApiEndpoints.jiraCompleteConnection,
-        queryParameters: {'pendingId': pendingId, 'cloudId': cloudId},
-        data: {'pendingId': pendingId, 'cloudId': cloudId},
-      );
-
+      final response = await repository.completeJiraConnection(pendingId, cloudId);
       if (response.statusCode == 200 || response.statusCode == 204) {
         await loadIntegrations();
       } else {
-        emit(const IntegrationsError('Failed to complete Jira connection.'));
-        emit(IntegrationsLoaded(List.from(_current)));
+        _emitError('Failed to complete Jira connection.');
       }
-    } catch (e) {
-      emit(IntegrationsError('Error completing connection: $e'));
-      emit(IntegrationsLoaded(List.from(_current)));
+    } catch (error) {
+      _emitError('Failed to complete Jira connection: $error');
     }
   }
 
-  Future<void> disconnectJira() async {
+  Future<void> connectGitHub({bool authorizeExisting = false}) async {
+    _setConnecting(IntegrationType.github);
+    try {
+      final response = isAdmin
+          ? await repository.startGitHubCompanyConnection(
+              authorizeExisting: authorizeExisting,
+            )
+          : await repository.startGitHubEmployeeConnection();
+      final url = _readUrl(response.data);
+      if (url == null) throw const FormatException('Missing authorization URL');
+      final opened = await launchUrl(Uri.parse(url), webOnlyWindowName: '_self');
+      if (!opened) throw const FormatException('Could not open authorization URL');
+      _emitLoaded();
+    } catch (error) {
+      _emitError('Failed to start GitHub connection: $error');
+    }
+  }
+
+  Future<void> handleGitHubCallback(String status, String? completionId) async {
+    switch (status) {
+      case 'awaiting-approval':
+        emit(const GitHubApprovalPending());
+        return;
+      case 'confirm':
+        if (completionId == null || completionId.isEmpty) {
+          _emitError('GitHub completion information is missing.');
+          return;
+        }
+        await _fetchGitHubPending(completionId);
+        return;
+      case 'success':
+        await loadIntegrations();
+        return;
+      case 'no-eligible-installations':
+        _emitError('No eligible GitHub installations were found.');
+        return;
+      default:
+        _emitError('GitHub authorization was cancelled or denied.');
+    }
+  }
+
+  Future<void> _fetchGitHubPending(String completionId) async {
     emit(const IntegrationsLoading());
     try {
-      final response = await ApiClient.instance.delete(
-        ApiEndpoints.jiraDisconnect,
-      );
-
-      if (response.statusCode == 200) {
-        _updateStatus(IntegrationType.jira, IntegrationStatus.disconnected);
-        emit(IntegrationsLoaded(List.from(_current)));
-      } else {
-        emit(const IntegrationsError('Failed to disconnect Jira.'));
-        emit(IntegrationsLoaded(List.from(_current)));
+      final response = await repository.getGitHubPendingConnection(completionId);
+      if (response.statusCode != 200 || response.data is! Map) {
+        _emitError('Failed to load GitHub installation options.');
+        return;
       }
-    } catch (e) {
-      emit(IntegrationsError('Error disconnecting Jira: $e'));
-      emit(IntegrationsLoaded(List.from(_current)));
+      final pending = GitHubPendingConnection.fromJson(
+        Map<String, dynamic>.from(response.data as Map),
+      );
+      if (pending.installations.isEmpty) {
+        _emitError('No eligible GitHub installations were found.');
+        return;
+      }
+      if (pending.installations.length == 1) {
+        await completeGitHubConnection(
+          completionId,
+          pending.installations.first.installationId,
+        );
+        return;
+      }
+      emit(
+        GitHubInstallationSelectionRequired(
+          completionId: completionId,
+          githubLogin: pending.githubLogin,
+          installations: pending.installations,
+        ),
+      );
+    } catch (error) {
+      _emitError('Failed to load GitHub installation options: $error');
     }
   }
 
-  Future<void> connect(IntegrationType type) async {
-    if (type == IntegrationType.jira) {
-      await connectJira();
-      return;
+  Future<void> completeGitHubConnection(String completionId, int? installationId) async {
+    emit(const IntegrationsLoading());
+    try {
+      final response = await repository.completeGitHubConnection(
+        completionId,
+        installationId,
+      );
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        await loadIntegrations();
+      } else {
+        _emitError('Failed to complete GitHub connection.');
+      }
+    } catch (error) {
+      _emitError('Failed to complete GitHub connection: $error');
     }
-    _updateStatus(type, IntegrationStatus.connecting);
-    await Future.delayed(const Duration(milliseconds: 800));
-    _updateStatus(
-      type,
-      IntegrationStatus.connected,
-      accountName: 'GitHub Account',
-    );
   }
 
   Future<void> disconnect(IntegrationType type) async {
@@ -242,21 +261,97 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
       await disconnectJira();
       return;
     }
-    _updateStatus(type, IntegrationStatus.disconnected);
+    await disconnectGitHub();
+  }
+
+  Future<void> disconnectJira() async {
+    await _disconnect(
+      repository.disconnectJira,
+      IntegrationType.jira,
+      'Jira',
+    );
+  }
+
+  Future<void> disconnectGitHub() async {
+    await _disconnect(
+      isAdmin
+          ? repository.disconnectGitHubCompany
+          : repository.disconnectGitHubEmployee,
+      IntegrationType.github,
+      'GitHub',
+    );
+  }
+
+  Future<void> _openConnectUrl(
+    Future<Response> Function() request,
+    String provider,
+  ) async {
+    try {
+      final response = await request();
+      final url = _readUrl(response.data);
+      if (url == null) throw const FormatException('Missing authorization URL');
+      final opened = await launchUrl(Uri.parse(url), webOnlyWindowName: '_self');
+      if (!opened) throw const FormatException('Could not open authorization URL');
+      _emitLoaded();
+    } catch (error) {
+      _emitError('Failed to start $provider connection: $error');
+    }
+  }
+
+  Future<void> _disconnect(
+    Future<Response> Function() request,
+    IntegrationType type,
+    String provider,
+  ) async {
+    emit(const IntegrationsLoading());
+    try {
+      final response = await request();
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        _updateStatus(type, IntegrationStatus.disconnected);
+        _emitLoaded();
+      } else {
+        _emitError('Failed to disconnect $provider.');
+      }
+    } catch (error) {
+      _emitError('Failed to disconnect $provider: $error');
+    }
+  }
+
+  String? _readUrl(dynamic data) {
+    if (data is String && data.startsWith('http')) return data;
+    if (data is Map) {
+      final value = data['url'] ?? data['authorizeUrl'] ?? data['authUrl'];
+      if (value is String && value.startsWith('http')) return value;
+    }
+    return null;
+  }
+
+  void _setConnecting(IntegrationType type) {
+    _updateStatus(type, IntegrationStatus.connecting);
   }
 
   void _updateStatus(
     IntegrationType type,
     IntegrationStatus status, {
     String? accountName,
+    bool? suspended,
   }) {
-    _current = _current.map((i) {
-      if (i.type == type) {
-        return i.copyWith(status: status, accountName: accountName);
-      }
-      return i;
+    _current = _current.map((item) {
+      if (item.type != type) return item;
+      return item.copyWith(
+        status: status,
+        accountName: accountName,
+        suspended: suspended,
+      );
     }).toList();
+  }
 
+  void _emitLoaded() {
     emit(IntegrationsLoaded(List.from(_current)));
+  }
+
+  void _emitError(String message) {
+    emit(IntegrationsError(message));
+    _emitLoaded();
   }
 }

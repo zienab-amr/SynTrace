@@ -1,4 +1,5 @@
 enum IntegrationType { jira, github }
+
 enum IntegrationStatus { connected, disconnected, connecting }
 
 class IntegrationModel {
@@ -7,6 +8,7 @@ class IntegrationModel {
   final String description;
   final IntegrationStatus status;
   final String? accountName;
+  final bool suspended;
 
   const IntegrationModel({
     required this.type,
@@ -14,6 +16,7 @@ class IntegrationModel {
     required this.description,
     this.status = IntegrationStatus.disconnected,
     this.accountName,
+    this.suspended = false,
   });
 
   IntegrationModel copyWith({
@@ -22,6 +25,7 @@ class IntegrationModel {
     String? description,
     IntegrationStatus? status,
     String? accountName,
+    bool? suspended,
   }) {
     return IntegrationModel(
       type: type ?? this.type,
@@ -29,6 +33,7 @@ class IntegrationModel {
       description: description ?? this.description,
       status: status ?? this.status,
       accountName: accountName ?? this.accountName,
+      suspended: suspended ?? this.suspended,
     );
   }
 }

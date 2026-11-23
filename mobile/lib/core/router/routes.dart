@@ -19,6 +19,7 @@ class AppRoutes {
   static const String tasks = '/tasks';
   static const String meetings = '/meetings';
   static const String jiraCallback = '/settings/jira-callback';
+  static const String githubCallback = '/github/callback';
     
   static const String jiraActivity = '/jira-activity';
 
