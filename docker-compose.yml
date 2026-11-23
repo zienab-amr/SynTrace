@@ -25,7 +25,7 @@ x-ai-env: &ai-env
   EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
   EMBED_ON_WEBHOOK: "1"
   GROQ_API_KEY: ${GROQ_API_KEY:-}
-  GROQ_MODEL: ${GROQ_MODEL:-qwen/qwen3.8-27b}
+  GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-120b}
   SEMANTIC_K: ${SEMANTIC_K:-5}
   SEMANTIC_MIN_SCORE: ${SEMANTIC_MIN_SCORE:-0.5}
   AI_API_KEY: ${AI_API_KEY:-}
@@ -82,6 +82,8 @@ services:
       RabbitMQ__ClientProvidedName: "SynTrace.Api"
       AiService__BaseUrl: ${AI_SERVICE_URL:-http://ai-service:8000}
       AiService__ApiKey: ${AI_API_KEY:-}
+      AiService__TimeoutSeconds: "90"
+      AiService__EnableSynTraceProjectScope: "true"
     volumes:
       # Jira tokens are encrypted with these keys. Without this volume, a new container cannot read them.
       - dataprotection_keys:/root/.aspnet/DataProtection-Keys
@@ -201,7 +203,9 @@ services:
 
   ai-consumer:
     <<: *ai
-    environment: *ai-env
+    environment:
+      <<: *ai-env
+      GITHUB_CONSUMER: "1"
     command: ["python", "ai_consumer.py"]
     depends_on:
       ai-setup:
@@ -210,6 +214,19 @@ services:
         condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
+    restart: unless-stopped
+
+  ai-knowledge-worker:
+    <<: *ai
+    environment:
+      <<: *ai-env
+      KNOWLEDGE_API_URL: http://backend:8080
+    command: ["python", "knowledge_worker.py"]
+    depends_on:
+      ai-setup:
+        condition: service_completed_successfully
+      backend:
+        condition: service_started
     restart: unless-stopped
 
 configs:
