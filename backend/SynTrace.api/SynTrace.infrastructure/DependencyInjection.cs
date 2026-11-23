@@ -16,14 +16,15 @@ using SynTrace.Domain.Entities;
 using SynTrace.Domain.Interfaces;
 using SynTrace.Infrastructure.ExternalServices;
 using SynTrace.Infrastructure.Identity;
-using SynTrace.Infrastructure.Integrations.Jira;
 using SynTrace.Infrastructure.Integrations.GitHub;
+using SynTrace.Infrastructure.Integrations.Jira;
 using SynTrace.Infrastructure.Messaging.RabbitMQ;
 using SynTrace.Infrastructure.Messaging.RabbitMQ.Configuration;
 using SynTrace.Infrastructure.Messaging.RabbitMQ.Connections;
 using SynTrace.Infrastructure.Messaging.RabbitMQ.Publishing;
 using SynTrace.Infrastructure.Messaging.RabbitMQ.Topology;
 using SynTrace.Infrastructure.Options;
+using SynTrace.Infrastructure.Persistence;
 using SynTrace.Infrastructure.Persistence.Context;
 using SynTrace.Infrastructure.Repositories;
 using SynTrace.Infrastructure.Services;
@@ -126,6 +127,14 @@ namespace SynTrace.Infrastructure
             services.AddGitHubSync(configuration, runWorker: false);
             services.AddGitHubMessaging(configuration, runBackgroundJobs: false);
             services.AddScoped<ProjectIntegrationAccess>();
+
+
+            services.AddScoped<IUnitOfWork, UnitOfWork>();
+            services.AddScoped<IConversationRepository, ConversationRepository>();
+            services.AddScoped<SynTrace.Application.Contracts.Knowledge.IKnowledgeCompanyRepository,
+                KnowledgeCompanyRepository>();
+            services.AddScoped<IEmployeeIdentityLookupRepository, EmployeeIdentityLookupRepository>();
+            services.AddScoped<IAssistantAccessContextProvider, AssistantAccessContextProvider>();
 
             //Http Client
             services.AddHttpClient();

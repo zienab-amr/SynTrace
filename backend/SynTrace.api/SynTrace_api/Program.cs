@@ -34,6 +34,7 @@ builder.Services.AddHealthChecks()
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<ProjectStatusSubscriptions>();
 builder.Services.AddHostedService<ProjectStatusNotifier>();
+builder.Services.AddHostedService<PendingAssistantCleanupHostedService>();
 builder.Services.AddScoped<IAuthorizationHandler, CurrentCompanyAdminHandler>();
 builder.Services.AddAuthorizationBuilder().AddPolicy(CurrentCompanyAdminHandler.Policy, policy =>
     policy.RequireAuthenticatedUser().AddRequirements(new CurrentCompanyAdminRequirement()));

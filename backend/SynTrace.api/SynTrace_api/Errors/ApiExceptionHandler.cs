@@ -17,6 +17,13 @@ public sealed class ApiExceptionHandler(ILogger<ApiExceptionHandler> logger) : I
                 new Dictionary<string, string[]>(invalid.Errors)) { Status = 400 },
             ValidationException => new ProblemDetails { Status = 400, Title = "Invalid request" },
             RequestFailureException expected => new ProblemDetails { Status = expected.StatusCode, Title = expected.Message },
+            Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException => new ProblemDetails
+                { Status = 409, Title = "Conversation changed; refresh and retry" },
+            Microsoft.EntityFrameworkCore.DbUpdateException e
+                when e.InnerException is Microsoft.Data.SqlClient.SqlException { Number: 2601 or 2627 } sql &&
+                     sql.Message.Contains("IX_ConversationMessages_ConversationId_SequenceNumber",
+                         StringComparison.OrdinalIgnoreCase)
+                => new ProblemDetails { Status = 409, Title = "Conversation changed; refresh and retry" },
             KeyNotFoundException => new ProblemDetails { Status = 404, Title = "Resource not found" },
             UnauthorizedAccessException => new ProblemDetails { Status = 403, Title = "Access denied" },
             _ => new ProblemDetails { Status = 500, Title = "An unexpected error occurred" }
