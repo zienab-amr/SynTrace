@@ -8,7 +8,7 @@ import 'package:syntrace/features/projects/presentation/widgets/overlays/tasks_l
 
 /// ═══════════════════════════════════════════════════════════
 /// ProjectOverlays
-/// 
+///
 /// Helper مسؤول عن فتح الـ Overlays
 /// ═══════════════════════════════════════════════════════════
 class ProjectOverlays {
@@ -34,18 +34,15 @@ class ProjectOverlays {
     );
   }
 
- static void showBlocked(BuildContext context, String projectId) {
-  final count = MockTasks.blockedCount(projectId);
-  DetailOverlay.show(
-    context: context,
-    title: 'Blocked Tasks',
-    subtitle: '$count blocked',
-    child: TasksListView(
-      projectId: projectId,
-      filterStatus: 'blocked',  
-    ),
-  );
-}
+  static void showBlocked(BuildContext context, String projectId) {
+    final count = MockTasks.blockedCount(projectId);
+    DetailOverlay.show(
+      context: context,
+      title: 'Blocked Tasks',
+      subtitle: '$count blocked',
+      child: TasksListView(projectId: projectId, filterStatus: 'blocked'),
+    );
+  }
 
   static void showPRs(BuildContext context, String projectId) {
     final prs = MockPRs.getByProject(projectId);
