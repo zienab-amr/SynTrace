@@ -13,8 +13,8 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
   List<IntegrationModel> _current = [];
 
   IntegrationsCubit({IntegrationsRepository? repository})
-      : repository = repository ?? IntegrationsRepository(),
-        super(const IntegrationsInitial());
+    : repository = repository ?? IntegrationsRepository(),
+      super(const IntegrationsInitial());
 
   List<IntegrationModel> get current => List.unmodifiable(_current);
 
@@ -49,7 +49,9 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
         _updateStatus(
           IntegrationType.jira,
           IntegrationStatus.connected,
-          accountName: account == null || account.isEmpty ? 'Jira Workspace' : account,
+          accountName: account == null || account.isEmpty
+              ? 'Jira Workspace'
+              : account,
         );
       }
     } catch (_) {}
@@ -125,7 +127,9 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
       if (data is List) {
         rawSites = data;
       } else if (data is Map) {
-        rawSites = (data['data'] ?? data['items'] ?? data['sites'] ?? []) as List<dynamic>;
+        rawSites =
+            (data['data'] ?? data['items'] ?? data['sites'] ?? [])
+                as List<dynamic>;
       } else {
         rawSites = const [];
       }
@@ -140,10 +144,7 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
       }
 
       emit(
-        IntegrationsSiteSelectionRequired(
-          sites: sites,
-          pendingId: pendingId,
-        ),
+        IntegrationsSiteSelectionRequired(sites: sites, pendingId: pendingId),
       );
     } catch (error) {
       _emitError('Failed to fetch Jira sites: $error');
@@ -153,7 +154,10 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
   Future<void> completeJiraConnection(String pendingId, String cloudId) async {
     emit(const IntegrationsLoading());
     try {
-      final response = await repository.completeJiraConnection(pendingId, cloudId);
+      final response = await repository.completeJiraConnection(
+        pendingId,
+        cloudId,
+      );
       if (response.statusCode == 200 || response.statusCode == 204) {
         await loadIntegrations();
       } else {
@@ -172,13 +176,25 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
               authorizeExisting: authorizeExisting,
             )
           : await repository.startGitHubEmployeeConnection();
+      if (response.statusCode != 200) {
+        throw DioException(
+          requestOptions: response.requestOptions,
+          response: response,
+          type: DioExceptionType.badResponse,
+        );
+      }
       final url = _readUrl(response.data);
       if (url == null) throw const FormatException('Missing authorization URL');
-      final opened = await launchUrl(Uri.parse(url), webOnlyWindowName: '_self');
-      if (!opened) throw const FormatException('Could not open authorization URL');
+      final opened = await launchUrl(
+        Uri.parse(url),
+        webOnlyWindowName: '_self',
+      );
+      if (!opened)
+        throw const FormatException('Could not open authorization URL');
       _emitLoaded();
     } catch (error) {
-      _emitError('Failed to start GitHub connection: $error');
+      _updateStatus(IntegrationType.github, IntegrationStatus.disconnected);
+      _emitError('Failed to start GitHub connection: ${_friendlyError(error)}');
     }
   }
 
@@ -208,7 +224,9 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
   Future<void> _fetchGitHubPending(String completionId) async {
     emit(const IntegrationsLoading());
     try {
-      final response = await repository.getGitHubPendingConnection(completionId);
+      final response = await repository.getGitHubPendingConnection(
+        completionId,
+      );
       if (response.statusCode != 200 || response.data is! Map) {
         _emitError('Failed to load GitHub installation options.');
         return;
@@ -216,6 +234,10 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
       final pending = GitHubPendingConnection.fromJson(
         Map<String, dynamic>.from(response.data as Map),
       );
+      if (pending.kind == 'employee') {
+        await completeGitHubConnection(completionId, null);
+        return;
+      }
       if (pending.installations.isEmpty) {
         _emitError('No eligible GitHub installations were found.');
         return;
@@ -235,11 +257,14 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
         ),
       );
     } catch (error) {
-      _emitError('Failed to load GitHub installation options: $error');
+      _emitError('Failed to load GitHub installation options: ${_friendlyError(error)}');
     }
   }
 
-  Future<void> completeGitHubConnection(String completionId, int? installationId) async {
+  Future<void> completeGitHubConnection(
+    String completionId,
+    int? installationId,
+  ) async {
     emit(const IntegrationsLoading());
     try {
       final response = await repository.completeGitHubConnection(
@@ -252,7 +277,7 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
         _emitError('Failed to complete GitHub connection.');
       }
     } catch (error) {
-      _emitError('Failed to complete GitHub connection: $error');
+      _emitError('Failed to complete GitHub connection: ${_friendlyError(error)}');
     }
   }
 
@@ -265,11 +290,7 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
   }
 
   Future<void> disconnectJira() async {
-    await _disconnect(
-      repository.disconnectJira,
-      IntegrationType.jira,
-      'Jira',
-    );
+    await _disconnect(repository.disconnectJira, IntegrationType.jira, 'Jira');
   }
 
   Future<void> disconnectGitHub() async {
@@ -290,11 +311,17 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
       final response = await request();
       final url = _readUrl(response.data);
       if (url == null) throw const FormatException('Missing authorization URL');
-      final opened = await launchUrl(Uri.parse(url), webOnlyWindowName: '_self');
-      if (!opened) throw const FormatException('Could not open authorization URL');
+      final opened = await launchUrl(
+        Uri.parse(url),
+        webOnlyWindowName: '_self',
+      );
+      if (!opened)
+        throw const FormatException('Could not open authorization URL');
       _emitLoaded();
     } catch (error) {
-      _emitError('Failed to start $provider connection: $error');
+      _emitError(
+        'Failed to start $provider connection: ${_friendlyError(error)}',
+      );
     }
   }
 
@@ -326,8 +353,41 @@ class IntegrationsCubit extends Cubit<IntegrationsState> {
     return null;
   }
 
+  String _friendlyError(Object error) {
+    if (error is DioException) {
+      final data = error.response?.data;
+      if (data is Map) {
+        for (final key in const ['message', 'error', 'detail', 'title']) {
+          final value = data[key];
+          if (value is String && value.trim().isNotEmpty) {
+            return value.trim();
+          }
+        }
+      } else if (data is String && data.trim().isNotEmpty) {
+        return data.trim();
+      }
+
+      if (error.response?.statusCode == 503) {
+        return 'GitHub authorization service is unavailable (HTTP 503). Check backend configuration.';
+      }
+      final cause = error.error?.toString().trim();
+      if (cause != null && cause.isNotEmpty && cause != 'null') {
+        return cause;
+      }
+      final message = error.message?.trim();
+      if (message != null && message.isNotEmpty && message != 'null') {
+        return message;
+      }
+      return error.response?.statusCode == null
+          ? 'Network request failed.'
+          : 'Request failed (HTTP ${error.response!.statusCode}).';
+    }
+    return error.toString();
+  }
+
   void _setConnecting(IntegrationType type) {
     _updateStatus(type, IntegrationStatus.connecting);
+    _emitLoaded();
   }
 
   void _updateStatus(
