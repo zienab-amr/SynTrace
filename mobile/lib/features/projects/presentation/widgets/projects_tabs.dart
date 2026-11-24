@@ -29,10 +29,7 @@ class ProjectsTabs extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
-          children: List.generate(
-            tabs.length,
-            (index) => _buildTab(index),
-          ),
+          children: List.generate(tabs.length, (index) => _buildTab(index)),
         ),
       ),
     );
@@ -54,9 +51,7 @@ class ProjectsTabs extends StatelessWidget {
             tabs[index],
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: isSelected
-                  ? Colors.white
-                  : AppColors.textSecondaryDark,
+              color: isSelected ? Colors.white : AppColors.textSecondaryDark,
               fontSize: 13,
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
             ),
