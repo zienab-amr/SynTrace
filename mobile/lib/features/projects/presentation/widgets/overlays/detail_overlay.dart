@@ -3,7 +3,7 @@ import 'package:syntrace/core/theme/app_colors.dart';
 
 /// ═══════════════════════════════════════════════════════════
 /// DetailOverlay
-/// 
+///
 /// بيفتح Overlay فيه تفاصيل حاجة معينة
 /// - موبايل: Bottom Sheet طالع من تحت
 /// - ويب: Modal في النص
@@ -25,11 +25,8 @@ class DetailOverlay {
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
-        builder: (_) => _BottomSheetContent(
-          title: title,
-          subtitle: subtitle,
-          child: child,
-        ),
+        builder: (_) =>
+            _BottomSheetContent(title: title, subtitle: subtitle, child: child),
       );
     }
 
@@ -37,11 +34,8 @@ class DetailOverlay {
     return showDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.6),
-      builder: (_) => _ModalContent(
-        title: title,
-        subtitle: subtitle,
-        child: child,
-      ),
+      builder: (_) =>
+          _ModalContent(title: title, subtitle: subtitle, child: child),
     );
   }
 }
@@ -110,10 +104,7 @@ class _ModalContent extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(
-          maxWidth: 700,
-          maxHeight: 600,
-        ),
+        constraints: const BoxConstraints(maxWidth: 700, maxHeight: 600),
         child: Container(
           decoration: BoxDecoration(
             color: AppColors.backgroundDark,
@@ -175,10 +166,7 @@ class _OverlayHeader extends StatelessWidget {
           ),
           IconButton(
             onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(
-              Icons.close,
-              color: AppColors.textSecondaryDark,
-            ),
+            icon: const Icon(Icons.close, color: AppColors.textSecondaryDark),
           ),
         ],
       ),

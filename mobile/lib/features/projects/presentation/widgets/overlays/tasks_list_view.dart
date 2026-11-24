@@ -4,13 +4,9 @@ import 'package:syntrace/features/projects/data/mock_projects.dart';
 
 class TasksListView extends StatelessWidget {
   final String projectId;
-  final String? filterStatus;   // ← جديد (مثلاً 'blocked')
+  final String? filterStatus; // ← جديد (مثلاً 'blocked')
 
-  const TasksListView({
-    super.key,
-    required this.projectId,
-    this.filterStatus,
-  });
+  const TasksListView({super.key, required this.projectId, this.filterStatus});
 
   @override
   Widget build(BuildContext context) {

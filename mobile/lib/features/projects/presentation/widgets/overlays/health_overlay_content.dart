@@ -73,9 +73,7 @@ class _HealthFactor extends StatelessWidget {
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: theme.dividerColor.withOpacity(0.5),
-        ),
+        border: Border.all(color: theme.dividerColor.withOpacity(0.5)),
       ),
       child: Row(
         children: [

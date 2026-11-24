@@ -2,13 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
 import 'package:syntrace/features/projects/data/mock_projects.dart';
 
-class PRsListView extends StatelessWidget 
-{
+class PRsListView extends StatelessWidget {
   final String projectId;
   const PRsListView({super.key, required this.projectId});
   @override
-  Widget build(BuildContext context)
-  {
+  Widget build(BuildContext context) {
     final prs = MockPRs.getByProject(projectId);
     return ListView.separated(
       padding: const EdgeInsets.all(16),
