@@ -1,215 +1,169 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:intl/intl.dart';
-import 'package:syntrace/core/theme/app_colors.dart';
-import 'package:syntrace/features/meetings/data/models/meeting_note_model.dart';
+import 'package:syntrace/core/models/user_model.dart';
+import 'package:syntrace/core/services/current_user_service.dart';
 import 'package:syntrace/features/meetings/presentation/cubit/meeting_notes_cubit.dart';
 import 'package:syntrace/features/meetings/presentation/cubit/meeting_notes_state.dart';
-import 'package:syntrace/features/meetings/presentation/screens/create_meeting_screen.dart';
 import 'package:syntrace/features/meetings/presentation/screens/meeting_details_screen.dart';
+import 'package:syntrace/features/meetings/presentation/widgets/list/meetings_list.dart';
+import 'package:syntrace/features/meetings/presentation/widgets/shared/meeting_refresh_banner.dart';
 
 class ProjectTeamNotesSection extends StatelessWidget {
   final String projectId;
-  const ProjectTeamNotesSection({super.key, required this.projectId});
+  final bool publishedOnly;
+
+  const ProjectTeamNotesSection({
+    super.key,
+    required this.projectId,
+    this.publishedOnly = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (context) => MeetingNotesCubit()..loadMeetings(),
-      child: _ProjectTeamNotesView(projectId: projectId),
+    return ValueListenableBuilder<UserModel?>(
+      valueListenable: CurrentUserService.instance.userNotifier,
+      builder: (context, user, _) {
+        if (user == null || projectId.isEmpty) {
+          return const Center(child: Text('Project notes unavailable.'));
+        }
+        return BlocProvider(
+          key: ValueKey(
+            '${user.id}-${user.tenantId}-${user.role}-$projectId-$publishedOnly',
+          ),
+          create: (_) => MeetingNotesCubit()
+            ..loadMeetings(projectId: projectId)
+            ..loadClients(),
+          child: _ProjectNotesView(
+            projectId: projectId,
+            publishedOnly: publishedOnly,
+          ),
+        );
+      },
     );
   }
 }
 
-class _ProjectTeamNotesView extends StatelessWidget {
+class _ProjectNotesView extends StatelessWidget {
   final String projectId;
-  const _ProjectTeamNotesView({required this.projectId});
+  final bool publishedOnly;
+  const _ProjectNotesView({
+    required this.projectId,
+    required this.publishedOnly,
+  });
+
+  Future<void> _open(BuildContext context, String id) async {
+    final cubit = context.read<MeetingNotesCubit>();
+    if (cubit.state.isMutating || cubit.state.isRefreshing) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BlocProvider.value(
+          value: cubit,
+          child: MeetingDetailsScreen(meetingId: id),
+        ),
+      ),
+    );
+    if (cubit.isClosed) return;
+    cubit.clearSelectedMeeting();
+    await cubit.refreshMeetings();
+  }
 
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<MeetingNotesCubit, MeetingNotesState>(
       builder: (context, state) {
-        if (state is MeetingNotesLoading) {
-          return const Center(
-            child: CircularProgressIndicator(color: AppColors.primary),
-          );
+        final cubit = context.read<MeetingNotesCubit>();
+        if (state.listStatus == MeetingRequestStatus.initial ||
+            state.isLoading) {
+          return const Center(child: CircularProgressIndicator());
         }
-
-        if (state is MeetingNotesLoaded) {
-          final projectNotes = state.meetings
-              .where((n) => n.projectId == projectId)
-              .toList();
-
-          return Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Project Notes',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurface,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => BlocProvider.value(
-                              value: context.read<MeetingNotesCubit>(),
-                              child: CreateMeetingScreen(
-                                initialProjectId: projectId,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('New Note'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              if (projectNotes.isEmpty)
-                Center(
-                  child: Text(
-                    'No notes for this project yet.',
-                    style: TextStyle(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.onSurface.withOpacity(0.5),
-                    ),
+        if (state.listStatus == MeetingRequestStatus.failure) {
+          return Center(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    state.errorMessage ?? 'Unable to load project notes.',
+                    textAlign: TextAlign.center,
                   ),
-                )
-              else
-                ...projectNotes.map((note) => _NoteCard(note: note)),
-            ],
-          );
-        }
-        return const SizedBox.shrink();
-      },
-    );
-  }
-}
-
-class _NoteCard extends StatelessWidget {
-  final MeetingNote note;
-  const _NoteCard({required this.note});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final dateFormat = DateFormat('MMM dd, yyyy');
-
-    return GestureDetector(
-      onTap: () {
-        if (note.isDraft) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => BlocProvider.value(
-                value: context.read<MeetingNotesCubit>(),
-                child: CreateMeetingScreen(existingDraft: note),
+                  TextButton(
+                    onPressed: () => cubit.loadMeetings(projectId: projectId),
+                    child: const Text('Try again'),
+                  ),
+                ],
               ),
             ),
           );
-        } else {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => MeetingDetailsScreen(note: note)),
-          );
         }
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: note.isDraft
-                ? Colors.orange.withOpacity(0.5)
-                : theme.dividerColor.withOpacity(0.3),
-          ),
-        ),
-        child: Column(
+        final notes = state.meetings
+            .where(
+              (note) =>
+                  note.projectId == projectId &&
+                  (!publishedOnly || note.isPublished),
+            )
+            .toList(growable: false);
+        final busy = state.isRefreshing || state.isMutating;
+        return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
                   child: Text(
-                    note.title,
-                    style: TextStyle(
-                      color: theme.colorScheme.onSurface,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    publishedOnly ? 'Published AI results' : 'Project Notes',
+                    style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: note.isDraft
-                        ? Colors.orange.withOpacity(0.1)
-                        : Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    note.isDraft ? 'Draft' : 'AI Processed',
-                    style: TextStyle(
-                      color: note.isDraft ? Colors.orange : Colors.green,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                IconButton(
+                  tooltip: 'Refresh notes',
+                  onPressed: busy ? null : () => cubit.refreshMeetings(),
+                  icon: const Icon(Icons.refresh_rounded),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              dateFormat.format(note.date),
-              style: TextStyle(
-                color: theme.colorScheme.onSurface.withOpacity(0.5),
-                fontSize: 12,
+            if (state.isRefreshing) const LinearProgressIndicator(minHeight: 2),
+            if (state.listRefreshError != null)
+              MeetingRefreshBanner(
+                message: state.listRefreshError!,
+                onRetry: busy ? null : () => cubit.refreshMeetings(),
               ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Icon(
-                  Icons.people_outline,
-                  size: 16,
-                  color: theme.colorScheme.onSurface.withOpacity(0.5),
+            if (publishedOnly)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'Open a published meeting to view its extracted insights. PDF reports are not available here.',
                 ),
-                const SizedBox(width: 4),
-                Text(
-                  '${note.participants.length} participants',
-                  style: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(0.5),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
+              ),
+            Expanded(
+              child: notes.isEmpty
+                  ? RefreshIndicator(
+                      onRefresh: cubit.refreshMeetings,
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          const SizedBox(height: 32),
+                          Center(
+                            child: Text(
+                              publishedOnly
+                                  ? 'No published AI results yet.'
+                                  : 'No notes for this project yet.',
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : MeetingsList(
+                      meetings: notes,
+                      clients: state.clients,
+                      enabled: !busy,
+                      onRefresh: cubit.refreshMeetings,
+                      onOpen: (id) => _open(context, id),
+                    ),
             ),
           ],
-        ),
-      ),
+        );
+      },
     );
   }
 }
