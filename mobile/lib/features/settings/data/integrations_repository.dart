@@ -92,4 +92,43 @@ class IntegrationsRepository {
 
   Future<Response> getGitHubRepositories() =>
       _apiClient.get(ApiEndpoints.githubRepositories);
+
+  // ═══════════════════════════════════════════
+  // GitHub Project Integration
+  // ═══════════════════════════════════════════
+
+  Future<Response> getGitHubProjectStatus(String projectId) {
+    return _apiClient.get(ApiEndpoints.githubProject(projectId));
+  }
+
+  Future<Response> mapGitHubRepository({
+    required String projectId,
+    required int repositoryId,
+  }) {
+    return _apiClient.put(
+      ApiEndpoints.githubProjectRepository(projectId),
+      data: {'repositoryId': repositoryId},
+    );
+  }
+
+  Future<Response> unmapGitHubRepository(String projectId) {
+    return _apiClient.delete(ApiEndpoints.githubProjectRepository(projectId));
+  }
+
+  Future<Response> requestGitHubProjectSync(String projectId) {
+    return _apiClient.post(ApiEndpoints.githubProjectSync(projectId));
+  }
+
+  Future<Response> getGitHubProjectActivity(
+    String projectId, {
+    String kind = 'commit',
+    int offset = 0,
+    CancelToken? cancelToken,
+  }) {
+    return _apiClient.get(
+      ApiEndpoints.githubProjectActivity(projectId),
+      queryParameters: {'kind': kind, 'offset': offset},
+      cancelToken: cancelToken,
+    );
+  }
 }
