@@ -1,243 +1,317 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:intl/intl.dart';
-import 'package:syntrace/features/meetings/presentation/cubit/meeting_notes_cubit.dart';
-import '../../data/models/meeting_note_model.dart';
-import 'create_meeting_screen.dart';
 
-class MeetingDetailsScreen extends StatelessWidget {
-  final MeetingNote note;
+import '../../data/models/knowledge_source_model.dart';
+import '../cubit/meeting_notes_cubit.dart';
+import '../cubit/meeting_notes_state.dart';
+import '../widgets/details/meeting_details_error.dart';
+import '../widgets/details/meeting_evidence_section.dart';
+import '../widgets/details/meeting_header.dart';
+import '../widgets/details/meeting_processing_section.dart';
+import '../widgets/details/meeting_source_file_section.dart';
+import '../widgets/details/meeting_transcript_section.dart';
 
-  const MeetingDetailsScreen({super.key, required this.note});
+class MeetingDetailsScreen extends StatefulWidget {
+  final String meetingId;
 
-  void _showDeleteDialog(BuildContext context) {
-    showDialog(
+  const MeetingDetailsScreen({super.key, required this.meetingId});
+
+  @override
+  State<MeetingDetailsScreen> createState() => _MeetingDetailsScreenState();
+}
+
+class _MeetingDetailsScreenState extends State<MeetingDetailsScreen>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+
+    WidgetsBinding.instance.addObserver(this);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      context.read<MeetingNotesCubit>().loadMeetingDetails(widget.meetingId);
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      _refreshMeeting();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // ═══════════════════════════════════════════
+  // Refresh Meeting
+  // ═══════════════════════════════════════════
+
+  Future<void> _refreshMeeting() async {
+    final cubit = context.read<MeetingNotesCubit>();
+
+    if (cubit.state.isRefreshingDetails ||
+        cubit.state.isLoadingDetails ||
+        cubit.state.isMutating) {
+      return;
+    }
+
+    await cubit.loadMeetingDetails(widget.meetingId, silent: true);
+  }
+
+  // ═══════════════════════════════════════════
+  // Retry Extraction
+  // ═══════════════════════════════════════════
+
+  Future<void> _retryExtraction(KnowledgeSourceDetails details) async {
+    final cubit = context.read<MeetingNotesCubit>();
+
+    final success = await cubit.retryExtraction(
+      id: details.id,
+      version: details.source.version,
+    );
+
+    if (!mounted) return;
+
+    _showMessage(
+      success
+          ? 'Processing retry requested successfully.'
+          : cubit.state.errorMessage ?? 'Failed to retry processing.',
+    );
+  }
+
+  // ═══════════════════════════════════════════
+  // Delete Meeting
+  // ═══════════════════════════════════════════
+
+  Future<void> _deleteMeeting(KnowledgeSourceDetails details) async {
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
+        final colors = Theme.of(dialogContext).colorScheme;
+
         return AlertDialog(
-          title: const Text('Delete Note'),
-          content: const Text('Are you sure you want to delete this meeting note?'),
+          title: const Text('Delete Meeting'),
+          content: Text(
+            'Are you sure you want to delete '
+            '"${details.title}"?\n\n'
+            'This will withdraw the meeting source '
+            'and its published results.',
+          ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
               child: const Text('Cancel'),
             ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                context.read<MeetingNotesCubit>().deleteMeeting(note.id);
-                Navigator.pop(context);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: colors.error,
+                foregroundColor: colors.onError,
               ),
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
               child: const Text('Delete'),
             ),
           ],
         );
       },
     );
+
+    if (confirmed != true || !mounted) return;
+
+    final cubit = context.read<MeetingNotesCubit>();
+
+    if (!cubit.state.canUseSelectedMeeting ||
+        cubit.state.selectedMeeting?.id != details.id) {
+      _showMessage('Refresh the meeting before deleting it.');
+      return;
+    }
+    final success = await cubit.deleteMeeting(details.id);
+
+    if (!mounted) return;
+
+    if (success) {
+      _showMessage('Meeting deleted successfully.');
+      Navigator.pop(context, true);
+    } else {
+      _showMessage(cubit.state.errorMessage ?? 'Failed to delete meeting.');
+    }
   }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  // ═══════════════════════════════════════════
+  // Main UI
+  // ═══════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: Text(note.title),
-        backgroundColor: theme.scaffoldBackgroundColor,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.delete_outline, color: Colors.red),
-            tooltip: 'Delete Note',
-            onPressed: () => _showDeleteDialog(context),
-          ),
-          IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Edit Note',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => BlocProvider.value(
-                    value: context.read<MeetingNotesCubit>(),
-                    child: CreateMeetingScreen(existingDraft: note),
-                  ),
-                ),
-              ).then((_) {
-                if (context.mounted) Navigator.pop(context);
-              });
-            },
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.calendar_today,
-                  size: 16,
-                  color: theme.colorScheme.onSurface.withOpacity(0.5),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  DateFormat('MMMM dd, yyyy').format(note.date),
-                  style: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(0.5),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                if (note.projectName != null) ...[
-                  Icon(
-                    Icons.folder_outlined,
-                    size: 16,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    note.projectName!,
-                    style: TextStyle(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ],
+    return BlocBuilder<MeetingNotesCubit, MeetingNotesState>(
+      builder: (context, state) {
+        final selected = state.selectedMeeting;
+
+        final details = selected?.id == widget.meetingId ? selected : null;
+
+        final isBusy =
+            state.isMutating ||
+            state.isRefreshingDetails ||
+            state.isLoadingDetails;
+
+        return Scaffold(
+          backgroundColor: theme.scaffoldBackgroundColor,
+
+          appBar: AppBar(
+            title: Text(
+              details?.title ?? 'Meeting Details',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 24),
-            if (note.participants.isNotEmpty) ...[
-              Text(
-                'Participants',
-                style: TextStyle(
-                  color: theme.colorScheme.onSurface,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+            backgroundColor: theme.scaffoldBackgroundColor,
+
+            actions: [
+              IconButton(
+                tooltip: 'Refresh meeting',
+                onPressed: isBusy || state.isLoadingDetails
+                    ? null
+                    : _refreshMeeting,
+                icon: const Icon(Icons.refresh_rounded),
+              ),
+
+              if (details != null)
+                IconButton(
+                  tooltip: 'Delete meeting',
+                  onPressed: state.canUseSelectedMeeting
+                      ? () => _deleteMeeting(details)
+                      : null,
+                  icon: Icon(
+                    Icons.delete_outline_rounded,
+                    color: theme.colorScheme.error,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: note.participants
-                    .map(
-                      (p) => Chip(
-                        avatar: CircleAvatar(
-                          child: Text(p[0].toUpperCase()),
-                          backgroundColor:
-                              theme.colorScheme.primary.withOpacity(0.3),
-                        ),
-                        label: Text(p),
-                      ),
-                    )
-                    .toList(),
-              ),
-              const SizedBox(height: 24),
             ],
-            if (note.keyPoints.isNotEmpty) ...[
-              Text(
-                'Meeting Highlights',
-                style: TextStyle(
-                  color: theme.colorScheme.onSurface,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 12),
-              ...note.keyPoints.map(
-                (point) => Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surface,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border(
-                      left: BorderSide(
-                        color: _getTypeColor(point.type),
-                        width: 4,
-                      ),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _getTypeIcon(point.type),
-                        size: 18,
-                        color: _getTypeColor(point.type),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          point.text,
-                          style: TextStyle(color: theme.colorScheme.onSurface),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-            ],
-            Text(
-              'Full Transcript',
-              style: TextStyle(
-                color: theme.colorScheme.onSurface,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: theme.dividerColor.withOpacity(0.3)),
-              ),
-              child: Text(
-                note.content,
-                style: TextStyle(
-                  color: theme.colorScheme.onSurface.withOpacity(0.85),
-                  height: 1.6,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+
+          body: _buildBody(state, details),
+        );
+      },
     );
   }
 
-  Color _getTypeColor(MeetingPointType type) {
-    switch (type) {
-      case MeetingPointType.note:
-        return Colors.blue;
-      case MeetingPointType.decision:
-        return Colors.purple;
-      case MeetingPointType.action:
-        return Colors.green;
-      case MeetingPointType.blocker:
-        return Colors.red;
+  Widget _buildBody(MeetingNotesState state, KnowledgeSourceDetails? details) {
+    if (state.isDeleting && state.deletingId == widget.meetingId) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Deleting meeting...'),
+          ],
+        ),
+      );
     }
+
+    if (details == null) {
+      if (state.detailsStatus == MeetingRequestStatus.failure) {
+        return MeetingDetailsError(state: state, onRetry: _refreshMeeting);
+      }
+
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return Column(
+      children: [
+        if (state.isLoadingDetails || state.isRefreshingDetails)
+          const LinearProgressIndicator(minHeight: 2),
+        if (state.hasDetailsRefreshError)
+          _buildSurface(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Unable to update meeting'),
+                Text(
+                  '${state.detailsRefreshError!} Showing the last loaded information.',
+                ),
+                TextButton(
+                  onPressed: _refreshMeeting,
+                  child: const Text('Try again'),
+                ),
+              ],
+            ),
+          ),
+
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _refreshMeeting,
+
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+
+              padding: const EdgeInsets.all(20),
+
+              children: [
+                MeetingHeader(details: details, state: state),
+
+                const SizedBox(height: 20),
+
+                MeetingProcessingSection(
+                  details: details,
+                  state: state,
+                  onRetry: () => _retryExtraction(details),
+                ),
+
+                const SizedBox(height: 24),
+
+                MeetingEvidenceSection(details: details),
+
+                if (details.sourceText?.trim().isNotEmpty ?? false) ...[
+                  const SizedBox(height: 24),
+                  MeetingTranscriptSection(details: details),
+                ],
+
+                if (details.hasSourceFile) ...[
+                  const SizedBox(height: 24),
+                  MeetingSourceFileSection(details: details),
+                ],
+
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
-  IconData _getTypeIcon(MeetingPointType type) {
-    switch (type) {
-      case MeetingPointType.note:
-        return Icons.sticky_note_2_outlined;
-      case MeetingPointType.decision:
-        return Icons.check_circle_outline;
-      case MeetingPointType.action:
-        return Icons.task_alt;
-      case MeetingPointType.blocker:
-        return Icons.block;
-    }
+  Widget _buildSurface({required Widget child}) {
+    final theme = Theme.of(context);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+
+        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.3)),
+      ),
+
+      child: child,
+    );
   }
 }
