@@ -6,7 +6,7 @@ import 'package:syntrace/core/network/api_endpoints.dart';
 import 'package:syntrace/features/chat/data/models/chat_error.dart';
 import 'package:syntrace/features/chat/data/models/chat_message.dart';
 import 'package:syntrace/features/chat/data/models/chat_session.dart';
-import 'package:syntrace/features/chat/data/models/jira_card_model.dart';
+import 'package:syntrace/features/chat/data/models/chat_source_model.dart';
 import 'chat_state.dart';
 import 'package:uuid/uuid.dart';
 
@@ -50,7 +50,8 @@ class ChatCubit extends Cubit<ChatState> {
           id: 'ai-${map['id']}',
           role: ChatRole.ai,
           content: map['answer']?.toString() ?? '',
-          timestamp: DateTime.now(),
+          timestamp: DateTime.tryParse(map['createdAt']?.toString() ?? '') ?? DateTime.now(),
+          sources: ChatSourceModel.parseList(map['links']),
         ),
       ];
     }).toList();
@@ -276,7 +277,7 @@ class ChatCubit extends Cubit<ChatState> {
 
     final responseData = response.data;
     String aiResponseText = '';
-    final jiraCards = <JiraCardModel>[];
+    List<ChatSourceModel> sources = const [];
 
     if (responseData is Map) {
       final newConversationId = responseData['conversationId']?.toString();
@@ -285,21 +286,7 @@ class ChatCubit extends Cubit<ChatState> {
       }
       _useServerMessageId(_firstClientMessageId ?? clientMessageId, responseData['messageId']?.toString());
       aiResponseText = responseData['answer']?.toString() ?? 'No response received.';
-      if (responseData['links'] is List) {
-        for (final link in responseData['links'] as List) {
-          if (link is Map) {
-            jiraCards.add(JiraCardModel(
-              issueKey: link['key']?.toString() ?? '',
-              summary: link['summary']?.toString() ?? '',
-              status: link['status']?.toString() ?? '',
-              statusCategory: link['statusCategory']?.toString() ?? '',
-              priority: link['priority']?.toString() ?? '',
-              issueType: link['type']?.toString() ?? '',
-              url: link['url']?.toString() ?? '',
-            ));
-          }
-        }
-      }
+      sources = ChatSourceModel.parseList(responseData['links']);
     } else {
       aiResponseText = responseData.toString();
     }
@@ -313,7 +300,7 @@ class ChatCubit extends Cubit<ChatState> {
       content: '',
       timestamp: DateTime.now(),
       isStreaming: true,
-      jiraCards: jiraCards,
+      sources: sources,
     );
 
     final latest = state;
@@ -396,6 +383,7 @@ class ChatCubit extends Cubit<ChatState> {
         hasError: m.hasError,
         steps: m.steps,
         jiraCards: m.jiraCards,
+        sources: m.sources,
         quotedExcerpts: m.quotedExcerpts,
       );
     }).toList();
