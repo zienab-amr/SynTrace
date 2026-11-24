@@ -9,6 +9,7 @@ import 'package:syntrace/features/auth/presentation/widgets/auth_button.dart';
 import 'package:syntrace/features/auth/presentation/widgets/auth_footer.dart';
 import 'package:syntrace/features/auth/presentation/widgets/auth_screen_layout.dart';
 import 'package:syntrace/features/auth/presentation/widgets/auth_text_field.dart';
+import 'package:syntrace/features/auth/presentation/validators/auth_validators.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -25,7 +26,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmController = TextEditingController();
-  final _phoneController = TextEditingController(); // ضفنا التليفون
+  final _phoneController = TextEditingController();
   bool _agreedToTerms = false;
 
   @override
@@ -56,6 +57,9 @@ class _SignupScreenState extends State<SignupScreen> {
       firstName: _firstNameController.text.trim(),
       lastName: _lastNameController.text.trim(),
       email: _emailController.text.trim().toLowerCase(), // ═══ Trim + Lowercase
+      phoneNumber: _phoneController.text.trim().isEmpty
+          ? null
+          : _phoneController.text.trim(),
       password: _passwordController.text,
     );
   }
@@ -71,10 +75,6 @@ class _SignupScreenState extends State<SignupScreen> {
               context.go(AppRoutes.verifyOtp, extra: state.email);
             }
           });
-        }
-
-        if (state is EmailAlreadyExists) {
-          _showEmailExistsDialog(context, state.email);
         }
 
         if (state is SignupError) {
@@ -95,11 +95,11 @@ class _SignupScreenState extends State<SignupScreen> {
                   hint: 'Acme Corp',
                   icon: Icons.business_outlined,
                   controller: _companyController,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty)
-                      return 'Company name is required';
-                    return null;
-                  },
+                  validator: (value) => AuthValidators.requiredText(
+                    value,
+                    label: 'Company name',
+                    maxLength: 200,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 AuthTextField(
@@ -107,11 +107,11 @@ class _SignupScreenState extends State<SignupScreen> {
                   hint: 'John',
                   icon: Icons.person_outline,
                   controller: _firstNameController,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty)
-                      return 'First name is required';
-                    return null;
-                  },
+                  validator: (value) => AuthValidators.requiredText(
+                    value,
+                    label: 'First name',
+                    maxLength: 100,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 AuthTextField(
@@ -119,11 +119,11 @@ class _SignupScreenState extends State<SignupScreen> {
                   hint: 'Doe',
                   icon: Icons.person_outline,
                   controller: _lastNameController,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty)
-                      return 'Last name is required';
-                    return null;
-                  },
+                  validator: (value) => AuthValidators.requiredText(
+                    value,
+                    label: 'Last name',
+                    maxLength: 100,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 AuthTextField(
@@ -132,11 +132,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   icon: Icons.phone_outlined,
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty)
-                      return 'Phone number is required';
-                    return null;
-                  },
+                  validator: AuthValidators.phoneNumber,
                 ),
                 const SizedBox(height: 16),
                 AuthTextField(
@@ -145,27 +141,16 @@ class _SignupScreenState extends State<SignupScreen> {
                   icon: Icons.email_outlined,
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    if (value == null || value.isEmpty)
-                      return 'Email is required';
-                    if (!RegExp(r'^[\w\.-]+@[\w\.-]+\.\w+$').hasMatch(value))
-                      return 'Enter a valid email';
-                    return null;
-                  },
+                  validator: AuthValidators.email,
                 ),
                 const SizedBox(height: 16),
                 AuthTextField(
                   label: 'Password',
-                  hint: 'At least 6 characters',
+                  hint: '6+ chars, uppercase, lowercase, number & symbol',
                   icon: Icons.lock_outline,
                   controller: _passwordController,
                   isPassword: true,
-                  validator: (value) {
-                    if (value == null || value.isEmpty)
-                      return 'Password is required';
-                    if (value.length < 6) return 'At least 6 characters';
-                    return null;
-                  },
+                  validator: AuthValidators.signupPassword,
                 ),
                 const SizedBox(height: 16),
                 AuthTextField(
@@ -264,40 +249,6 @@ class _SignupScreenState extends State<SignupScreen> {
           ),
         ),
       ],
-    );
-  }
-
-  void _showEmailExistsDialog(BuildContext context, String email) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: Row(
-            children: const [
-              Icon(Icons.info_outline, color: AppColors.warning, size: 22),
-              SizedBox(width: 10),
-              Text('Email Already Registered'),
-            ],
-          ),
-          content: Text(
-            'The email "$email" is already registered.\n\nPlease sign in instead.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Use Different Email'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                context.go(AppRoutes.login);
-              },
-              child: const Text('Sign In'),
-            ),
-          ],
-        );
-      },
     );
   }
 

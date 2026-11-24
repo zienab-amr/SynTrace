@@ -8,6 +8,7 @@ import 'package:syntrace/features/auth/presentation/cubit/signup_state.dart';
 import 'package:syntrace/features/auth/presentation/widgets/auth_button.dart';
 import 'package:syntrace/features/auth/presentation/widgets/auth_screen_layout.dart';
 import 'package:syntrace/features/auth/presentation/widgets/auth_text_field.dart';
+import 'package:syntrace/features/auth/presentation/validators/auth_validators.dart';
 
 class OtpScreen extends StatefulWidget {
   final String email;
@@ -68,12 +69,7 @@ class _OtpScreenState extends State<OtpScreen> {
                   controller: _otpController,
                   keyboardType: TextInputType.number,
                   textInputAction: TextInputAction.done,
-                  validator: (value) {
-                    if (value == null || value.isEmpty)
-                      return 'OTP is required';
-                    if (value.length < 4) return 'Enter the full code';
-                    return null;
-                  },
+                  validator: AuthValidators.otp,
                 ),
               ],
             ),

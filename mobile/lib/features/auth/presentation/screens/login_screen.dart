@@ -13,6 +13,7 @@ import 'package:syntrace/features/auth/presentation/widgets/auth_demo_hint.dart'
 import 'package:syntrace/features/auth/presentation/widgets/auth_footer.dart';
 import 'package:syntrace/features/auth/presentation/widgets/auth_screen_layout.dart';
 import 'package:syntrace/features/auth/presentation/widgets/auth_text_field.dart';
+import 'package:syntrace/features/auth/presentation/validators/auth_validators.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -90,15 +91,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   icon: Icons.email_outlined,
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Email is required';
-                    }
-                    if (!RegExp(r'^[\w\.-]+@[\w\.-]+\.\w+$').hasMatch(value)) {
-                      return 'Enter a valid email';
-                    }
-                    return null;
-                  },
+                  validator: AuthValidators.email,
                 ),
                 const SizedBox(height: 16),
                 AuthTextField(
@@ -108,15 +101,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: _passwordController,
                   isPassword: true,
                   textInputAction: TextInputAction.done,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Password is required';
-                    }
-                    if (value.length < 6) {
-                      return 'Password must be at least 6 characters';
-                    }
-                    return null;
-                  },
+                  validator: AuthValidators.loginPassword,
                 ),
               ],
             ),
@@ -143,7 +128,7 @@ class _LoginScreenState extends State<LoginScreen> {
           },
         ),
         demoHint: const AuthDemoHint(
-          message: 'Click "Sign in" with any credentials.',
+          message: 'Sign in with your registered email and password.',
         ),
         footer: AuthFooter(
           question: "Don't have an account?",
