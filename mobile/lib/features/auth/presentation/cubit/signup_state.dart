@@ -40,11 +40,3 @@ class SignupError extends SignupState {
   @override
   List<Object?> get props => [message];
 }
-
-class EmailAlreadyExists extends SignupState {
-  final String email;
-  const EmailAlreadyExists(this.email);
-
-  @override
-  List<Object?> get props => [email];
-}

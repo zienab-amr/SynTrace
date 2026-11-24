@@ -19,6 +19,7 @@ class SignupCubit extends Cubit<SignupState> {
     required String lastName,
     required String email,
     required String password,
+    String? phoneNumber,
   }) async {
     if (state is SignupLoading) return;
     emit(const SignupLoading());
@@ -28,18 +29,15 @@ class SignupCubit extends Cubit<SignupState> {
     final trimmedFirstName = firstName.trim();
     final trimmedLastName = lastName.trim();
 
-    final emailExists = await _repository.checkEmailExists(trimmedEmail);
-    if (emailExists) {
-      emit(EmailAlreadyExists(trimmedEmail));
-      return;
-    }
-
     PendingSignupService.instance.save(
       SignupRequest(
         companyName: trimmedCompany,
         firstName: trimmedFirstName,
         lastName: trimmedLastName,
         email: trimmedEmail,
+        phoneNumber: phoneNumber == null || phoneNumber.trim().isEmpty
+            ? null
+            : phoneNumber.trim(),
         password: password,
       ),
     );
