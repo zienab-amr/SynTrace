@@ -26,9 +26,16 @@ class ApiEndpoints {
   static const String createRole = '/Role/create-role';
   static const String updateRole = '/Role/update-role';
   static const String deleteRole = '/Role/delete-role';
+  static const String projects = '/projects';
 
-  static const String projects = '/Projects';
-  static String projectById(String id) => '/Projects/$id';
+  static String projectById(String id) => '/projects/$id';
+
+  static const String projectJiraOptions = '/projects/jira-options';
+
+  static String projectJira(String projectId) => '/projects/$projectId/jira';
+
+  static String projectMember(String projectId, String employeeId) =>
+      '/projects/$projectId/members/$employeeId';
 
   static const String askAssistant = '/assistant/ask';
   static const String getConversations = '/assistant/conversations';
@@ -68,6 +75,8 @@ class ApiEndpoints {
   static const String githubCompany = '/integrations/github/company';
   static const String githubEmployee = '/integrations/github/employee';
   static const String githubRepositories = '/integrations/github/repositories';
+  static String githubProjectActivity(String projectId) =>
+      '/projects/$projectId/github/activity';
 
   static String githubProject(String projectId) =>
       '/integrations/github/projects/$projectId';
@@ -75,4 +84,24 @@ class ApiEndpoints {
       '/integrations/github/projects/$projectId/repository';
   static String githubProjectSync(String projectId) =>
       '/integrations/github/projects/$projectId/sync';
+  // ═══════════════════════════════════════════
+  // Knowledge Sources & Meeting Notes
+  // ═══════════════════════════════════════════
+
+  static const String clients = '/Client';
+
+  static const String knowledgeSources = '/knowledge/sources';
+
+  static const String knowledgeSourcesUpload = '/knowledge/sources/upload';
+
+  static String knowledgeSourceById(String id) => '/knowledge/sources/$id';
+
+  static String knowledgeSourceVersions(String id) =>
+      '/knowledge/sources/$id/versions';
+
+  static String knowledgeSourceVersionUpload(String id) =>
+      '/knowledge/sources/$id/versions/upload';
+
+  static String knowledgeSourceRetry(String id, int version) =>
+      '/knowledge/sources/$id/versions/$version/retry';
 }
