@@ -5,6 +5,8 @@ import 'package:syntrace/features/chat/data/models/chat_message.dart';
 import 'package:syntrace/features/chat/presentation/widgets/ai_progress_steps.dart';
 import 'package:syntrace/features/chat/presentation/widgets/jira_cards_list.dart';
 
+import 'chat_sources_list.dart';
+
 class MessageBubble extends StatefulWidget {
   final ChatMessage message;
   final VoidCallback? onRetry;
@@ -294,7 +296,10 @@ class _MessageBubbleState extends State<MessageBubble> {
             const SizedBox(height: 4),
             _BlinkingCursor(color: theme.colorScheme.onSurface),
           ],
-          if (widget.message.jiraCards.isNotEmpty) ...[
+          if (widget.message.sources.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            ChatSourcesList(sources: widget.message.sources),
+          ] else if (widget.message.jiraCards.isNotEmpty) ...[
             const SizedBox(height: 12),
             JiraCardsList(cards: widget.message.jiraCards),
           ],
