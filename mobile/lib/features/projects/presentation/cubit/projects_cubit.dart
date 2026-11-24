@@ -1,104 +1,167 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:syntrace/core/models/project_model.dart';
-import 'package:syntrace/features/projects/data/mock_projects.dart';
+
+import '../../data/models/project_api_model.dart';
+import '../../data/projects_repository.dart';
+
 import 'projects_state.dart';
 
 class ProjectsCubit extends Cubit<ProjectsState> {
-  ProjectsCubit() : super(const ProjectsInitial());
+  final ProjectsRepository _repository;
 
-  List<ProjectModel> _allProjects = [];
+  ProjectsCubit({ProjectsRepository? repository})
+    : _repository = repository ?? ProjectsRepository(),
+      super(const ProjectsInitial());
+
+  List<ProjectApiModel> _allProjects = [];
+
   String _searchQuery = '';
-  ProjectStatus? _statusFilter;
-  String? _riskFilter;
+
+  CancelToken? _cancelToken;
+
+  bool _isLoading = false;
+
+  // ═══════════════════════════════════════════
+  // Load Projects
+  // ═══════════════════════════════════════════
 
   Future<void> loadProjects() async {
+    if (isClosed || _isLoading) return;
+
+    _isLoading = true;
+
+    _cancelToken = CancelToken();
+
     emit(const ProjectsLoading());
+
     try {
-      await Future.delayed(const Duration(milliseconds: 300));
-      _allProjects = MockProjects.projects;
+      final projects = await _repository.getProjects(cancelToken: _cancelToken);
+
+      if (isClosed) return;
+
+      _allProjects = projects;
+
       _emitFiltered();
-    } catch (e) {
-      emit(ProjectsError('Failed to load projects: $e'));
+    } catch (error) {
+      if (isClosed) return;
+
+      if (error is DioException && CancelToken.isCancel(error)) {
+        return;
+      }
+
+      _allProjects = [];
+
+      emit(ProjectsError(_getErrorMessage(error)));
+    } finally {
+      _isLoading = false;
+      _cancelToken = null;
     }
   }
 
-  // ═══════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════
   // Search
-  // ═══════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════
+
   void search(String query) {
     _searchQuery = query;
-    _emitFiltered();
+
+    if (state is ProjectsLoaded) {
+      _emitFiltered();
+    }
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Status Filter
-  // ═══════════════════════════════════════════════════════
-  void setStatusFilter(ProjectStatus? status) {
-    _statusFilter = status;
-    _emitFiltered();
-  }
-
-  // ═══════════════════════════════════════════════════════
-  // Risk Filter
-  // ═══════════════════════════════════════════════════════
-  void setRiskFilter(String? risk) {
-    _riskFilter = risk;
-    _emitFiltered();
-  }
-
-  // ═══════════════════════════════════════════════════════
-  // Clear All
-  // ═══════════════════════════════════════════════════════
   void clearFilters() {
     _searchQuery = '';
-    _statusFilter = null;
-    _riskFilter = null;
-    _emitFiltered();
+
+    if (state is ProjectsLoaded) {
+      _emitFiltered();
+    }
   }
 
-  // ═══════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════
   // Refresh
-  // ═══════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════
+
   Future<void> refresh() async {
     await loadProjects();
   }
 
-  // ═══════════════════════════════════════════════════════
-  // Internal
-  // ═══════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════
+  // Filter Projects
+  // ═══════════════════════════════════════════
+
   void _emitFiltered() {
-    var filtered = List<ProjectModel>.from(_allProjects);
+    if (isClosed) return;
 
-    // ─── Search ───
-    if (_searchQuery.isNotEmpty) {
-      final q = _searchQuery.toLowerCase();
-      filtered = filtered.where((p) {
-        return p.name.toLowerCase().contains(q) ||
-            (p.description?.toLowerCase().contains(q) ?? false);
-      }).toList();
-    }
+    final query = _searchQuery.trim().toLowerCase();
 
-    // ─── Status ───
-    if (_statusFilter != null) {
-      filtered = filtered.where((p) => p.status == _statusFilter).toList();
-    }
+    final filtered = _allProjects.where((project) {
+      if (query.isEmpty) return true;
 
-    // ─── Risk ───
-    if (_riskFilter != null) {
-      filtered = filtered.where((p) {
-        final stats = MockProjectStats.forProject(p.id);
-        final riskName = stats.risk.name; // high, medium, low
-        return riskName == _riskFilter;
-      }).toList();
-    }
+      final name = project.name.toLowerCase();
+
+      final description = project.description?.toLowerCase() ?? '';
+
+      return name.contains(query) || description.contains(query);
+    }).toList();
 
     emit(
       ProjectsLoaded(
-        projects: filtered,
+        projects: List.unmodifiable(filtered),
         searchQuery: _searchQuery,
-        statusFilter: _statusFilter,
-        riskFilter: _riskFilter,
       ),
     );
+  }
+
+  // ═══════════════════════════════════════════
+  // Error Handling
+  // ═══════════════════════════════════════════
+
+  String _getErrorMessage(Object error) {
+    if (error is DioException) {
+      final data = error.response?.data;
+
+      if (data is Map) {
+        final message = data['message'];
+
+        if (message is String && message.isNotEmpty) {
+          return message;
+        }
+      }
+
+      switch (error.response?.statusCode) {
+        case 401:
+          return 'Your session has expired.';
+
+        case 403:
+          return 'You do not have permission '
+              'to access these projects.';
+
+        case 503:
+          return 'The service is temporarily '
+              'unavailable.';
+      }
+
+      if (error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.receiveTimeout) {
+        return 'The request timed out. '
+            'Please try again.';
+      }
+    }
+
+    if (error is FormatException) {
+      return 'Invalid project data received '
+          'from the server.';
+    }
+
+    return 'Unable to load projects. '
+        'Please try again.';
+  }
+
+  @override
+  Future<void> close() {
+    _cancelToken?.cancel();
+
+    return super.close();
   }
 }
