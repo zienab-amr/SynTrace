@@ -12,20 +12,28 @@ class AuthRepository {
         ApiEndpoints.login,
         data: request.toJson(),
       );
-
-      if (response.statusCode == 200) {
+      final statusCode = response.statusCode;
+      if (_isSuccessStatus(statusCode) && response.data is Map) {
         return ApiResponse.success(
-          data: AuthResponse.fromJson(response.data as Map<String, dynamic>),
-        );
-      } else {
-        return ApiResponse.failure(
-          message: response.data['message']?.toString() ?? 'Login failed',
+          data: AuthResponse.fromJson(
+            Map<String, dynamic>.from(response.data as Map),
+          ),
+          statusCode: statusCode,
         );
       }
-    } on DioException catch (e) {
-      return ApiResponse.failure(message: _extractError(e));
-    } catch (e) {
-      return ApiResponse.failure(message: 'Unexpected error: $e');
+      return ApiResponse.failure(
+        message: _messageFromData(
+          response.data,
+          fallback: statusCode == 200
+              ? 'The server returned an invalid login response.'
+              : 'Login failed${statusCode == null ? '' : ' (HTTP $statusCode)'}.',
+        ),
+        statusCode: statusCode,
+      );
+    } on DioException catch (error) {
+      return ApiResponse.failure(message: _extractError(error));
+    } catch (error) {
+      return ApiResponse.failure(message: 'Unexpected login error: $error');
     }
   }
 
@@ -35,23 +43,28 @@ class AuthRepository {
         ApiEndpoints.register,
         data: request.toJson(),
       );
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
+      final statusCode = response.statusCode;
+      if (_isSuccessStatus(statusCode) && response.data is Map) {
         return ApiResponse.success(
           data: RegisterResponse.fromJson(
-            response.data as Map<String, dynamic>,
+            Map<String, dynamic>.from(response.data as Map),
           ),
-        );
-      } else {
-        return ApiResponse.failure(
-          message:
-              response.data['message']?.toString() ?? 'Registration failed',
+          statusCode: statusCode,
         );
       }
-    } on DioException catch (e) {
-      return ApiResponse.failure(message: _extractError(e));
-    } catch (e) {
-      return ApiResponse.failure(message: 'Unexpected error: $e');
+      return ApiResponse.failure(
+        message: _messageFromData(
+          response.data,
+          fallback: statusCode == 200 || statusCode == 201
+              ? 'The server returned an invalid registration response.'
+              : 'Registration failed${statusCode == null ? '' : ' (HTTP $statusCode)'}.',
+        ),
+        statusCode: statusCode,
+      );
+    } on DioException catch (error) {
+      return ApiResponse.failure(message: _extractError(error));
+    } catch (error) {
+      return ApiResponse.failure(message: 'Unexpected registration error: $error');
     }
   }
 
@@ -63,11 +76,21 @@ class AuthRepository {
           'request': {'email': email},
         },
       );
-      return ApiResponse.success(data: response.statusCode == 200);
-    } on DioException catch (e) {
-      return ApiResponse.failure(message: _extractError(e));
-    } catch (e) {
-      return ApiResponse.failure(message: 'Unexpected error: $e');
+      final statusCode = response.statusCode;
+      if (_isSuccessStatus(statusCode)) {
+        return ApiResponse.success(data: true, statusCode: statusCode);
+      }
+      return ApiResponse.failure(
+        message: _messageFromData(
+          response.data,
+          fallback: 'Could not send the verification code${statusCode == null ? '' : ' (HTTP $statusCode)'}.',
+        ),
+        statusCode: statusCode,
+      );
+    } on DioException catch (error) {
+      return ApiResponse.failure(message: _extractError(error));
+    } catch (error) {
+      return ApiResponse.failure(message: 'Unexpected OTP error: $error');
     }
   }
 
@@ -82,26 +105,27 @@ class AuthRepository {
           'request': {'email': email, 'otp': otp},
         },
       );
-      return ApiResponse.success(data: response.statusCode == 200);
-    } on DioException catch (e) {
-      return ApiResponse.failure(message: _extractError(e));
-    } catch (e) {
-      return ApiResponse.failure(message: 'Unexpected error: $e');
-    }
-  }
-
-  Future<bool> checkEmailExists(String email) async {
-    try {
-      final response = await ApiClient.instance.get(
-        ApiEndpoints.checkEmail,
-        queryParameters: {'email': email},
-      );
-      if (response.statusCode == 200 && response.data is Map) {
-        return response.data['exists'] as bool? ?? false;
+      final statusCode = response.statusCode;
+      final data = response.data;
+      final valid = data == true ||
+          (data is Map &&
+              (data['isValid'] == true ||
+                  data['valid'] == true ||
+                  data['data'] == true));
+      if (_isSuccessStatus(statusCode) && valid) {
+        return ApiResponse.success(data: true, statusCode: statusCode);
       }
-      return false;
-    } catch (_) {
-      return false;
+      final fallback = _isSuccessStatus(statusCode)
+          ? 'The verification code is incorrect or expired.'
+          : 'Could not verify the code${statusCode == null ? '' : ' (HTTP $statusCode)'}.'.toString();
+      return ApiResponse.failure(
+        message: _messageFromData(data, fallback: fallback),
+        statusCode: statusCode,
+      );
+    } on DioException catch (error) {
+      return ApiResponse.failure(message: _extractError(error));
+    } catch (error) {
+      return ApiResponse.failure(message: 'Unexpected verification error: $error');
     }
   }
 
@@ -113,22 +137,81 @@ class AuthRepository {
         ApiEndpoints.employeeById,
         queryParameters: {'EmployeeId': employeeId},
       );
-
-      if (response.statusCode == 200 && response.data is Map) {
-        return ApiResponse.success(data: response.data as Map<String, dynamic>);
+      if (_isSuccessStatus(response.statusCode) && response.data is Map) {
+        return ApiResponse.success(
+          data: Map<String, dynamic>.from(response.data as Map),
+          statusCode: response.statusCode,
+        );
       }
-      return ApiResponse.failure(message: 'Failed to load profile');
-    } on DioException catch (e) {
-      return ApiResponse.failure(message: _extractError(e));
-    } catch (e) {
-      return ApiResponse.failure(message: 'Unexpected error: $e');
+      return ApiResponse.failure(
+        message: _messageFromData(
+          response.data,
+          fallback: 'Failed to load profile.',
+        ),
+        statusCode: response.statusCode,
+      );
+    } on DioException catch (error) {
+      return ApiResponse.failure(message: _extractError(error));
+    } catch (error) {
+      return ApiResponse.failure(message: 'Unexpected profile error: $error');
     }
   }
 
-  String _extractError(DioException e) {
-    final apiException = e.error is ApiException
-        ? e.error as ApiException
-        : UnknownException(message: e.message);
-    return apiException.message;
+  bool _isSuccessStatus(int? statusCode) =>
+      statusCode != null && statusCode >= 200 && statusCode < 300;
+
+  String _extractError(DioException error) {
+    final responseMessage = _messageFromData(
+      error.response?.data,
+      fallback: '',
+    );
+    if (responseMessage.isNotEmpty) return responseMessage;
+    if (error.error is ApiException) {
+      return (error.error as ApiException).message;
+    }
+    final cause = error.error?.toString().trim();
+    if (cause != null && cause.isNotEmpty && cause != 'null') return cause;
+    final message = error.message?.trim();
+    return message == null || message.isEmpty || message == 'null'
+        ? 'Network request failed.'
+        : message;
+  }
+
+  String _messageFromData(dynamic data, {required String fallback}) {
+    if (data is Map) {
+      for (final key in const ['message', 'error', 'detail']) {
+        final value = data[key];
+        if (value is String && value.trim().isNotEmpty) return value.trim();
+      }
+
+      final errors = data['errors'];
+      if (errors is Map) {
+        final messages = <String>[];
+        for (final entry in errors.entries) {
+          final value = entry.value;
+          final details = value is List
+              ? value.whereType<String>().where((item) => item.trim().isNotEmpty).toList()
+              : value is String && value.trim().isNotEmpty
+                  ? [value.trim()]
+                  : <String>[];
+          if (details.isNotEmpty) {
+            messages.add('${entry.key}: ${details.join(' ')}');
+          }
+        }
+        if (messages.isNotEmpty) return messages.join(' ');
+      } else if (errors is List) {
+        final messages = errors
+            .whereType<String>()
+            .where((item) => item.trim().isNotEmpty)
+            .toList();
+        if (messages.isNotEmpty) return messages.join(' ');
+      }
+
+      final title = data['title'];
+      if (title is String && title.trim().isNotEmpty) return title.trim();
+    } else if (data is String && data.trim().isNotEmpty) {
+      return data.trim();
+    }
+    return fallback;
   }
 }
