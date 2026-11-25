@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'package:syntrace/features/projects/data/realtime/project_status_model.dart';
+import 'package:syntrace/features/projects/data/realtime/project_status_service.dart';
 import 'package:syntrace/features/settings/data/integrations_repository.dart';
 import 'package:syntrace/features/settings/data/models/github_model.dart';
 
@@ -10,14 +12,21 @@ import 'project_github_state.dart';
 
 class ProjectGitHubCubit extends Cubit<ProjectGitHubState> {
   final IntegrationsRepository _repository;
+  final ProjectStatusService _projectStatusService;
 
   final String projectId;
   final bool canManage;
 
   Timer? _pollingTimer;
 
+  StreamSubscription<ProjectStatusModel>? _statusSubscription;
+
   bool _isFetching = false;
   bool _isActive = true;
+  bool _realtimeStarted = false;
+  bool _accessLost = false;
+  bool _closing = false;
+  bool _refreshPending = false;
 
   static const Duration _pollingInterval = Duration(seconds: 5);
 
@@ -25,19 +34,30 @@ class ProjectGitHubCubit extends Cubit<ProjectGitHubState> {
     required this.projectId,
     required this.canManage,
     IntegrationsRepository? repository,
+    ProjectStatusService? projectStatusService,
   }) : _repository = repository ?? IntegrationsRepository(),
+       _projectStatusService =
+           projectStatusService ?? ProjectStatusService(projectId: projectId),
        super(const ProjectGitHubState());
 
-  // ═══════════════════════════════════════════
+  // ─────────────────────────────────────────
   // Load Project Integration
-  // ═══════════════════════════════════════════
+  // ─────────────────────────────────────────
 
   Future<void> loadIntegration() async {
     await _fetchIntegration();
+
+    if (!isClosed && !_closing && !_accessLost && _isActive) {
+      _startRealtime();
+    }
   }
 
   Future<void> refreshIntegration() async {
     await _fetchIntegration(refresh: true);
+
+    if (!isClosed && !_closing && !_accessLost && _isActive) {
+      _startRealtime();
+    }
   }
 
   Future<void> _fetchIntegration({
@@ -46,6 +66,7 @@ class ProjectGitHubCubit extends Cubit<ProjectGitHubState> {
     bool afterAction = false,
   }) async {
     if (isClosed ||
+        _closing ||
         (!_isActive && !afterAction) ||
         _isFetching ||
         (state.isBusy && !afterAction)) {
@@ -73,7 +94,9 @@ class ProjectGitHubCubit extends Cubit<ProjectGitHubState> {
 
       final integration = GitHubProjectStatus.fromJson(_asMap(response.data));
 
-      if (isClosed) return;
+      if (isClosed || _closing) return;
+
+      _accessLost = false;
 
       final bindingChanged =
           state.integration?.bindingId != integration.bindingId;
@@ -93,12 +116,12 @@ class ProjectGitHubCubit extends Cubit<ProjectGitHubState> {
       if (integration.isMapped && !integration.isUnavailable) {
         await _fetchCoverage();
       } else {
-        if (!isClosed) {
+        if (!isClosed && !_closing) {
           emit(state.copyWith(clearCoverage: true, clearCoverageError: true));
         }
       }
     } catch (error) {
-      if (isClosed) return;
+      if (isClosed || _closing) return;
 
       emit(
         state.copyWith(
@@ -107,29 +130,25 @@ class ProjectGitHubCubit extends Cubit<ProjectGitHubState> {
         ),
       );
 
-      if (error is DioException) {
-        final code = error.response?.statusCode;
-
-        if (code == 401 || code == 403 || code == 404) {
-          stopPolling();
-
-          _clearRestrictedData();
-        }
+      if (_isAccessLost(error)) {
+        _clearRestrictedData();
       }
     } finally {
       _isFetching = false;
 
-      if (!isClosed) {
+      if (!isClosed && !_closing) {
         emit(state.copyWith(isRefreshing: false));
 
         _updatePolling();
+
+        _flushRealtimeRefresh();
       }
     }
   }
 
-  // ═══════════════════════════════════════════
+  // ─────────────────────────────────────────
   // Fetch Sync Coverage
-  // ═══════════════════════════════════════════
+  // ─────────────────────────────────────────
 
   Future<void> _fetchCoverage() async {
     try {
@@ -145,7 +164,7 @@ class ProjectGitHubCubit extends Cubit<ProjectGitHubState> {
 
       final coverage = GitHubSyncCoverage.fromJson(_asMap(data['source']));
 
-      if (isClosed) return;
+      if (isClosed || _closing) return;
 
       if (coverage.bindingId != state.integration?.bindingId) {
         emit(
@@ -160,10 +179,13 @@ class ProjectGitHubCubit extends Cubit<ProjectGitHubState> {
 
       emit(state.copyWith(coverage: coverage, clearCoverageError: true));
     } catch (error) {
-      if (isClosed) return;
+      if (isClosed || _closing) return;
+
       if (_isAccessLost(error)) {
         _clearRestrictedData();
+
         emit(state.copyWith(errorMessage: _getErrorMessage(error)));
+
         return;
       }
 
@@ -176,12 +198,18 @@ class ProjectGitHubCubit extends Cubit<ProjectGitHubState> {
     }
   }
 
-  // ═══════════════════════════════════════════
+  // ─────────────────────────────────────────
   // Load Available Repositories
-  // ═══════════════════════════════════════════
+  // ─────────────────────────────────────────
 
   Future<void> loadRepositories() async {
-    if (isClosed || !_isActive || !canManage || state.isLoadingRepositories || state.isBusy) {
+    if (isClosed ||
+        _closing ||
+        !_isActive ||
+        _accessLost ||
+        !canManage ||
+        state.isLoadingRepositories ||
+        state.isBusy) {
       return;
     }
 
@@ -211,7 +239,9 @@ class ProjectGitHubCubit extends Cubit<ProjectGitHubState> {
         (a, b) => a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase()),
       );
 
-      if (isClosed || !state.isLoadingRepositories) return;
+      if (isClosed || _closing || _accessLost || !state.isLoadingRepositories) {
+        return;
+      }
 
       emit(
         state.copyWith(
@@ -221,7 +251,9 @@ class ProjectGitHubCubit extends Cubit<ProjectGitHubState> {
         ),
       );
     } catch (error) {
-      if (isClosed || !state.isLoadingRepositories) return;
+      if (isClosed || _closing || !state.isLoadingRepositories) {
+        return;
+      }
 
       emit(
         state.copyWith(
@@ -233,12 +265,14 @@ class ProjectGitHubCubit extends Cubit<ProjectGitHubState> {
     }
   }
 
-  // ═══════════════════════════════════════════
+  // ─────────────────────────────────────────
   // Link Repository
-  // ═══════════════════════════════════════════
+  // ─────────────────────────────────────────
 
   Future<bool> linkRepository(int repositoryId) async {
     if (isClosed ||
+        _closing ||
+        _accessLost ||
         !canManage ||
         !state.canSelectRepository ||
         repositoryId <= 0) {
@@ -256,12 +290,16 @@ class ProjectGitHubCubit extends Cubit<ProjectGitHubState> {
     );
   }
 
-  // ═══════════════════════════════════════════
+  // ─────────────────────────────────────────
   // Resync / Retry
-  // ═══════════════════════════════════════════
+  // ─────────────────────────────────────────
 
   Future<bool> requestSync() async {
-    if (isClosed || !canManage || !state.canRequestSync) {
+    if (isClosed ||
+        _closing ||
+        _accessLost ||
+        !canManage ||
+        !state.canRequestSync) {
       return false;
     }
 
@@ -273,12 +311,12 @@ class ProjectGitHubCubit extends Cubit<ProjectGitHubState> {
     );
   }
 
-  // ═══════════════════════════════════════════
+  // ─────────────────────────────────────────
   // Unlink Repository
-  // ═══════════════════════════════════════════
+  // ─────────────────────────────────────────
 
   Future<bool> unlinkRepository() async {
-    if (isClosed || !canManage || !state.canUnlink) {
+    if (isClosed || _closing || _accessLost || !canManage || !state.canUnlink) {
       return false;
     }
 
@@ -290,15 +328,21 @@ class ProjectGitHubCubit extends Cubit<ProjectGitHubState> {
     );
   }
 
-  // ═══════════════════════════════════════════
+  // ─────────────────────────────────────────
   // Shared Mutation Handler
-  // ═══════════════════════════════════════════
+  // ─────────────────────────────────────────
 
   Future<bool> _runAction({
     required ProjectGitHubAction action,
     required Future<Response> Function() request,
   }) async {
-    if (isClosed || !_isActive || !canManage || state.isBusy || _isFetching) {
+    if (isClosed ||
+        _closing ||
+        !_isActive ||
+        _accessLost ||
+        !canManage ||
+        state.isBusy ||
+        _isFetching) {
       return false;
     }
 
@@ -311,7 +355,7 @@ class ProjectGitHubCubit extends Cubit<ProjectGitHubState> {
 
       _ensureSuccess(response);
 
-      if (isClosed) return false;
+      if (isClosed || _closing) return false;
 
       // Invalidate stale data after a successful mutation.
       emit(
@@ -323,37 +367,117 @@ class ProjectGitHubCubit extends Cubit<ProjectGitHubState> {
         ),
       );
 
-      // Always reload the authoritative server state.
+      // Reload the authoritative server state.
       await _fetchIntegration(silent: true, afterAction: true);
 
       // True means the mutation was accepted,
       // not that synchronization has completed.
       return true;
     } catch (error) {
-      if (isClosed) return false;
+      if (isClosed || _closing) return false;
 
       if (_isAccessLost(error)) {
         _clearRestrictedData();
       }
+
       emit(state.copyWith(errorMessage: _getErrorMessage(error)));
 
       return false;
     } finally {
-      if (!isClosed) {
+      if (!isClosed && !_closing) {
         emit(state.copyWith(action: ProjectGitHubAction.none));
 
         _updatePolling();
+
+        _flushRealtimeRefresh();
       }
     }
   }
 
-  // ═══════════════════════════════════════════
+  // ─────────────────────────────────────────
+  // Realtime Project Status
+  // ─────────────────────────────────────────
+
+  void _startRealtime() {
+    if (isClosed || _closing || !_isActive || _accessLost || _realtimeStarted) {
+      return;
+    }
+
+    _realtimeStarted = true;
+
+    _statusSubscription ??= _projectStatusService.updates.listen(
+      _handleProjectStatus,
+    );
+
+    unawaited(_connectRealtime());
+  }
+
+  Future<void> _connectRealtime() async {
+    try {
+      await _projectStatusService.start();
+    } finally {
+      if (!isClosed &&
+          !_closing &&
+          _isActive &&
+          !_accessLost &&
+          !_projectStatusService.isSubscribed) {
+        _realtimeStarted = false;
+      }
+    }
+  }
+
+  void _handleProjectStatus(ProjectStatusModel event) {
+    if (isClosed ||
+        _closing ||
+        !_isActive ||
+        _accessLost ||
+        event.projectId != projectId) {
+      return;
+    }
+
+    // SignalR notifications invalidate the cached status.
+    // REST remains the authoritative source of truth.
+    _refreshPending = true;
+
+    _flushRealtimeRefresh();
+  }
+
+  void _flushRealtimeRefresh() {
+    if (isClosed ||
+        _closing ||
+        !_isActive ||
+        _accessLost ||
+        !_refreshPending ||
+        _isFetching ||
+        state.isBusy) {
+      return;
+    }
+
+    _refreshPending = false;
+
+    unawaited(_fetchIntegration(silent: true));
+  }
+
+  void _stopRealtime() {
+    _realtimeStarted = false;
+    _refreshPending = false;
+
+    unawaited(_projectStatusService.stop());
+  }
+
+  // ─────────────────────────────────────────
   // Automatic Polling
-  // ═══════════════════════════════════════════
+  // ─────────────────────────────────────────
 
   void _updatePolling() {
-    if (isClosed || !_isActive || state.isBusy || !state.isProcessing) {
+    if (isClosed ||
+        _closing ||
+        !_isActive ||
+        _accessLost ||
+        state.isBusy ||
+        !state.isProcessing) {
       stopPolling();
+
       return;
     }
 
@@ -362,7 +486,12 @@ class ProjectGitHubCubit extends Cubit<ProjectGitHubState> {
     }
 
     _pollingTimer = Timer.periodic(_pollingInterval, (_) {
-      if (isClosed || !_isActive || _isFetching || state.isBusy) {
+      if (isClosed ||
+          _closing ||
+          !_isActive ||
+          _accessLost ||
+          _isFetching ||
+          state.isBusy) {
         return;
       }
 
@@ -375,45 +504,67 @@ class ProjectGitHubCubit extends Cubit<ProjectGitHubState> {
     _pollingTimer = null;
   }
 
-  // ═══════════════════════════════════════════
+  // ─────────────────────────────────────────
   // Lifecycle
-  // ═══════════════════════════════════════════
+  // ─────────────────────────────────────────
 
   void pausePolling() {
     _isActive = false;
+
     stopPolling();
+
+    _stopRealtime();
   }
 
   Future<void> resumePolling() async {
-    if (isClosed) return;
+    if (isClosed || _closing) return;
 
     _isActive = true;
 
     await _fetchIntegration(silent: true);
 
+    if (isClosed || _closing || !_isActive) return;
+
     _updatePolling();
+
+    if (!_accessLost) {
+      _startRealtime();
+    }
   }
 
-  // ═══════════════════════════════════════════
-  // Helpers
-  // ═══════════════════════════════════════════
+  // ─────────────────────────────────────────
+  // Access Control
+  // ─────────────────────────────────────────
 
   bool _isAccessLost(Object error) =>
       error is DioException &&
       const [401, 403, 404].contains(error.response?.statusCode);
 
   void _clearRestrictedData() {
+    _accessLost = true;
+
     stopPolling();
-    emit(state.copyWith(
-      status: ProjectGitHubRequestStatus.failure,
-      clearIntegration: true,
-      clearCoverage: true,
-      clearCoverageError: true,
-      repositories: const [],
-      repositoriesStatus: ProjectGitHubRequestStatus.initial,
-      clearRepositoriesError: true,
-    ));
+
+    _stopRealtime();
+
+    if (isClosed || _closing) return;
+
+    emit(
+      state.copyWith(
+        status: ProjectGitHubRequestStatus.failure,
+        clearIntegration: true,
+        clearCoverage: true,
+        clearCoverageError: true,
+        repositories: const [],
+        repositoriesStatus: ProjectGitHubRequestStatus.initial,
+        clearRepositoriesError: true,
+      ),
+    );
   }
+
+  // ─────────────────────────────────────────
+  // Response Helpers
+  // ─────────────────────────────────────────
 
   Map<String, dynamic> _asMap(dynamic data) {
     if (data is Map) {
@@ -485,11 +636,27 @@ class ProjectGitHubCubit extends Cubit<ProjectGitHubState> {
     return 'Something went wrong. Please try again.';
   }
 
+  // ─────────────────────────────────────────
+  // Dispose
+  // ─────────────────────────────────────────
+
   @override
-  Future<void> close() {
+  Future<void> close() async {
+    _closing = true;
     _isActive = false;
+    _realtimeStarted = false;
+    _refreshPending = false;
+
     stopPolling();
 
-    return super.close();
+    await super.close();
+
+    try {
+      await _statusSubscription?.cancel();
+
+      _statusSubscription = null;
+    } finally {
+      await _projectStatusService.dispose();
+    }
   }
 }

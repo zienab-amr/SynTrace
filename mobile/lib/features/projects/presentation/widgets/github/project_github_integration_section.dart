@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:syntrace/core/services/current_user_service.dart';
 
 import 'package:syntrace/features/settings/data/models/github_model.dart';
 
@@ -27,12 +28,24 @@ class ProjectGitHubIntegrationSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      key: ValueKey('$projectId-$canManage'),
-      create: (_) =>
-          ProjectGitHubCubit(projectId: projectId, canManage: canManage)
-            ..loadIntegration(),
-      child: const _ProjectGitHubIntegrationView(),
+    return ValueListenableBuilder(
+      valueListenable: CurrentUserService.instance.userNotifier,
+      builder: (context, user, child) {
+        if (user == null) {
+          return const SizedBox.shrink();
+        }
+
+        return BlocProvider(
+          key: ValueKey(
+            '${user.id}-${user.tenantId}-${user.role.name}'
+            '-$projectId-$canManage',
+          ),
+          create: (_) =>
+              ProjectGitHubCubit(projectId: projectId, canManage: canManage)
+                ..loadIntegration(),
+          child: const _ProjectGitHubIntegrationView(),
+        );
+      },
     );
   }
 }
@@ -74,7 +87,9 @@ class _ProjectGitHubIntegrationViewState
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
 
-    _cubit.stopPolling();
+    if (!_cubit.isClosed) {
+      _cubit.pausePolling();
+    }
 
     super.dispose();
   }
@@ -88,7 +103,8 @@ class _ProjectGitHubIntegrationViewState
 
     if (!mounted || repository == null) return;
 
-    final confirmed = await showGitHubConfirmation(context,
+    final confirmed = await showGitHubConfirmation(
+      context,
       title: 'Link Repository',
       message:
           'Connect "${repository.fullName}" '
@@ -119,7 +135,8 @@ class _ProjectGitHubIntegrationViewState
     final isRetry =
         _cubit.state.integration?.syncStatus == GitHubSyncStatus.retrying;
 
-    final confirmed = await showGitHubConfirmation(context,
+    final confirmed = await showGitHubConfirmation(
+      context,
       title: isRetry ? 'Retry Synchronization' : 'Resync Repository',
       message:
           'Request a new synchronization '
@@ -149,7 +166,8 @@ class _ProjectGitHubIntegrationViewState
 
     if (integration == null) return;
 
-    final confirmed = await showGitHubConfirmation(context,
+    final confirmed = await showGitHubConfirmation(
+      context,
       title: 'Unlink Repository',
       message:
           'Disconnect "${integration.fullName ?? 'this repository'}" '
@@ -205,7 +223,10 @@ class _ProjectGitHubIntegrationViewState
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            GitHubIntegrationHeader(state: state, onRefresh: _cubit.refreshIntegration),
+            GitHubIntegrationHeader(
+              state: state,
+              onRefresh: _cubit.refreshIntegration,
+            ),
 
             const SizedBox(height: 16),
 
@@ -231,7 +252,10 @@ class _ProjectGitHubIntegrationViewState
 
     if (integration == null) {
       if (state.status == ProjectGitHubRequestStatus.failure) {
-        return GitHubIntegrationError(state: state, onRefresh: _cubit.refreshIntegration);
+        return GitHubIntegrationError(
+          state: state,
+          onRefresh: _cubit.refreshIntegration,
+        );
       }
 
       return const Padding(
@@ -244,7 +268,10 @@ class _ProjectGitHubIntegrationViewState
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (state.status == ProjectGitHubRequestStatus.failure) ...[
-          GitHubIntegrationError(state: state, onRefresh: _cubit.refreshIntegration),
+          GitHubIntegrationError(
+            state: state,
+            onRefresh: _cubit.refreshIntegration,
+          ),
           const SizedBox(height: 12),
         ],
 
@@ -263,12 +290,20 @@ class _ProjectGitHubIntegrationViewState
           if (_cubit.canManage) ...[
             const SizedBox(height: 16),
 
-            GitHubManagementActions(state: state, onSync: _requestSync, onUnlink: _unlinkRepository),
+            GitHubManagementActions(
+              state: state,
+              onSync: _requestSync,
+              onUnlink: _unlinkRepository,
+            ),
           ],
         ] else
-          GitHubUnlinkedRepository(state: state, integration: integration, canManage: _cubit.canManage, onSelect: _selectRepository),
+          GitHubUnlinkedRepository(
+            state: state,
+            integration: integration,
+            canManage: _cubit.canManage,
+            onSelect: _selectRepository,
+          ),
       ],
     );
   }
-
 }
