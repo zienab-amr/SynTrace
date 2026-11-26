@@ -1,0 +1,54 @@
+.register-page:not(.register-otp-page) .register__panel {
+  gap: 12px;
+  padding-top: 52px;
+  padding-bottom: 20px;
+}
+
+.register-page:not(.register-otp-page) .register__card {
+  width: min(520px, 100%);
+  padding: 22px 30px 18px;
+}
+
+.register-page:not(.register-otp-page) .register__eyebrow {
+  margin: 0 0 5px;
+  color: var(--st-accent-text);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.register-page:not(.register-otp-page) .login__sub {
+  margin-bottom: 3px;
+}
+
+.register-page:not(.register-otp-page) .register-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.register-page:not(.register-otp-page) .register-optional {
+  margin-left: 6px;
+  color: var(--st-text-3);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.register-page:not(.register-otp-page) .register-alert {
+  margin-top: 10px;
+}
+
+.register-page:not(.register-otp-page) .login__signup {
+  margin-top: 10px;
+}
+
+@media (max-width: 560px) {
+  .register-page:not(.register-otp-page) .register__card {
+    padding: 22px 20px 18px;
+  }
+
+  .register-page:not(.register-otp-page) .register-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}

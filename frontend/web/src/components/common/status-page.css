@@ -1,0 +1,8 @@
+.status { position: relative; display: grid; min-height: 100vh; place-items: center; padding: 24px; background: radial-gradient(50% 40% at 50% 30%, var(--st-glow-1), transparent 70%), var(--st-bg); color: var(--st-text); }
+.status__tools { position: absolute; top: 20px; right: 24px; }
+.status__card { display: grid; justify-items: center; gap: 12px; width: min(440px, 100%); padding: 36px; border: 1px solid var(--st-border); border-radius: var(--st-radius-lg); background: var(--st-surface); box-shadow: var(--st-shadow); text-align: center; backdrop-filter: blur(16px); }
+.status__card img { width: auto; height: 48px; }
+.status__card h1 { margin: 6px 0 0; font-size: 26px; }
+.status__card p { margin: 0; color: var(--st-text-2); line-height: 1.55; }
+.status__action { display: inline-flex; align-items: center; height: 46px; margin-top: 10px; padding: 0 22px; border-radius: var(--st-radius-md); background: linear-gradient(90deg, var(--st-accent), var(--st-accent-2)); color: var(--st-on-accent); font-weight: 600; text-decoration: none; transition: transform 0.25s var(--st-ease); }
+.status__action:hover { transform: translateY(-2px); }

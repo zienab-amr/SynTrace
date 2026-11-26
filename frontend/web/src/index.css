@@ -1,0 +1,124 @@
+/* ==========================================================================
+   SynTrace design tokens: the single source of truth for colour on the web.
+   Brand: navy #071329 · blue #31B9FF · green #20DDA8 · ice #F0F7FF.
+   Every page reads these tokens, so switching the theme re-colours the whole app.
+   Never hard-code a hex colour inside a page: use a token.
+   ========================================================================== */
+:root {
+  --st-navy: #071329;
+  --st-blue: #31b9ff;
+  --st-green: #20dda8;
+  --st-ice: #f0f7ff;
+  --st-blue-deep: #2479ff;
+  --st-green-deep: #16b985;
+
+  --st-font: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --st-font-display: 'DM Serif Display', Georgia, 'Times New Roman', serif;
+  --st-font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  --st-radius-sm: 9px;
+  --st-radius-md: 12px;
+  --st-radius-lg: 20px;
+  --st-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Dark is the default (before JS runs) and the brand's native look. */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --st-bg: #071329;
+  --st-bg-2: #0a1a38;
+  --st-surface: rgba(14, 32, 62, 0.72);
+  --st-surface-solid: #0e203e;
+  --st-input: rgba(3, 13, 29, 0.5);
+  --st-text: #f0f7ff;
+  --st-text-2: #aebbd0;
+  --st-text-3: #8093ad;
+  --st-border: rgba(177, 201, 232, 0.2);
+  --st-border-strong: rgba(177, 201, 232, 0.36);
+  --st-accent: #31b9ff;
+  --st-accent-2: #20dda8;
+  --st-accent-text: #31b9ff;
+  --st-on-accent: #06152b;
+  --st-danger: #ff8a8a;
+  --st-danger-bg: rgba(255, 107, 107, 0.1);
+  --st-shadow: 0 30px 90px rgba(0, 0, 0, 0.38);
+  --st-grid: rgba(255, 255, 255, 0.03);
+  --st-glow-1: rgba(49, 185, 255, 0.16);
+  --st-glow-2: rgba(32, 221, 168, 0.11);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --st-bg: #ebf5ff;
+  --st-bg-2: #f7fbff;
+  --st-surface: rgba(255, 255, 255, 0.84);
+  --st-surface-solid: #ffffff;
+  --st-input: #ffffff;
+  --st-text: #26201a;
+  --st-text-2: #4a4f5c;
+  --st-text-3: #667489;
+  --st-border: rgba(36, 121, 255, 0.2);
+  --st-border-strong: rgba(36, 121, 255, 0.42);
+  --st-accent: #2479ff;
+  --st-accent-2: #16b985;
+  --st-accent-text: #1a5fd6;
+  --st-on-accent: #ffffff;
+  --st-danger: #c93636;
+  --st-danger-bg: rgba(214, 60, 60, 0.08);
+  --st-shadow: 0 30px 80px rgba(36, 121, 255, 0.16);
+  --st-grid: rgba(36, 121, 255, 0.07);
+  --st-glow-1: rgba(36, 121, 255, 0.16);
+  --st-glow-2: rgba(22, 185, 133, 0.14);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  background: var(--st-bg);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--st-bg);
+  color: var(--st-text);
+  font-family: var(--st-font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--st-accent) 30%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--st-accent);
+  outline-offset: 3px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
