@@ -1,3 +1,5 @@
+using SynTrace.Application.Contracts.Meetings;
+
 namespace SynTrace.Application.Contracts.Assistant;
 
 public sealed record AssistantLink(string Key, string Url);
@@ -5,7 +7,12 @@ public sealed record AssistantHistoryTurn(string Question, string Answer);
 public sealed record AssistantAnswer(string Status, string Answer, IReadOnlyList<AssistantLink> Links, string CorrelationId);
 public enum AssistantFailure { None, BadRequest, Misconfigured, Unavailable, Cancelled }
 public sealed record AssistantResult(AssistantAnswer? Answer, AssistantFailure Failure);
-public sealed record AssistantProjectScope(IReadOnlyList<string> JiraKeys, IReadOnlyList<string> SynTraceProjectIds);
+public sealed record AssistantProjectScope(IReadOnlyList<string> JiraKeys, IReadOnlyList<string> SynTraceProjectIds)
+{
+    public MeetingAssistantPermissions? MeetingPermissions { get; init; }
+    public IReadOnlyList<string> MeetingProjectIds => JiraKeys.Concat(SynTraceProjectIds)
+        .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+}
 
 public interface IAssistantClient
 {

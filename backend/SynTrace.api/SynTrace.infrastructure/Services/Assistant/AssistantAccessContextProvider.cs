@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using SynTrace.Application.Contracts.Assistant;
+using SynTrace.Application.Contracts.Meetings;
 using SynTrace.Domain.Enums;
 using SynTrace.Infrastructure.Options;
 using SynTrace.Infrastructure.Persistence.Context;
@@ -11,14 +12,15 @@ namespace SynTrace.Infrastructure.Services.Assistant;
 public sealed class AssistantAccessContextProvider(
     AssistantProjectAccess projectAccess,
     SynTraceDbContext db,
-    IOptions<AiServiceOptions> options) : IAssistantAccessContextProvider
+    IOptions<AiServiceOptions> options,
+    IMeetingPermissionService meetingPermissions) : IAssistantAccessContextProvider
 {
     public async Task<AssistantAccessContext> GetForCurrentEmployeeAsync(
         string companyId, string employeeId, CancellationToken ct)
     {
         var scope = await projectAccess.GetScopeAsync(companyId, employeeId, ct);
         var canAsk = scope.JiraKeys.Count > 0 ||
-            (options.Value.EnableSynTraceProjectScope && scope.SynTraceProjectIds.Count > 0);
+            ((options.Value.EnableSynTraceProjectScope || options.Value.EnableMeetingContract) && scope.SynTraceProjectIds.Count > 0);
         if (!canAsk) return new AssistantAccessContext(scope, null, false);
 
         var jiraAccountId = await db.JiraConnections.AsNoTracking()
@@ -26,6 +28,14 @@ public sealed class AssistantAccessContextProvider(
                         c.JiraConnectionType == JiraConnectionType.Employee && c.status)
             .Select(c => c.JiraAccountId).FirstOrDefaultAsync(ct);
 
-        return new AssistantAccessContext(scope, jiraAccountId, true);
+        if (!options.Value.EnableMeetingContract)
+            return new AssistantAccessContext(scope, jiraAccountId, true);
+
+        var grants = await meetingPermissions.GetForEmployeeAsync(companyId, employeeId, ct);
+        scope = scope with { MeetingPermissions = MeetingAssistantPermissions.From(grants) };
+        return new AssistantAccessContext(scope, jiraAccountId, true)
+        {
+            HistoryCount = Math.Clamp(options.Value.MeetingHistoryCount, 1, 30)
+        };
     }
 }

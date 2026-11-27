@@ -135,6 +135,8 @@ namespace SynTrace.Infrastructure
                 KnowledgeCompanyRepository>();
             services.AddScoped<IEmployeeIdentityLookupRepository, EmployeeIdentityLookupRepository>();
             services.AddScoped<IAssistantAccessContextProvider, AssistantAccessContextProvider>();
+            services.AddScoped<SynTrace.Application.Contracts.Meetings.IMeetingPermissionService,
+                SynTrace.Infrastructure.Services.Meetings.MeetingPermissionService>();
 
             //Http Client
             services.AddHttpClient();

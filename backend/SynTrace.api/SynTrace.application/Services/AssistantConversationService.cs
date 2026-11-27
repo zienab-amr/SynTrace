@@ -22,7 +22,6 @@ public sealed class AssistantConversationService(
     PendingAssistantTurnStore pendingTurns) : IAssistantConversationService
 {
     private const int MaxQuestionLength = 2000;
-    private const int HistoryCount = 3;
     private const int MaxPendingQuestions = 6;
     private const int MaxQuotedExcerpts = 5;
     private const int MaxQuotedExcerptLength = 1000;
@@ -252,18 +251,18 @@ public sealed class AssistantConversationService(
             edited = await repository.GetMessageByIdAsync(chat.Id, pending.EditedMessageId, ct)
                 ?? throw new RequestFailureException(404, "Edited message no longer exists.");
         }
-        var history = edited is null
-            ? await repository.GetLastMessagesAsync(chat.Id, HistoryCount, ct)
-            : await repository.GetLastMessagesBeforeSequenceAsync(chat.Id, edited.SequenceNumber, HistoryCount, ct);
-        var turns = history.Select(m => new AssistantHistoryTurn(
-            Truncate(m.Question, MaxQuestionLength), Truncate(m.Answer, 8000))).ToArray();
-
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, currentGenerationToken);
         try
         {
             var access = await accessProvider.GetForCurrentEmployeeAsync(companyId, employeeId, linked.Token);
             if (!access.HasAccessibleProjects)
                 throw new RequestFailureException(403, "No accessible projects are available for this assistant.");
+
+            var history = edited is null
+                ? await repository.GetLastMessagesAsync(chat.Id, access.HistoryCount, ct)
+                : await repository.GetLastMessagesBeforeSequenceAsync(chat.Id, edited.SequenceNumber, access.HistoryCount, ct);
+            var turns = history.Select(m => new AssistantHistoryTurn(
+                Truncate(m.Question, MaxQuestionLength), Truncate(m.Answer, 8000))).ToArray();
 
             var result = await assistant.AskAsync(questions[^1], companyId, employeeId, access.Scope,
                 correlation, access.JiraAccountId, chat.Id, turns, questions.Take(questions.Count - 1).ToArray(),
