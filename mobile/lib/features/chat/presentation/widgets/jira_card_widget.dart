@@ -7,11 +7,7 @@ class JiraCardWidget extends StatelessWidget {
   final JiraCardModel card;
   final VoidCallback? onTap;
 
-  const JiraCardWidget({
-    super.key,
-    required this.card,
-    this.onTap,
-  });
+  const JiraCardWidget({super.key, required this.card, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +15,8 @@ class JiraCardWidget extends StatelessWidget {
     final hasSummary = card.summary.isNotEmpty;
     final hasStatus = card.status.isNotEmpty && card.status != 'Unknown';
     final priority = card.priority.trim();
-    final hasPriority = priority.isNotEmpty &&
+    final hasPriority =
+        priority.isNotEmpty &&
         priority.toLowerCase() != 'none' &&
         priority.toLowerCase() != 'unknown';
 
@@ -32,12 +29,17 @@ class JiraCardWidget extends StatelessWidget {
             if (onTap != null) {
               onTap!();
             } else if (card.url.isNotEmpty) {
-              final Uri url = Uri.parse(card.url);
-              if (await canLaunchUrl(url)) {
-                await launchUrl(
-                  url,
-                  mode: LaunchMode.externalApplication,
-                );
+              final url = Uri.tryParse(card.url);
+              if (url != null &&
+                  url.scheme == 'https' &&
+                  url.port == 443 &&
+                  url.userInfo.isEmpty &&
+                  !url.hasQuery &&
+                  url.host.endsWith('.atlassian.net') &&
+                  url.pathSegments.length == 2 &&
+                  url.pathSegments.first == 'browse' &&
+                  await canLaunchUrl(url)) {
+                await launchUrl(url, mode: LaunchMode.externalApplication);
               }
             }
           },
@@ -45,10 +47,10 @@ class JiraCardWidget extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: theme.colorScheme.surface.withOpacity(0.5),
+              color: theme.colorScheme.surface.withValues(alpha: 0.5),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: theme.dividerColor.withOpacity(0.2),
+                color: theme.dividerColor.withValues(alpha: 0.2),
               ),
             ),
             child: Column(
@@ -56,16 +58,14 @@ class JiraCardWidget extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Icon(
-                      _getTypeIcon(),
-                      size: 14,
-                      color: _getTypeColor(),
-                    ),
+                    Icon(_getTypeIcon(), size: 14, color: _getTypeColor()),
                     const SizedBox(width: 6),
                     Text(
                       card.issueKey,
                       style: TextStyle(
-                        color: theme.colorScheme.onSurface.withOpacity(0.6),
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.6,
+                        ),
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         fontFamily: 'monospace',
@@ -99,13 +99,17 @@ class JiraCardWidget extends StatelessWidget {
                       Icon(
                         Icons.person_outline,
                         size: 12,
-                        color: theme.colorScheme.onSurface.withOpacity(0.4),
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.4,
+                        ),
                       ),
                       const SizedBox(width: 4),
                       Text(
                         card.assigneeName!,
                         style: TextStyle(
-                          color: theme.colorScheme.onSurface.withOpacity(0.5),
+                          color: theme.colorScheme.onSurface.withValues(
+                            alpha: 0.5,
+                          ),
                           fontSize: 11,
                         ),
                       ),
@@ -114,7 +118,7 @@ class JiraCardWidget extends StatelessWidget {
                     Icon(
                       Icons.open_in_new,
                       size: 12,
-                      color: theme.colorScheme.onSurface.withOpacity(0.4),
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
                     ),
                   ],
                 ),
@@ -133,7 +137,7 @@ class JiraCardWidget extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
@@ -160,7 +164,7 @@ class JiraCardWidget extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(

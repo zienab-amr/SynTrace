@@ -1,5 +1,9 @@
 import 'dart:async';
 
+import 'package:syntrace/core/cache/cache_scope.dart';
+import 'package:syntrace/core/cache/cache_session_guard.dart';
+import 'package:syntrace/core/services/current_user_service.dart';
+
 import 'package:syntrace/core/realtime/signalr_client.dart';
 import 'package:syntrace/core/realtime/signalr_config.dart';
 import 'package:syntrace/core/realtime/signalr_connection_state.dart';
@@ -9,6 +13,7 @@ import 'project_status_model.dart';
 class ProjectStatusService {
   ProjectStatusService({required this.projectId, SignalRClient? client})
     : _client = client ?? SignalRClient(url: SignalRConfig.projectStatusUrl) {
+    CurrentUserService.instance.userNotifier.addListener(_onSessionChanged);
     _client.on(_statusEvent, _handleStatusEvent);
 
     _connectionSubscription = _client.states.listen(_handleConnectionState);
@@ -28,6 +33,25 @@ class ProjectStatusService {
 
   final String projectId;
   final SignalRClient _client;
+  // The project ID belongs to the session that created this service.
+  final CacheSessionGuard? _guard = _captureSession();
+
+  static CacheSessionGuard? _captureSession() {
+    final scope = CacheScope.fromCurrentUser();
+    if (scope == null) return null;
+    try {
+      return CacheSessionGuard.capture(scope);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool get _sessionValid => _guard?.isValid == true;
+
+  void _onSessionChanged() {
+    if (_disposed || _sessionValid || !_active) return;
+    unawaited(stop());
+  }
 
   final _statusController = StreamController<ProjectStatusModel>.broadcast();
 
@@ -50,17 +74,25 @@ class ProjectStatusService {
 
   Stream<SignalRConnectionState> get connectionStates => _client.states;
 
-  bool get isConnected => _client.isConnected;
+  bool get isConnected => _sessionValid && _active && _client.isConnected;
 
-  bool get isSubscribed => _subscribed && _client.isConnected;
+  bool get isSubscribed => _subscribed && isConnected;
 
   bool _isCurrent(int generation) =>
-      !_disposed && _active && generation == _activationGeneration;
+      !_disposed &&
+      _sessionValid &&
+      _active &&
+      generation == _activationGeneration;
 
   // Start
 
   Future<void> start() {
-    if (_disposed) return Future<void>.value();
+    if (_disposed ||
+        !_sessionValid ||
+        projectId.trim().isEmpty ||
+        projectId.length > 450) {
+      return Future<void>.value();
+    }
 
     if (!_active) {
       _active = true;
@@ -134,7 +166,7 @@ class ProjectStatusService {
       _subscribed = false;
     }
 
-    if (!_active) return;
+    if (!_active || !_sessionValid) return;
 
     switch (state) {
       case SignalRConnectionState.connected:
@@ -169,6 +201,7 @@ class ProjectStatusService {
 
   void _scheduleRetry() {
     if (_disposed ||
+        !_sessionValid ||
         !_active ||
         isSubscribed ||
         (_retryTimer?.isActive ?? false) ||
@@ -210,6 +243,7 @@ class ProjectStatusService {
 
   void _handleStatusEvent(List<Object?>? arguments) {
     if (_disposed ||
+        !_sessionValid ||
         !_active ||
         arguments == null ||
         arguments.isEmpty ||
@@ -290,6 +324,7 @@ class ProjectStatusService {
 
   Future<void> _dispose() async {
     _disposed = true;
+    CurrentUserService.instance.userNotifier.removeListener(_onSessionChanged);
     _active = false;
     _activationGeneration++;
 

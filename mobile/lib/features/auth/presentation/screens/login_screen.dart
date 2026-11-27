@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:syntrace/core/models/user_model.dart';
+
 import 'package:syntrace/core/router/routes.dart';
-import 'package:syntrace/core/services/current_user_service.dart';
-import 'package:syntrace/core/services/secure_storage_service.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
+import 'package:syntrace/core/services/session_navigation_service.dart';
 import 'package:syntrace/features/auth/presentation/cubit/login_cubit.dart';
 import 'package:syntrace/features/auth/presentation/cubit/login_state.dart';
 import 'package:syntrace/features/auth/presentation/widgets/auth_button.dart';
@@ -27,6 +26,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
+  bool _isNavigating = false;
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -35,29 +36,49 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _onLogin() {
-    if (!_formKey.currentState!.validate()) return;
+    if (_isNavigating) return;
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      return;
+    }
 
-    final currentState = context.read<LoginCubit>().state;
-    if (currentState is LoginLoading) return;
+    final cubit = context.read<LoginCubit>();
 
-    context.read<LoginCubit>().login(
+    if (cubit.state is LoginLoading) return;
+
+    FocusScope.of(context).unfocus();
+
+    cubit.login(
       email: _emailController.text.trim(),
       password: _passwordController.text,
     );
   }
 
-  Future<void> _handleLoginSuccess(BuildContext context) async {
-    final user = CurrentUserService.instance.user;
-    final isAdmin = user?.role == UserRole.admin;
-    final completed = await SecureStorageService.instance
-        .isOnboardingCompleted();
+  Future<void> _handleLoginSuccess() async {
+    if (_isNavigating || !mounted) return;
 
-    if (!context.mounted) return;
+    setState(() => _isNavigating = true);
 
-    if (isAdmin && !completed) {
-      context.go(AppRoutes.onboarding);
-    } else {
-      context.go(AppRoutes.dashboard);
+    try {
+      final destination = await SessionNavigationService.resolveDestination();
+
+      if (!mounted) return;
+
+      if (destination == AppRoutes.login) {
+        _showErrorMessage(context, 'Unable to restore your session.');
+        return;
+      }
+
+      _passwordController.clear();
+
+      context.go(destination);
+    } catch (_) {
+      if (!mounted) return;
+
+      _showErrorMessage(context, 'Unable to restore your session.');
+    } finally {
+      if (mounted) {
+        setState(() => _isNavigating = false);
+      }
     }
   }
 
@@ -66,12 +87,9 @@ class _LoginScreenState extends State<LoginScreen> {
     return BlocListener<LoginCubit, LoginState>(
       listener: (context, state) {
         if (state is LoginSuccess) {
-          _showSuccessMessage(context, state);
-          Future.delayed(
-            const Duration(milliseconds: 600),
-            () => _handleLoginSuccess(context),
-          );
+          _handleLoginSuccess();
         }
+
         if (state is LoginError) {
           _showErrorMessage(context, state.message);
         }
@@ -103,23 +121,31 @@ class _LoginScreenState extends State<LoginScreen> {
                   textInputAction: TextInputAction.done,
                   validator: AuthValidators.loginPassword,
                 ),
+                BlocBuilder<LoginCubit, LoginState>(
+                  builder: (context, state) => Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: TextButton(
+                      onPressed: state is LoginLoading || _isNavigating
+                          ? null
+                          : () {
+                              _passwordController.clear();
+                              context.go(
+                                AppRoutes.forgotPassword,
+                                extra: _emailController.text.trim(),
+                              );
+                            },
+                      child: const Text('Forgot password?'),
+                    ),
+                  ),
+                ),
               ],
-            ),
-          ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: () {},
-              child: const Text(
-                'Forgot password?',
-                style: TextStyle(color: AppColors.primary, fontSize: 13),
-              ),
             ),
           ),
         ],
         submitButton: BlocBuilder<LoginCubit, LoginState>(
           builder: (context, state) {
-            final isLoading = state is LoginLoading;
+            final isLoading = state is LoginLoading || _isNavigating;
+
             return AuthButton(
               label: 'Sign in to SynTrace',
               isLoading: isLoading,
@@ -133,44 +159,37 @@ class _LoginScreenState extends State<LoginScreen> {
         footer: AuthFooter(
           question: "Don't have an account?",
           actionLabel: 'Sign Up',
-          onAction: () => context.go(AppRoutes.signup),
-        ),
-      ),
-    );
-  }
+          onAction: () {
+            if (_isNavigating ||
+                context.read<LoginCubit>().state is LoginLoading) {
+              return;
+            }
 
-  void _showSuccessMessage(BuildContext context, LoginSuccess state) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.white),
-            SizedBox(width: 12),
-            Expanded(child: Text('Welcome back!')),
-          ],
+            context.go(AppRoutes.signup);
+          },
         ),
-        backgroundColor: AppColors.secondary,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
 
   void _showErrorMessage(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.error_outline, color: Colors.white),
-            const SizedBox(width: 12),
-            Expanded(child: Text(message)),
-          ],
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(child: Text(message)),
+            ],
+          ),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
-        backgroundColor: AppColors.error,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
+      );
   }
 }

@@ -1,3 +1,6 @@
+import 'package:syntrace/core/services/current_user_service.dart';
+import 'package:syntrace/features/auth/presentation/cubit/forgot_password_cubit.dart';
+import 'package:syntrace/features/auth/presentation/screens/forgot_password_screen.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:syntrace/core/router/routes.dart';
@@ -13,18 +16,20 @@ import 'package:syntrace/features/dashboard/presentation/screens/dashboard_scree
 import 'package:syntrace/features/developers/presentation/cubit/developers_cubit.dart';
 import 'package:syntrace/features/developers/presentation/screens/developers_screen.dart';
 import 'package:syntrace/features/graph/presentation/screens/graph_screen.dart';
+import 'package:syntrace/features/intro/presentation/screens/intro_screen.dart';
 import 'package:syntrace/features/meetings/presentation/cubit/meeting_notes_cubit.dart';
 import 'package:syntrace/features/meetings/presentation/screens/meeting_notes_screen.dart';
 import 'package:syntrace/features/notifications/presentation/cubit/jira_events_cubit.dart';
 import 'package:syntrace/features/notifications/presentation/screens/jira_activity_screen.dart';
 import 'package:syntrace/features/profile/presentation/screens/employee_profile_screen.dart';
 import 'package:syntrace/features/projects/presentation/cubit/projects_cubit.dart';
-import 'package:syntrace/features/projects/presentation/screens/CreateProjectScreen.dart';
+import 'package:syntrace/features/projects/presentation/screens/create_project_screen.dart';
 import 'package:syntrace/features/projects/presentation/screens/project_details_screen.dart';
 import 'package:syntrace/features/projects/presentation/screens/projects_screen.dart';
 import 'package:syntrace/features/role/presentation/cubit/roles_cubit.dart';
 import 'package:syntrace/features/role/presentation/screens/roles_screen.dart';
-import 'package:syntrace/features/settings/presentation/cubit/integrations_cubit.dart';
+import 'package:syntrace/features/settings/presentation/cubit/jira/jira_cubit.dart';
+import 'package:syntrace/features/settings/presentation/cubit/github/github_cubit.dart';
 import 'package:syntrace/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:syntrace/features/settings/presentation/screens/jira_callback_screen.dart';
 import 'package:syntrace/features/settings/presentation/screens/github_callback_screen.dart';
@@ -34,14 +39,25 @@ import 'package:syntrace/features/onboarding/presentation/cubit/onboarding_cubit
 import 'package:syntrace/features/onboarding/presentation/screens/onboarding_wizard_screen.dart';
 import 'package:syntrace/features/tasks/presentation/cubit/tasks_cubit.dart';
 import 'package:syntrace/features/tasks/presentation/screens/tasks_screen.dart';
+import 'package:syntrace/features/workspace/presentation/screens/workspace_screen.dart';
 import 'package:syntrace/shared/widgets/app_shell.dart';
+import 'package:syntrace/features/projects/presentation/screens/clients_screen.dart';
 
 final appRouter = GoRouter(
   initialLocation: AppRoutes.splash,
+  refreshListenable: CurrentUserService.instance.userNotifier,
   redirect: (context, state) {
-    final isJiraCallback = state.matchedLocation.startsWith('/jira/callback');
-    if (isJiraCallback) {
-      return null;
+    const publicRoutes = {
+      AppRoutes.splash,
+      AppRoutes.intro,
+      AppRoutes.login,
+      AppRoutes.signup,
+      AppRoutes.verifyOtp,
+      AppRoutes.forgotPassword,
+    };
+    if (CurrentUserService.instance.user == null &&
+        !publicRoutes.contains(state.matchedLocation)) {
+      return AppRoutes.login;
     }
     return null;
   },
@@ -53,6 +69,15 @@ final appRouter = GoRouter(
     ),
 
     // ═══ Auth ═══
+    GoRoute(
+      path: AppRoutes.forgotPassword,
+      builder: (context, state) => BlocProvider(
+        create: (_) => ForgotPasswordCubit(),
+        child: ForgotPasswordScreen(
+          initialEmail: state.extra is String ? state.extra as String : '',
+        ),
+      ),
+    ),
     GoRoute(
       path: AppRoutes.login,
       builder: (context, state) => BlocProvider(
@@ -77,6 +102,10 @@ final appRouter = GoRouter(
         );
       },
     ),
+    GoRoute(
+      path: AppRoutes.intro,
+      builder: (context, state) => const IntroScreen(),
+    ),
 
     // ═══ Onboarding ═══
     GoRoute(
@@ -88,12 +117,18 @@ final appRouter = GoRouter(
     ),
 
     GoRoute(
-      path: '/jira/callback',
+      path: '/settings/jira-callback',
+      redirect: (context, state) =>
+          state.uri.replace(path: AppRoutes.jiraCallback).toString(),
+    ),
+
+    GoRoute(
+      path: AppRoutes.jiraCallback,
       builder: (context, state) {
         final status = state.uri.queryParameters['status'] ?? '';
         final pendingId = state.uri.queryParameters['pendingId'];
         return BlocProvider(
-          create: (context) => IntegrationsCubit(),
+          create: (context) => JiraCubit(),
           child: JiraCallbackScreen(status: status, pendingId: pendingId),
         );
       },
@@ -104,7 +139,7 @@ final appRouter = GoRouter(
         final status = state.uri.queryParameters['status'] ?? '';
         final completionId = state.uri.queryParameters['completionId'];
         return BlocProvider(
-          create: (context) => IntegrationsCubit(),
+          create: (context) => GitHubCubit(),
           child: GitHubCallbackScreen(
             status: status,
             completionId: completionId,
@@ -156,10 +191,15 @@ final appRouter = GoRouter(
           ),
         ),
 
-         // Create Project Screen
+        // Create Project Screen
         GoRoute(
           path: AppRoutes.createProject,
           builder: (context, state) => const CreateProjectScreen(),
+        ),
+
+        GoRoute(
+          path: '/projects/clients',
+          builder: (context, state) => const ClientsScreen(),
         ),
 
         // Project Details
@@ -169,6 +209,10 @@ final appRouter = GoRouter(
             final id = state.pathParameters['id']!;
             return ProjectDetailsScreen(projectId: id);
           },
+        ),
+        GoRoute(
+          path: AppRoutes.workspace,
+          builder: (context, state) => const WorkspaceScreen(),
         ),
 
         GoRoute(
@@ -184,6 +228,10 @@ final appRouter = GoRouter(
             create: (context) => TasksCubit(),
             child: const TasksScreen(),
           ),
+        ),
+        GoRoute(
+          path: AppRoutes.profile,
+          redirect: (context, state) => AppRoutes.settings,
         ),
 
         GoRoute(
@@ -216,7 +264,8 @@ final appRouter = GoRouter(
           builder: (context, state) => MultiBlocProvider(
             providers: [
               BlocProvider(create: (context) => SettingsCubit()),
-              BlocProvider(create: (context) => IntegrationsCubit()),
+              BlocProvider(create: (context) => JiraCubit()),
+              BlocProvider(create: (context) => GitHubCubit()),
             ],
             child: const SettingsScreen(),
           ),

@@ -7,7 +7,14 @@ class GitHubCoverageProcessing extends StatelessWidget {
   final bool isRetrying;
   final GitHubSyncCoverage? coverage;
   final bool isRefreshing;
-  const GitHubCoverageProcessing({super.key, required this.title, required this.description, this.isRetrying = false, this.coverage, required this.isRefreshing});
+  const GitHubCoverageProcessing({
+    super.key,
+    required this.title,
+    required this.description,
+    this.isRetrying = false,
+    this.coverage,
+    required this.isRefreshing,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -83,5 +90,4 @@ class GitHubCoverageProcessing extends StatelessWidget {
       ],
     );
   }
-
 }

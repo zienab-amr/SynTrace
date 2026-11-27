@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
-import 'package:syntrace/core/router/routes.dart';
-import 'package:syntrace/core/theme/app_colors.dart';
-import 'package:syntrace/features/dashboard/data/models/dashboard_models.dart';
-import 'package:syntrace/features/dashboard/presentation/cubit/dashboard_cubit.dart';
-import 'package:syntrace/features/dashboard/presentation/cubit/dashboard_state.dart';
-import 'package:syntrace/shared/widgets/layouts/app_page_scaffold.dart';
+
+import 'package:syntrace/core/models/user_model.dart';
+import 'package:syntrace/core/services/current_user_service.dart';
+import 'package:syntrace/core/theme/app_theme_extension.dart';
+
+import '../cubit/dashboard_cubit.dart';
+import '../cubit/dashboard_state.dart';
+
+import '../widgets/dashboard_header.dart';
+import '../widgets/dashboard_workspace_map.dart';
+import '../widgets/dashboard_workspace_summary.dart';
+import '../widgets/dashboard_projects_section.dart';
+import '../widgets/dashboard_feedback.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -20,258 +25,204 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+
     context.read<DashboardCubit>().loadDashboard();
   }
 
   @override
   Widget build(BuildContext context) {
-    return AppPageScaffold(
-      title: 'Dashboard',
-      subtitle: 'Welcome back! Here is what is happening today.',
-      child: BlocBuilder<DashboardCubit, DashboardState>(
-        builder: (context, state) {
-          if (state is DashboardLoading) {
+    final colors = context.appColors;
+
+    return ColoredBox(
+      color: colors.canvas,
+      child: ValueListenableBuilder<UserModel?>(
+        valueListenable: CurrentUserService.instance.userNotifier,
+        builder: (context, user, _) {
+          if (user == null) {
             return const Center(
-              child: CircularProgressIndicator(color: AppColors.primary),
-            );
-          }
-
-          if (state is DashboardLoaded) {
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1200),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          final crossAxisCount = constraints.maxWidth > 800 ? 4 : 2;
-                          
-                          return GridView.builder(
-                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: crossAxisCount,
-                              crossAxisSpacing: 16,
-                              mainAxisSpacing: 16,
-                              mainAxisExtent: 135,
-                            ),
-                            itemCount: 4,
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemBuilder: (context, index) {
-                              final stats = [
-                                {
-                                  'title': 'Active Projects',
-                                  'value': '${state.stats.activeProjects}',
-                                  'icon': Icons.folder_open,
-                                  'color': Colors.blue,
-                                  'route': AppRoutes.projects,
-                                },
-                                {
-                                  'title': 'Open Tasks',
-                                  'value': '${state.stats.openTasks}',
-                                  'icon': Icons.task_alt,
-                                  'color': Colors.orange,
-                                  'route': AppRoutes.tasks,
-                                },
-                                {
-                                  'title': 'Total Commits',
-                                  'value': '${state.stats.totalCommits}',
-                                  'icon': Icons.commit,
-                                  'color': Colors.green,
-                                  'route': AppRoutes.projects,
-                                },
-                                {
-                                  'title': 'Team Members',
-                                  'value': '${state.stats.teamMembers}',
-                                  'icon': Icons.people,
-                                  'color': Colors.purple,
-                                  'route': AppRoutes.team,
-                                },
-                              ];
-
-                              final stat = stats[index];
-
-                              return _buildStatCard(
-                                context,
-                                stat['title'] as String,
-                                stat['value'] as String,
-                                stat['icon'] as IconData,
-                                stat['color'] as Color,
-                                onTap: () => context.go(stat['route'] as String),
-                              );
-                            },
-                          );
-                        },
-                      ),
-
-                      const SizedBox(height: 32),
-
-                      Text(
-                        'Recent Activity',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      ...state.activities.map(
-                        (activity) => _buildActivityCard(context, activity),
-                      ),
-                    ],
-                  ),
-                ),
+              child: DashboardFeedback(
+                icon: Icons.lock_outline,
+                message: 'Your workspace is unavailable.',
               ),
             );
           }
 
-          return const SizedBox.shrink();
+          return BlocBuilder<DashboardCubit, DashboardState>(
+            builder: (context, state) {
+              return _DashboardContent(
+                user: user,
+                state: state,
+                onRefresh: context.read<DashboardCubit>().refresh,
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _DashboardContent extends StatelessWidget {
+  final UserModel user;
+  final DashboardState state;
+  final Future<void> Function() onRefresh;
+
+  const _DashboardContent({
+    required this.user,
+    required this.state,
+    required this.onRefresh,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 28),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 720),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    DashboardHeader(
+                      name: user.name,
+                      companyName: user.companyName,
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    if (state is DashboardLoaded)
+                      _buildLoaded(context, state as DashboardLoaded)
+                    else if (state is DashboardError)
+                      _buildError(context, state as DashboardError)
+                    else
+                      const _DashboardLoadingView(),
+                  ],
+                ),
+              ),
+            ),
+          );
         },
       ),
     );
   }
 
-  Widget _buildStatCard(
-    BuildContext context,
-    String title,
-    String value,
-    IconData icon,
-    Color color, {
-    VoidCallback? onTap,
-  }) {
-    final theme = Theme.of(context);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: theme.dividerColor.withOpacity(0.3)),
-          ),
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, color: color, size: 28),
-                const SizedBox(height: 12),
-                Text(
-                  value,
-                  style: TextStyle(
-                    color: theme.colorScheme.onSurface,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(0.6),
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
+  Widget _buildLoaded(BuildContext context, DashboardLoaded loaded) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (loaded.isRefreshing) ...[
+          const LinearProgressIndicator(minHeight: 2),
+          const SizedBox(height: 12),
+        ],
+
+        if (loaded.isFromCache &&
+            (loaded.data.projects != null ||
+                loaded.data.teamMembersCount != null)) ...[
+          const Text('Workspace may include saved data · Pull to refresh'),
+          const SizedBox(height: 12),
+        ],
+
+        DashboardWorkspaceMap(projectCount: loaded.data.totalProjects),
+
+        const SizedBox(height: 20),
+
+        DashboardWorkspaceSummary(data: loaded.data, isAdmin: user.isAdmin),
+
+        const SizedBox(height: 18),
+
+        const Divider(height: 1),
+
+        const SizedBox(height: 14),
+
+        DashboardProjectsSection(
+          data: loaded.data,
+          isAdmin: user.isAdmin,
+          onRetry: onRefresh,
         ),
-      ),
+      ],
     );
   }
 
-  Widget _buildActivityCard(BuildContext context, RecentActivity activity) {
-    final theme = Theme.of(context);
-    final timeStr = DateFormat('hh:mm a').format(activity.timestamp);
+  Widget _buildError(BuildContext context, DashboardError error) {
+    return Column(
+      children: [
+        const DashboardWorkspaceMap(projectCount: null),
 
-    IconData icon;
-    Color color;
-    VoidCallback? onTap;
+        const SizedBox(height: 16),
 
-    switch (activity.type) {
-      case 'commit':
-        icon = Icons.commit;
-        color = Colors.green;
-        onTap = () => context.go(AppRoutes.projects);
-        break;
-      case 'meeting':
-        icon = Icons.auto_awesome;
-        color = Colors.purple;
-        onTap = () => context.go(AppRoutes.meetings);
-        break;
-      case 'task':
-        icon = Icons.warning_amber_rounded;
-        color = Colors.orange;
-        onTap = () => context.go(AppRoutes.tasks);
-        break;
-      default:
-        icon = Icons.info_outline;
-        color = Colors.blue;
-    }
+        DashboardFeedback(
+          icon: Icons.cloud_off_outlined,
+          message: error.message,
+          actionLabel: 'Try again',
+          onAction: onRefresh,
+        ),
+      ],
+    );
+  }
+}
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(16),
+class _DashboardLoadingView extends StatelessWidget {
+  const _DashboardLoadingView();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+
+    return Column(
+      children: [
+        Container(
+          height: 260,
+          width: double.infinity,
           decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: theme.dividerColor.withOpacity(0.3)),
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: colors.border),
           ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, color: color, size: 24),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
+          child: const Center(
+            child: SizedBox(
+              height: 22,
+              width: 22,
+              child: CircularProgressIndicator(strokeWidth: 1.8),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 24),
+
+        Row(
+          children: List.generate(
+            3,
+            (index) => Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      activity.title,
-                      style: TextStyle(
-                        color: theme.colorScheme.onSurface,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      activity.description,
-                      style: TextStyle(
-                        color: theme.colorScheme.onSurface.withOpacity(0.6),
-                        fontSize: 13,
-                      ),
-                    ),
+                    _placeholder(colors.surfaceMuted, 38, 24),
+                    const SizedBox(height: 8),
+                    _placeholder(colors.surfaceMuted, 55, 7),
                   ],
                 ),
               ),
-              Text(
-                timeStr,
-                style: TextStyle(
-                  color: theme.colorScheme.onSurface.withOpacity(0.4),
-                  fontSize: 12,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _placeholder(Color color, double width, double height) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(5),
       ),
     );
   }

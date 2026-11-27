@@ -1,45 +1,66 @@
 import 'package:flutter/material.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
-import 'package:syntrace/features/settings/data/models/integration_model.dart';
 
-class IntegrationStatusBadge extends StatelessWidget
-{
+import '../../data/models/integration_model.dart';
+
+class IntegrationStatusBadge extends StatelessWidget {
   final IntegrationStatus status;
+  final bool isFromCache;
 
-  const IntegrationStatusBadge({super.key, required this.status});
+  const IntegrationStatusBadge({
+    super.key,
+    required this.status,
+    this.isFromCache = false,
+  });
 
   @override
-  Widget build(BuildContext context)
-  {
-    final (color, label) = switch (status)
-    {
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    final (color, label) = switch (status) {
       IntegrationStatus.connected => (AppColors.secondary, 'Connected'),
       IntegrationStatus.connecting => (AppColors.warning, 'Connecting'),
-      IntegrationStatus.disconnected => (AppColors.textMuted, 'Not Connected'),
+      IntegrationStatus.disconnected => (
+        theme.colorScheme.onSurfaceVariant,
+        'Not connected',
+      ),
+      IntegrationStatus.unknown => (
+        theme.colorScheme.onSurfaceVariant,
+        'Not verified',
+      ),
     };
 
+    final displayColor = isFromCache
+        ? theme.colorScheme.onSurfaceVariant
+        : color;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: displayColor.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
+          if (isFromCache)
+            Icon(Icons.storage_rounded, size: 11, color: displayColor)
+          else
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: displayColor,
+                shape: BoxShape.circle,
+              ),
             ),
-          ),
+
           const SizedBox(width: 6),
+
           Text(
-            label,
+            isFromCache ? '$label · Saved' : label,
             style: TextStyle(
-              color: color,
+              color: displayColor,
               fontSize: 11,
               fontWeight: FontWeight.w600,
             ),

@@ -4,10 +4,10 @@ import 'package:syntrace/core/state/base_state.dart';
 
 /// ═══════════════════════════════════════════════════════════
 /// Base Cubit
-/// 
-/// الـ Parent لكل الـ Cubits في التطبيق
-/// بيوفرلك:
-/// - handleApiCall(): بيتعامل مع كل حاجة (Loading, Success, Error)
+///
+/// Base class for application cubits.
+/// Provides:
+/// - handleApiCall(): handles loading, success, and error states.
 /// - emitLoading(), emitError(), emitSuccess()
 /// ═══════════════════════════════════════════════════════════
 abstract class BaseCubit<T> extends Cubit<BaseState> {
@@ -15,8 +15,8 @@ abstract class BaseCubit<T> extends Cubit<BaseState> {
 
   /// ═══════════════════════════════════════════════════════
   /// handleApiCall
-  /// 
-  /// الـ Helper الأساسي: بينادي على الـ API وبيتعامل مع:
+  ///
+  /// Executes an API call and handles:
   /// - Loading
   /// - Success
   /// - Error
@@ -29,19 +29,18 @@ abstract class BaseCubit<T> extends Cubit<BaseState> {
     // ─── 1. Loading ───
     emit(const LoadingState());
 
-    // ─── 2. نادي على الـ API ───
+    // 2. Execute the API call.
     final response = await apiCall();
 
-    // ─── 3. تحقق من النتيجة ───
+    // 3. Check the response.
     if (response.success) {
-      // ✅ نجاح
+      // Success
       onSuccess(response.data);
     } else {
-      // ❌ فشل
-      emit(ErrorState(
-        message: response.message,
-        statusCode: response.statusCode,
-      ));
+      // Failure
+      emit(
+        ErrorState(message: response.message, statusCode: response.statusCode),
+      );
     }
   }
 

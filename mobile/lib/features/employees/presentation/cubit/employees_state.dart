@@ -15,10 +15,11 @@ class EmployeesLoading extends EmployeesState {
 
 class EmployeesLoaded extends EmployeesState {
   final List<EmployeeModel> employees;
-  const EmployeesLoaded(this.employees);
+  final bool isFromCache;
+  const EmployeesLoaded(this.employees, {this.isFromCache = false});
 
   @override
-  List<Object?> get props => [employees];
+  List<Object?> get props => [employees, isFromCache];
 }
 
 class EmployeesError extends EmployeesState {

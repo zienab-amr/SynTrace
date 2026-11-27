@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
 
 class ChatInput extends StatefulWidget {
-  final Function(String, List<String>) onSend;
+  final Future<bool> Function(String, List<String>) onSend;
   final bool enabled;
   final bool isLoading;
 
@@ -22,6 +22,7 @@ class ChatInputState extends State<ChatInput> {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   bool _hasText = false;
+  bool _submitting = false;
   List<String> _quotedTexts = [];
 
   @override
@@ -34,7 +35,7 @@ class ChatInputState extends State<ChatInput> {
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _focusNode.requestFocus();
+      if (mounted) _focusNode.requestFocus();
     });
   }
 
@@ -61,14 +62,37 @@ class ChatInputState extends State<ChatInput> {
     });
   }
 
-  void _handleSend() {
+  Future<void> _handleSend() async {
     final text = _controller.text.trim();
-    if (text.isEmpty || !widget.enabled) return;
+    if (text.isEmpty || !widget.enabled || _submitting) return;
 
-    widget.onSend(text, _quotedTexts);
-    _controller.clear();
-    setState(() => _quotedTexts = []);
-    _focusNode.requestFocus();
+    if (text.length > 2000 ||
+        _quotedTexts.length > 5 ||
+        _quotedTexts.any((q) => q.trim().length > 1000) ||
+        _quotedTexts.fold<int>(0, (sum, q) => sum + q.trim().length) > 4000) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Use up to 2,000 characters and 5 excerpts (1,000 each; 4,000 total).',
+          ),
+        ),
+      );
+      return;
+    }
+    final quotes = List<String>.of(_quotedTexts);
+    setState(() => _submitting = true);
+    try {
+      final accepted = await widget.onSend(text, quotes);
+      if (!mounted || !accepted) return;
+      if (_controller.text.trim() == text) _controller.clear();
+      if (_quotedTexts.length == quotes.length &&
+          quotes.asMap().entries.every((e) => _quotedTexts[e.key] == e.value)) {
+        setState(() => _quotedTexts = []);
+      }
+      _focusNode.requestFocus();
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
@@ -84,7 +108,7 @@ class ChatInputState extends State<ChatInput> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final canSend = _hasText && widget.enabled;
+    final canSend = _hasText && widget.enabled && !_submitting;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -98,16 +122,22 @@ class ChatInputState extends State<ChatInput> {
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surface.withOpacity(0.8),
+                  color: theme.colorScheme.surface.withValues(alpha: 0.8),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: theme.dividerColor.withOpacity(0.3)),
+                  border: Border.all(
+                    color: theme.dividerColor.withValues(alpha: 0.3),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.format_quote, size: 16, color: AppColors.primary),
+                        Icon(
+                          Icons.format_quote,
+                          size: 16,
+                          color: AppColors.primary,
+                        ),
                         const SizedBox(width: 6),
                         Text(
                           'Replying to ${_quotedTexts.length} excerpt(s)',
@@ -120,7 +150,13 @@ class ChatInputState extends State<ChatInput> {
                         const Spacer(),
                         InkWell(
                           onTap: () => setState(() => _quotedTexts = []),
-                          child: Icon(Icons.close, size: 16, color: theme.colorScheme.onSurface.withOpacity(0.5)),
+                          child: Icon(
+                            Icons.close,
+                            size: 16,
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: 0.5,
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -134,7 +170,10 @@ class ChatInputState extends State<ChatInput> {
                             entry.value,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: theme.colorScheme.onSurface,
+                            ),
                           ),
                           deleteIcon: const Icon(Icons.close, size: 14),
                           onDeleted: () => _removeQuote(entry.key),
@@ -165,13 +204,24 @@ class ChatInputState extends State<ChatInput> {
                         minLines: 1,
                         keyboardType: TextInputType.multiline,
                         textInputAction: TextInputAction.newline,
-                        style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 14),
+                        style: TextStyle(
+                          color: theme.colorScheme.onSurface,
+                          fontSize: 14,
+                        ),
                         decoration: InputDecoration(
                           hintText: widget.enabled
                               ? 'Ask about your engineering data...'
                               : 'Connecting...',
-                          hintStyle: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.4), fontSize: 14),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          hintStyle: TextStyle(
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: 0.4,
+                            ),
+                            fontSize: 14,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
                           border: InputBorder.none,
                           isDense: true,
                         ),
@@ -201,11 +251,15 @@ class ChatInputState extends State<ChatInput> {
           height: 40,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: canSend ? null : theme.colorScheme.onSurface.withOpacity(0.05),
+            color: canSend
+                ? null
+                : theme.colorScheme.onSurface.withValues(alpha: 0.05),
           ),
           child: Icon(
             Icons.arrow_upward_rounded,
-            color: canSend ? Colors.white : theme.colorScheme.onSurface.withOpacity(0.3),
+            color: canSend
+                ? Colors.white
+                : theme.colorScheme.onSurface.withValues(alpha: 0.3),
             size: 20,
           ),
         ),

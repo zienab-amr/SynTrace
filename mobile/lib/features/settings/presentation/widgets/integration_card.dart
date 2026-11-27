@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:syntrace/core/theme/app_colors.dart';
-import 'package:syntrace/features/settings/data/models/integration_model.dart';
+
+import '../../data/models/integration_model.dart';
+import 'integration_status_badge.dart';
 
 class IntegrationCard extends StatelessWidget {
   final IntegrationModel integration;
@@ -17,160 +18,144 @@ class IntegrationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isConnected = integration.status == IntegrationStatus.connected;
-    final isConnecting = integration.status == IntegrationStatus.connecting;
+    final colors = theme.colorScheme;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          _buildLogo(),
-          const SizedBox(width: 16),
+          _IntegrationLogo(type: integration.type),
+
+          const SizedBox(width: 14),
+
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        integration.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: theme.colorScheme.onSurface,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      integration.suspended
-                          ? 'Suspended'
-                          : (isConnected
-                              ? 'Connected'
-                              : (isConnecting ? 'Connecting...' : 'Not connected')),
-                      style: TextStyle(
-                        color: integration.suspended
-                            ? AppColors.warning
-                            : (isConnected
-                                ? AppColors.secondary
-                                : (isConnecting
-                                    ? AppColors.warning
-                                    : theme.colorScheme.onSurface.withOpacity(0.4))),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
                 Text(
-                  _buildSubtitle(),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(0.5),
-                    fontSize: 12.5,
-                    height: 1.4,
+                  integration.name,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
+
+                const SizedBox(height: 5),
+
+                Text(
+                  integration.accountName ?? integration.description,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                if (integration.suspended)
+                  Text(
+                    integration.isFromCache ? 'Suspended · Saved' : 'Suspended',
+                    style: theme.textTheme.labelSmall,
+                  )
+                else
+                  IntegrationStatusBadge(
+                    status: integration.status,
+                    isFromCache: integration.isFromCache,
+                  ),
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          _buildButton(context, isConnected, isConnecting),
+
+          const SizedBox(width: 10),
+
+          _IntegrationAction(
+            integration: integration,
+            onConnect: onConnect,
+            onDisconnect: onDisconnect,
+          ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildLogo() {
-    final (icon, color) = switch (integration.type) {
-      IntegrationType.jira => (Icons.task_alt, const Color(0xFF0052CC)),
-      IntegrationType.github => (Icons.code, const Color(0xFF333333)),
+class _IntegrationLogo extends StatelessWidget {
+  final IntegrationType type;
+
+  const _IntegrationLogo({required this.type});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    final (icon, color) = switch (type) {
+      IntegrationType.jira => (Icons.task_alt_rounded, const Color(0xFF0052CC)),
+      IntegrationType.github => (Icons.code_rounded, colors.onSurface),
     };
 
     return Container(
       width: 44,
       height: 44,
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(10),
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: Icon(icon, color: color, size: 22),
+      child: Icon(icon, color: color, size: 23),
     );
   }
+}
 
-  String _buildSubtitle() {
-    if (integration.status == IntegrationStatus.connected &&
-        integration.accountName != null) {
-      return integration.accountName!;
-    }
-    return integration.description;
-  }
+class _IntegrationAction extends StatelessWidget {
+  final IntegrationModel integration;
+  final VoidCallback? onConnect;
+  final VoidCallback? onDisconnect;
 
-  Widget _buildButton(
-    BuildContext context,
-    bool isConnected,
-    bool isConnecting,
-  ) {
-    if (isConnecting) {
+  const _IntegrationAction({
+    required this.integration,
+    this.onConnect,
+    this.onDisconnect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    if (integration.status == IntegrationStatus.connecting) {
       return const SizedBox(
-        width: 80,
-        height: 36,
+        width: 44,
+        height: 44,
         child: Center(
           child: SizedBox(
-            width: 16,
-            height: 16,
+            width: 17,
+            height: 17,
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
         ),
       );
     }
 
-    if (isConnected) {
-      return SizedBox(
-        height: 36,
-        child: ElevatedButton(
-          onPressed: onDisconnect,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-          child: const Text(
-            'Connected',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-          ),
+    if (!integration.canModify) {
+      return Tooltip(
+        message: 'Connect to verify integration status',
+        child: Icon(
+          Icons.lock_outline_rounded,
+          color: colors.onSurfaceVariant,
+          size: 19,
         ),
       );
     }
 
-    return SizedBox(
-      height: 36,
-      child: ElevatedButton(
-        onPressed: onConnect,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-        ),
-        child: const Text(
-          'Connect',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-        ),
-      ),
-    );
+    if (integration.status == IntegrationStatus.connected) {
+      if (onDisconnect == null) {
+        return const SizedBox.shrink();
+      }
+      return OutlinedButton(
+        onPressed: onDisconnect,
+        child: const Text('Disconnect'),
+      );
+    }
+
+    return FilledButton(onPressed: onConnect, child: const Text('Connect'));
   }
 }

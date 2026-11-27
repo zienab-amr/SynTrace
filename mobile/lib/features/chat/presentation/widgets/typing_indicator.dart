@@ -46,21 +46,14 @@ class _TypingIndicatorState extends State<TypingIndicator>
               ),
             ),
             child: const Center(
-              child: Icon(
-                Icons.auto_awesome,
-                color: Colors.white,
-                size: 16,
-              ),
+              child: Icon(Icons.auto_awesome, color: Colors.white, size: 16),
             ),
           ),
           const SizedBox(width: 10),
           Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 14,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              color: theme.colorScheme.surface.withOpacity(0.5),
+              color: theme.colorScheme.surface.withValues(alpha: 0.5),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Row(
@@ -72,8 +65,10 @@ class _TypingIndicatorState extends State<TypingIndicator>
                     return Row(
                       children: List.generate(3, (index) {
                         final delay = index * 0.2;
-                        final progress =
-                            (_controller.value - delay).clamp(0.0, 1.0);
+                        final progress = (_controller.value - delay).clamp(
+                          0.0,
+                          1.0,
+                        );
 
                         final bounce = progress < 0.5
                             ? progress * 2
@@ -89,8 +84,9 @@ class _TypingIndicatorState extends State<TypingIndicator>
                               height: 7,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: AppColors.primary
-                                    .withOpacity(0.4 + (bounce * 0.6)),
+                                color: AppColors.primary.withValues(
+                                  alpha: 0.4 + (bounce * 0.6),
+                                ),
                               ),
                             ),
                           ),
@@ -103,7 +99,7 @@ class _TypingIndicatorState extends State<TypingIndicator>
                 Text(
                   'AI is thinking...',
                   style: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                     fontSize: 12.5,
                   ),
                 ),

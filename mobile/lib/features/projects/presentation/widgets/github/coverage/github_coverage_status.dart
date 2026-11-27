@@ -7,7 +7,12 @@ class GitHubCoverageStatus extends StatelessWidget {
   final GitHubSyncStatus status;
   final GitHubSyncCoverage? coverage;
   final bool isRefreshing;
-  const GitHubCoverageStatus({super.key, required this.status, this.coverage, required this.isRefreshing});
+  const GitHubCoverageStatus({
+    super.key,
+    required this.status,
+    this.coverage,
+    required this.isRefreshing,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -64,5 +69,4 @@ class GitHubCoverageStatus extends StatelessWidget {
         );
     }
   }
-
 }

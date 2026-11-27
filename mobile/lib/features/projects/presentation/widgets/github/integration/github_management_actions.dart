@@ -6,7 +6,12 @@ class GitHubManagementActions extends StatelessWidget {
   final ProjectGitHubState state;
   final VoidCallback onSync;
   final VoidCallback onUnlink;
-  const GitHubManagementActions({super.key, required this.state, required this.onSync, required this.onUnlink});
+  const GitHubManagementActions({
+    super.key,
+    required this.state,
+    required this.onSync,
+    required this.onUnlink,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -21,9 +26,7 @@ class GitHubManagementActions extends StatelessWidget {
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
-            onPressed: state.canRequestSync && hasFreshStatus
-                ? onSync
-                : null,
+            onPressed: state.canRequestSync && hasFreshStatus ? onSync : null,
 
             icon: state.isSyncing
                 ? _buildButtonLoader()
@@ -49,9 +52,7 @@ class GitHubManagementActions extends StatelessWidget {
               side: BorderSide(color: colors.error.withValues(alpha: 0.5)),
             ),
 
-            onPressed: state.canUnlink && hasFreshStatus
-                ? onUnlink
-                : null,
+            onPressed: state.canUnlink && hasFreshStatus ? onUnlink : null,
 
             icon: state.isUnlinking
                 ? _buildButtonLoader()
@@ -65,6 +66,7 @@ class GitHubManagementActions extends StatelessWidget {
       ],
     );
   }
+
   Widget _buildButtonLoader() {
     return const SizedBox(
       width: 16,

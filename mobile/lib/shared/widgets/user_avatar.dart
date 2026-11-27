@@ -40,9 +40,6 @@ class UserAvatar extends StatelessWidget {
 
     if (onTap == null) return avatar;
 
-    return GestureDetector(
-      onTap: onTap,
-      child: avatar,
-    );
+    return GestureDetector(onTap: onTap, child: avatar);
   }
 }

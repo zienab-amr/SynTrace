@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
+import 'package:syntrace/core/cache/cache_scope.dart';
+import 'package:syntrace/core/cache/cache_session_guard.dart';
+import 'package:syntrace/core/services/current_user_service.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:syntrace/core/network/api_client.dart';
 import 'package:syntrace/core/network/api_endpoints.dart';
@@ -11,12 +14,67 @@ import 'chat_state.dart';
 import 'package:uuid/uuid.dart';
 
 class ChatCubit extends Cubit<ChatState> {
-  ChatCubit() : super(const ChatInitial());
+  ChatCubit() : super(const ChatInitial()) {
+    final scope = CacheScope.fromCurrentUser();
+    if (scope != null) {
+      try {
+        _guard = CacheSessionGuard.capture(scope);
+      } catch (_) {}
+    }
+    _session.userNotifier.addListener(_onSessionChanged);
+  }
+
+  final _session = CurrentUserService.instance;
+  CacheSessionGuard? _guard;
+  bool _appendWaiting = false;
+  bool _needsHistoryRefresh = false;
+  bool get _sessionValid => !isClosed && _guard?.isValid == true;
+  bool _isCurrent(int generation) => _sessionValid && generation == _generation;
+  bool get canSend =>
+      _sessionValid &&
+      !_appendWaiting &&
+      !_needsHistoryRefresh &&
+      state is ChatLoaded &&
+      !(state as ChatLoaded).isStreaming &&
+      (!(state as ChatLoaded).isSending || _isTurnActive);
+
+  void _onSessionChanged() {
+    if (_sessionValid || isClosed) return;
+    _invalidatePendingRequests();
+    _currentConversationId = null;
+    emit(const ChatErrorState('Your session has changed. Reopen the chat.'));
+  }
+
+  Options _requestOptions({bool mutation = false}) => Options(
+    extra: {
+      'auth_generation': _guard!.generation,
+      if (mutation) 'allow_retry': false,
+    },
+    receiveTimeout: mutation ? const Duration(seconds: 110) : null,
+  );
+
+  void _requireStatus(Response response, int expected) {
+    if (response.statusCode != expected) {
+      throw DioException(
+        requestOptions: response.requestOptions,
+        response: response,
+        type: DioExceptionType.badResponse,
+      );
+    }
+  }
+
+  bool _validInput(String text, List<String> quotes) =>
+      text.trim().isNotEmpty &&
+      text.trim().length <= 2000 &&
+      quotes.length <= 5 &&
+      quotes.every((q) => q.trim().isNotEmpty && q.trim().length <= 1000) &&
+      quotes.fold<int>(0, (sum, q) => sum + q.trim().length) <= 4000;
+
+  void _invalidInput() => _emitError(ChatErrorType.badRequest);
 
   final Uuid _uuid = const Uuid();
 
   String? _lastFailedMessage;
-  List<String> _lastFailedQuotes = const [];
   String? _currentConversationId;
   CancelToken? _cancelToken;
   DateTime? _requestStartedAt;
@@ -25,7 +83,6 @@ class ChatCubit extends Cubit<ChatState> {
   bool _isTurnActive = false;
   int _generation = 0;
   int _conversationVersion = 0;
-
 
   List<String> _parseQuotes(dynamic raw) {
     if (raw is! List) return const [];
@@ -36,175 +93,236 @@ class ChatCubit extends Cubit<ChatState> {
   }
 
   List<ChatMessage> _parseHistory(List data) {
-    return data.expand((e) {
-      final map = e as Map<String, dynamic>;
-      return [
+    final rows = data
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+    rows.sort(
+      (a, b) =>
+          (a['sequenceNumber'] as num).compareTo(b['sequenceNumber'] as num),
+    );
+    final knownQuotes = <String, List<String>>{
+      if (state is ChatLoaded)
+        for (final m in (state as ChatLoaded).messages) m.id: m.quotedExcerpts,
+    };
+    final seen = <String>{};
+    final result = <ChatMessage>[];
+    for (final row in rows) {
+      final id = row['id'] as String;
+      if (id.isEmpty || !seen.add(id)) {
+        throw const FormatException('Invalid message ID.');
+      }
+      final timestamp = DateTime.parse(row['createdAt'] as String);
+      final status = row['status'] as String;
+      final answered = status.toLowerCase() == 'answered';
+      result.add(
         ChatMessage(
-          id: map['id']?.toString() ?? '',
+          id: id,
           role: ChatRole.user,
-          content: map['question']?.toString() ?? '',
-          timestamp: DateTime.now(),
-          quotedExcerpts: _parseQuotes(map['quotedExcerpts']),
+          content: row['question'] as String,
+          timestamp: timestamp,
+          hasError: !answered && status.toLowerCase() != 'pending',
+          quotedExcerpts: row.containsKey('quotedExcerpts')
+              ? _parseQuotes(row['quotedExcerpts'])
+              : knownQuotes[id] ?? const [],
         ),
-        ChatMessage(
-          id: 'ai-${map['id']}',
-          role: ChatRole.ai,
-          content: map['answer']?.toString() ?? '',
-          timestamp: DateTime.tryParse(map['createdAt']?.toString() ?? '') ?? DateTime.now(),
-          sources: ChatSourceModel.parseList(map['links']),
-        ),
-      ];
-    }).toList();
+      );
+      if (answered) {
+        result.add(
+          ChatMessage(
+            id: 'ai-$id',
+            role: ChatRole.ai,
+            content: row['answer'] as String,
+            timestamp: timestamp,
+            sources: ChatSourceModel.parseList(row['links']),
+          ),
+        );
+      }
+    }
+    return result;
   }
 
+  List<ChatSession> _parseSessions(dynamic data) {
+    if (data is! List) {
+      throw const FormatException('Invalid conversation list.');
+    }
+    final sessions = data
+        .map(
+          (item) =>
+              ChatSession.fromJson(Map<String, dynamic>.from(item as Map)),
+        )
+        .toList();
+    if (sessions.any((s) => s.id.isEmpty) ||
+        sessions.map((s) => s.id).toSet().length != sessions.length) {
+      throw const FormatException('Invalid conversation ID.');
+    }
+    return sessions;
+  }
 
   Future<void> loadChat() async {
+    if (!_sessionValid) {
+      if (!isClosed) {
+        emit(
+          const ChatErrorState('Your session is unavailable. Reopen the chat.'),
+        );
+      }
+      return;
+    }
     _invalidatePendingRequests();
+    _currentConversationId = null;
+    final generation = _generation;
     emit(const ChatLoading());
     try {
-      final response = await ApiClient.instance.get(ApiEndpoints.getConversations);
-      if (response.statusCode == 200 && response.data is List) {
-        final sessions = (response.data as List)
-            .map((e) => ChatSession.fromJson(e as Map<String, dynamic>))
-            .toList();
-        if (isClosed) return;
-        emit(ChatLoaded(sessions: sessions));
-      } else {
-        if (isClosed) return;
-        emit(const ChatLoaded(sessions: []));
-      }
+      final response = await ApiClient.instance.get(
+        ApiEndpoints.getConversations,
+        options: _requestOptions(),
+      );
+      if (!_isCurrent(generation)) return;
+      _requireStatus(response, 200);
+      emit(ChatLoaded(sessions: _parseSessions(response.data)));
     } catch (e) {
-      if (isClosed) return;
-      emit(const ChatLoaded(sessions: []));
+      if (!_isCurrent(generation)) return;
+      _handleDioError(e, '');
     }
   }
 
   Future<void> openSession(ChatSession session) async {
-    if (state is! ChatLoaded) return;
+    if (!_sessionValid || state is! ChatLoaded || session.id.isEmpty) return;
     _invalidatePendingRequests();
     final generation = _generation;
     _currentConversationId = session.id;
     final current = state as ChatLoaded;
 
-    emit(current.copyWith(
-      currentSessionId: session.id,
-      messages: [],
-      isSending: true,
-      isStreaming: false,
-      clearError: true,
-    ));
+    emit(
+      current.copyWith(
+        currentSessionId: session.id,
+        messages: [],
+        isSending: true,
+        isStreaming: false,
+        clearError: true,
+      ),
+    );
 
     try {
       final response = await ApiClient.instance.get(
         ApiEndpoints.getConversationMessages(session.id),
+        options: _requestOptions(),
       );
-      if (generation != _generation || isClosed) return;
+      if (!_isCurrent(generation)) return;
 
       final latest = state;
       if (latest is! ChatLoaded) return;
 
-      if (response.statusCode == 200 && response.data is List) {
-        emit(latest.copyWith(
+      _requireStatus(response, 200);
+      emit(
+        latest.copyWith(
           messages: _parseHistory(response.data as List),
           isSending: false,
           isStreaming: false,
-        ));
-      } else {
-        emit(latest.copyWith(isSending: false, isStreaming: false));
-      }
+        ),
+      );
     } catch (e) {
-      if (generation != _generation || isClosed) return;
+      if (!_isCurrent(generation)) return;
       final latest = state;
       if (latest is ChatLoaded) {
         emit(latest.copyWith(isSending: false, isStreaming: false));
       }
-      _handleDioError(e, 'Failed to load messages');
+      _needsHistoryRefresh = true;
+      _handleDioError(e, '');
     }
   }
 
   void newChat() {
-    if (state is! ChatLoaded) return;
+    if (!_sessionValid || state is! ChatLoaded) return;
     _invalidatePendingRequests();
     _currentConversationId = null;
     _lastFailedMessage = null;
-    _lastFailedQuotes = const [];
     final current = state as ChatLoaded;
-    emit(current.copyWith(
-      messages: [],
-      clearSession: true,
-      isSending: false,
-      isStreaming: false,
-      clearError: true,
-    ));
+    emit(
+      current.copyWith(
+        messages: [],
+        clearSession: true,
+        isSending: false,
+        isStreaming: false,
+        clearError: true,
+      ),
+    );
   }
 
   // ───────────────────────── Send / Append ─────────────────────────
 
-  Future<void> sendMessage(String text, {List<String> quotedExcerpts = const []}) async {
-    if (state is! ChatLoaded || text.trim().isEmpty) return;
-
-    final current = state as ChatLoaded;
+  Future<bool> sendMessage(
+    String text, {
+    List<String> quotedExcerpts = const [],
+  }) async {
+    if (!canSend) return false;
+    final question = text.trim();
     final clientId = _uuid.v4();
-    final isAppend = _isTurnActive && _firstClientMessageId != null;
-
-    if (!isAppend) {
-      _firstClientMessageId = clientId;
-      _turnQuotes = [];
+    final appendId = _isTurnActive ? _firstClientMessageId : null;
+    final mergedQuotes = <String>{
+      if (appendId != null) ..._turnQuotes,
+      ...quotedExcerpts.map((q) => q.trim()),
+    }.toList();
+    if (!_validInput(question, mergedQuotes)) {
+      _invalidInput();
+      return false;
     }
-
-    for (final q in quotedExcerpts) {
-      if (!_turnQuotes.contains(q)) _turnQuotes.add(q);
+    final convVer = _conversationVersion;
+    if (appendId != null) {
+      _appendWaiting = true;
+      final startedAt = _requestStartedAt;
+      final wait = startedAt == null
+          ? Duration.zero
+          : const Duration(milliseconds: 300) -
+                DateTime.now().difference(startedAt);
+      // Keep the root registration grace period from the original client.
+      if (wait > Duration.zero) await Future.delayed(wait);
+      if (!_sessionValid || convVer != _conversationVersion) return false;
+      // The original answer may have arrived during the grace period.
+      // Wait for its presentation to finish rather than cutting it off.
+      while (state is ChatLoaded &&
+          !_isTurnActive &&
+          (state as ChatLoaded).isBusy) {
+        await Future.delayed(const Duration(milliseconds: 25));
+        if (!_sessionValid || convVer != _conversationVersion) return false;
+      }
+      _appendWaiting = false;
+      if (_needsHistoryRefresh || state is! ChatLoaded) return false;
     }
-    final mergedQuotes = List<String>.from(_turnQuotes);
-
+    final current = state as ChatLoaded;
+    final effectiveAppend = _isTurnActive ? appendId : null;
+    final effectiveQuotes = effectiveAppend == null
+        ? quotedExcerpts.map((q) => q.trim()).toSet().toList()
+        : mergedQuotes;
+    final generation = ++_generation;
+    _cancelToken?.cancel('Superseded by newer message');
+    _firstClientMessageId = effectiveAppend ?? clientId;
+    _turnQuotes = effectiveQuotes;
+    _lastFailedMessage = question;
+    _isTurnActive = true;
     final userMessage = ChatMessage(
       id: clientId,
       role: ChatRole.user,
-      content: text,
+      content: question,
       timestamp: DateTime.now(),
       quotedExcerpts: quotedExcerpts,
     );
-
-    _lastFailedMessage = text;
-    _lastFailedQuotes = quotedExcerpts;
-
-    emit(current.copyWith(
-      messages: [...current.messages, userMessage],
-      isSending: true,
-      clearError: true,
-    ));
-
-    if (isAppend) {
-      final convVer = _conversationVersion;
-      var iterations = 0;
-      while (iterations < 10) {
-        iterations++;
-        final startedAt = _requestStartedAt;
-        if (startedAt == null) break;
-        final elapsed = DateTime.now().difference(startedAt);
-        if (elapsed >= const Duration(milliseconds: 300)) break;
-        await Future.delayed(const Duration(milliseconds: 300) - elapsed);
-        if (convVer != _conversationVersion || isClosed) return;
-      }
-    }
-
-    if (_cancelToken != null && !_cancelToken!.isCancelled) {
-      _generation++;
-      _cancelToken!.cancel('Superseded by newer message');
-      _cancelToken = null;
-    }
-    _requestStartedAt = null;
-
-    _isTurnActive = true;
-    final generation = _generation;
-
-    await _sendRequest(
-      question: text,
-      clientMessageId: clientId,
-      appendToMessageId: isAppend ? _firstClientMessageId : null,
-      quotedExcerpts: mergedQuotes,
-      generation: generation,
+    emit(
+      current.copyWith(
+        messages: [...current.messages, userMessage],
+        isSending: true,
+        clearError: true,
+      ),
     );
+    unawaited(
+      _sendRequest(
+        question: question,
+        clientMessageId: clientId,
+        appendToMessageId: effectiveAppend,
+        quotedExcerpts: effectiveQuotes,
+        generation: generation,
+      ),
+    );
+    return true;
   }
 
   Future<void> _sendRequest({
@@ -213,7 +331,6 @@ class ChatCubit extends Cubit<ChatState> {
     String? appendToMessageId,
     List<String> quotedExcerpts = const [],
     required int generation,
-    bool isRetryAfterConflict = false,
   }) async {
     final token = CancelToken();
     _cancelToken = token;
@@ -225,17 +342,21 @@ class ChatCubit extends Cubit<ChatState> {
         'clientMessageId': clientMessageId,
       };
       if (quotedExcerpts.isNotEmpty) data['quotedExcerpts'] = quotedExcerpts;
-      if (_currentConversationId != null) data['conversationId'] = _currentConversationId;
-      if (appendToMessageId != null) data['appendToMessageId'] = appendToMessageId;
+      if (_currentConversationId != null) {
+        data['conversationId'] = _currentConversationId;
+      }
+      if (appendToMessageId != null) {
+        data['appendToMessageId'] = appendToMessageId;
+      }
 
       final response = await ApiClient.instance.post(
         ApiEndpoints.askAssistant,
         data: data,
         cancelToken: token,
-        options: Options(receiveTimeout: const Duration(seconds: 110)),
+        options: _requestOptions(mutation: true),
       );
 
-      if (generation != _generation || isClosed) return;
+      if (!_isCurrent(generation)) return;
 
       await _processSuccess(
         response: response,
@@ -243,25 +364,18 @@ class ChatCubit extends Cubit<ChatState> {
         generation: generation,
       );
     } on DioException catch (e) {
-      if (generation != _generation || isClosed) return;
+      if (!_isCurrent(generation)) return;
       if (e.type == DioExceptionType.cancel) return;
 
-      if (e.response?.statusCode == 409 && !isRetryAfterConflict) {
-        await _handleConflict(
-          question: question,
-          clientMessageId: clientMessageId,
-          quotedExcerpts: quotedExcerpts,
-        );
-        return;
-      }
-
       _resetTurnState();
       _lastFailedMessage = question;
+      _needsHistoryRefresh = true;
       _handleDioError(e, question);
     } catch (e) {
-      if (generation != _generation || isClosed) return;
+      if (!_isCurrent(generation)) return;
       _resetTurnState();
       _lastFailedMessage = question;
+      _needsHistoryRefresh = true;
       _handleDioError(e, question);
     }
   }
@@ -271,29 +385,32 @@ class ChatCubit extends Cubit<ChatState> {
     required String clientMessageId,
     required int generation,
   }) async {
-    if (response.statusCode != 200) {
-      throw Exception('Server returned ${response.statusCode}');
+    _requireStatus(response, 200);
+    if (!_isCurrent(generation)) return;
+    if (response.data is! Map) {
+      throw const FormatException('Invalid assistant response.');
     }
-
-    final responseData = response.data;
-    String aiResponseText = '';
-    List<ChatSourceModel> sources = const [];
-
-    if (responseData is Map) {
-      final newConversationId = responseData['conversationId']?.toString();
-      if (newConversationId != null && newConversationId.isNotEmpty) {
-        _currentConversationId = newConversationId;
-      }
-      _useServerMessageId(_firstClientMessageId ?? clientMessageId, responseData['messageId']?.toString());
-      aiResponseText = responseData['answer']?.toString() ?? 'No response received.';
-      sources = ChatSourceModel.parseList(responseData['links']);
-    } else {
-      aiResponseText = responseData.toString();
+    final data = Map<String, dynamic>.from(response.data as Map);
+    final conversationId = data['conversationId'];
+    final messageId = data['messageId'];
+    final answer = data['answer'];
+    if (conversationId is! String ||
+        conversationId.isEmpty ||
+        messageId is! String ||
+        messageId.isEmpty ||
+        answer is! String ||
+        answer.trim().isEmpty) {
+      throw const FormatException('Incomplete assistant response.');
     }
-
+    _currentConversationId = conversationId;
+    final sources = ChatSourceModel.parseList(data['links']);
+    final rootId = _firstClientMessageId ?? clientMessageId;
+    final savedQuotes = List<String>.of(_turnQuotes);
     _resetTurnState();
-
-    final aiMessageId = 'ai-${_uuid.v4()}';
+    _lastFailedMessage = null;
+    final latest = state;
+    if (latest is! ChatLoaded) return;
+    final aiMessageId = 'ai-$messageId';
     final aiMessage = ChatMessage(
       id: aiMessageId,
       role: ChatRole.ai,
@@ -302,93 +419,71 @@ class ChatCubit extends Cubit<ChatState> {
       isStreaming: true,
       sources: sources,
     );
-
-    final latest = state;
-    if (latest is! ChatLoaded) return;
-
-    emit(latest.copyWith(
-      messages: [...latest.messages, aiMessage],
-      isSending: true,
-      isStreaming: true,
-    ));
-
-    await _streamResponse(
-      messageId: aiMessageId,
-      fullText: aiResponseText,
-      generation: generation,
-    );
-  }
-
-  Future<void> _handleConflict({
-    required String question,
-    required String clientMessageId,
-    required List<String> quotedExcerpts,
-  }) async {
-    // نحتفظ برسالة الـ user المحلية عشان ما تختفيش بعد الـ refresh
-    final before = state;
-    ChatMessage? pending;
-    if (before is ChatLoaded) {
-      for (final m in before.messages) {
-        if (m.id == clientMessageId) pending = m;
-      }
-    }
-
-    await _refreshConversationFromBackend(pendingMessage: pending);
-
-    _isTurnActive = true;
-    _firstClientMessageId = clientMessageId;
-    _turnQuotes = List<String>.from(quotedExcerpts);
-    final generation = ++_generation;
-
-    await _sendRequest(
-      question: question,
-      clientMessageId: clientMessageId,
-      appendToMessageId: null,
-      quotedExcerpts: quotedExcerpts,
-      generation: generation,
-      isRetryAfterConflict: true,
-    );
-  }
-
-  Future<void> _refreshConversationFromBackend({ChatMessage? pendingMessage}) async {
-    if (_currentConversationId == null) return;
-    try {
-      final resp = await ApiClient.instance.get(
-        ApiEndpoints.getConversationMessages(_currentConversationId!),
-      );
-      if (resp.statusCode != 200 || resp.data is! List) return;
-      final refreshed = _parseHistory(resp.data as List);
-      final latest = state;
-      if (latest is ChatLoaded) {
-        emit(latest.copyWith(
-          messages: [...refreshed, if (pendingMessage != null) pendingMessage],
-        ));
-      }
-    } catch (_) {}
-  }
-
-  void _useServerMessageId(String localId, String? serverId) {
-    if (serverId == null || serverId.isEmpty || serverId == localId) return;
-    final latest = state;
-    if (latest is! ChatLoaded) return;
-
-    final updated = latest.messages.map((m) {
-      if (m.id != localId) return m;
+    final updatedMessages = latest.messages.map((m) {
+      if (m.id != rootId) return m;
       return ChatMessage(
-        id: serverId,
+        id: messageId,
         role: m.role,
         content: m.content,
         timestamp: m.timestamp,
-        isStreaming: m.isStreaming,
-        hasError: m.hasError,
-        steps: m.steps,
-        jiraCards: m.jiraCards,
-        sources: m.sources,
-        quotedExcerpts: m.quotedExcerpts,
+        quotedExcerpts: savedQuotes.isEmpty ? m.quotedExcerpts : savedQuotes,
       );
     }).toList();
-
-    emit(latest.copyWith(messages: updated));
+    emit(
+      latest.copyWith(
+        currentSessionId: conversationId,
+        messages: [...updatedMessages, aiMessage],
+        isSending: true,
+        isStreaming: true,
+      ),
+    );
+    await _streamResponse(
+      messageId: aiMessageId,
+      fullText: answer,
+      generation: generation,
+    );
+    if (!_isCurrent(generation)) return;
+    // Server history is authoritative for appended/edited turns and persisted IDs.
+    // A refresh failure must not discard the answer that was already received.
+    try {
+      final history = await ApiClient.instance.get(
+        ApiEndpoints.getConversationMessages(conversationId),
+        options: _requestOptions(),
+      );
+      if (!_isCurrent(generation)) return;
+      _requireStatus(history, 200);
+      final refreshed = _parseHistory(history.data as List);
+      final current = state;
+      if (current is ChatLoaded) emit(current.copyWith(messages: refreshed));
+      final list = await ApiClient.instance.get(
+        ApiEndpoints.getConversations,
+        options: _requestOptions(),
+      );
+      if (!_isCurrent(generation)) return;
+      _requireStatus(list, 200);
+      final currentList = state;
+      if (currentList is ChatLoaded) {
+        emit(currentList.copyWith(sessions: _parseSessions(list.data)));
+      }
+    } catch (e) {
+      if (!_isCurrent(generation)) return;
+      if (e is DioException && [401, 403].contains(e.response?.statusCode)) {
+        _invalidatePendingRequests();
+        _currentConversationId = null;
+        emit(
+          const ChatErrorState('Access to this conversation is restricted.'),
+        );
+        return;
+      }
+      _needsHistoryRefresh = true;
+      _emitError(ChatErrorType.unknown);
+    } finally {
+      if (_isCurrent(generation) && state is ChatLoaded) {
+        emit(
+          (state as ChatLoaded).copyWith(isSending: false, isStreaming: false),
+        );
+      }
+    }
   }
 
   // ───────────────────────── Errors ─────────────────────────
@@ -398,7 +493,8 @@ class ChatCubit extends Cubit<ChatState> {
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.connectionError) {
         _emitError(ChatErrorType.network, failedText: failedText);
-      } else if (e.type == DioExceptionType.receiveTimeout) {
+      } else if (e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.sendTimeout) {
         _emitError(ChatErrorType.timeout, failedText: failedText);
       } else {
         final status = e.response?.statusCode;
@@ -420,30 +516,59 @@ class ChatCubit extends Cubit<ChatState> {
   }
 
   void _emitError(ChatErrorType type, {String? failedText}) {
+    if (!_sessionValid) return;
+    if (type == ChatErrorType.unauthorized || type == ChatErrorType.forbidden) {
+      _invalidatePendingRequests();
+      _currentConversationId = null;
+      emit(ChatErrorState(ChatError.fromType(type).message));
+      return;
+    }
     if (state is! ChatLoaded) {
       emit(ChatErrorState(ChatError.fromType(type).message));
       return;
     }
     final current = state as ChatLoaded;
     final hasPendingHttp = _cancelToken != null && !_cancelToken!.isCancelled;
-    emit(current.copyWith(
-      error: ChatError.fromType(type, failedText: failedText ?? _lastFailedMessage),
-      isSending: hasPendingHttp,
-      isStreaming: false,
-    ));
+    emit(
+      current.copyWith(
+        error: _needsHistoryRefresh
+            ? ChatError(
+                type: type,
+                message:
+                    'Refresh the conversation before trying again. ${ChatError.fromType(type).message}',
+              )
+            : ChatError.fromType(
+                type,
+                failedText: failedText ?? _lastFailedMessage,
+              ),
+        isSending: hasPendingHttp,
+        isStreaming: false,
+      ),
+    );
   }
 
-  
   Future<void> editMessage(String messageId, String newText) async {
-    if (state is! ChatLoaded || newText.trim().isEmpty) return;
-    _invalidatePendingRequests();
-    final generation = _generation;
+    if (!canSend ||
+        state is! ChatLoaded ||
+        (state as ChatLoaded).isBusy ||
+        _currentConversationId == null) {
+      return;
+    }
     final current = state as ChatLoaded;
 
     final index = current.messages.indexWhere((m) => m.id == messageId);
-    if (index == -1) return;
-
+    if (index == -1 ||
+        current.messages[index].role != ChatRole.user ||
+        !current.messages.any((m) => m.id == 'ai-$messageId')) {
+      return;
+    }
     final quotes = current.messages[index].quotedExcerpts;
+    if (!_validInput(newText, quotes)) {
+      _invalidInput();
+      return;
+    }
+    _invalidatePendingRequests();
+    final generation = _generation;
     final updatedMessages = current.messages.sublist(0, index);
     final clientMessageId = _uuid.v4();
 
@@ -456,15 +581,17 @@ class ChatCubit extends Cubit<ChatState> {
     );
 
     _lastFailedMessage = newText;
-    _lastFailedQuotes = quotes;
 
-    emit(current.copyWith(
-      messages: [...updatedMessages, userMessage],
-      isSending: true,
-      isStreaming: false,
-      clearError: true,
-    ));
+    emit(
+      current.copyWith(
+        messages: [...updatedMessages, userMessage],
+        isSending: true,
+        isStreaming: false,
+        clearError: true,
+      ),
+    );
 
+    _turnQuotes = List.of(quotes);
     final token = CancelToken();
     _cancelToken = token;
     _requestStartedAt = DateTime.now();
@@ -484,10 +611,10 @@ class ChatCubit extends Cubit<ChatState> {
         ApiEndpoints.askAssistant,
         data: data,
         cancelToken: token,
-        options: Options(receiveTimeout: const Duration(seconds: 110)),
+        options: _requestOptions(mutation: true),
       );
 
-      if (generation != _generation || isClosed) return;
+      if (!_isCurrent(generation)) return;
 
       await _processSuccess(
         response: response,
@@ -496,27 +623,39 @@ class ChatCubit extends Cubit<ChatState> {
       );
     } catch (e) {
       if (e is DioException && e.type == DioExceptionType.cancel) return;
-      if (generation != _generation || isClosed) return;
-      _cancelToken = null;
-      _requestStartedAt = null;
+      if (!_isCurrent(generation)) return;
+      _resetTurnState();
+      _needsHistoryRefresh = true;
+      emit(current.copyWith(isSending: false, isStreaming: false));
       _handleDioError(e, newText);
     }
   }
 
-
   Future<void> deleteConversation(String id) async {
-    if (state is! ChatLoaded) return;
-    final current = state as ChatLoaded;
+    if (!_sessionValid ||
+        state is! ChatLoaded ||
+        (state as ChatLoaded).isBusy) {
+      return;
+    }
+    final generation = _generation;
     try {
-      await ApiClient.instance.delete(ApiEndpoints.deleteConversation(id));
-      final updatedSessions = current.sessions.where((s) => s.id != id).toList();
-      if (current.currentSessionId == id) newChat();
+      final response = await ApiClient.instance.delete(
+        ApiEndpoints.deleteConversation(id),
+        options: _requestOptions(mutation: true),
+      );
+      if (!_isCurrent(generation)) return;
+      _requireStatus(response, 204);
       final latest = state;
-      if (latest is ChatLoaded) {
-        emit(latest.copyWith(sessions: updatedSessions));
+      if (latest is! ChatLoaded) return;
+      final updated = latest.sessions.where((s) => s.id != id).toList();
+      if (latest.currentSessionId == id) {
+        newChat();
       }
+      final current = state;
+      if (current is ChatLoaded) emit(current.copyWith(sessions: updated));
     } catch (e) {
-      _emitError(ChatErrorType.unknown);
+      if (!_isCurrent(generation)) return;
+      _handleDioError(e, '');
     }
   }
 
@@ -530,7 +669,7 @@ class ChatCubit extends Cubit<ChatState> {
 
     for (final chunk in chunks) {
       await Future.delayed(const Duration(milliseconds: 20));
-      if (generation != _generation || isClosed) return;
+      if (!_isCurrent(generation)) return;
       accumulated += chunk;
       final latest = state;
       if (latest is! ChatLoaded) return;
@@ -540,57 +679,69 @@ class ChatCubit extends Cubit<ChatState> {
         return m;
       }).toList();
 
-      emit(latest.copyWith(messages: updatedMessages, isSending: true, isStreaming: true));
+      emit(
+        latest.copyWith(
+          messages: updatedMessages,
+          isSending: true,
+          isStreaming: true,
+        ),
+      );
     }
 
-    if (generation != _generation || isClosed) return;
+    if (!_isCurrent(generation)) return;
     final latest = state;
     if (latest is! ChatLoaded) return;
 
     final completedMessages = latest.messages.map((m) {
-      if (m.id == messageId) return m.copyWith(content: fullText, isStreaming: false);
+      if (m.id == messageId) {
+        return m.copyWith(content: fullText, isStreaming: false);
+      }
       return m;
     }).toList();
 
     final anyStreaming = completedMessages.any((m) => m.isStreaming);
-    final hasPendingHttp = _cancelToken != null && !_cancelToken!.isCancelled;
-    emit(latest.copyWith(
-      messages: completedMessages,
-      isStreaming: anyStreaming,
-      isSending: anyStreaming || hasPendingHttp,
-    ));
+    emit(
+      latest.copyWith(
+        messages: completedMessages,
+        isStreaming: anyStreaming,
+        isSending: true,
+      ),
+    );
   }
 
   List<String> _splitIntoChunks(String text) {
-    final chunks = <String>[];
-    final buffer = StringBuffer();
-    for (int i = 0; i < text.length; i++) {
-      final char = text[i];
-      buffer.write(char);
-      final isBreakChar = char == ' ' || char == '\n';
-      final isChunkFull = buffer.length >= 3;
-      if (isBreakChar || isChunkFull) {
-        chunks.add(buffer.toString());
-        buffer.clear();
-      }
-    }
-    if (buffer.isNotEmpty) chunks.add(buffer.toString());
-    return chunks;
+    final points = text.runes.toList();
+    final size = (points.length / 120).ceil().clamp(3, 1000000).toInt();
+    return [
+      for (var i = 0; i < points.length; i += size)
+        String.fromCharCodes(points.skip(i).take(size)),
+    ];
   }
 
   Future<void> retryLastMessage() async {
-    if (state is! ChatLoaded) return;
+    if (!_sessionValid ||
+        state is! ChatLoaded ||
+        (state as ChatLoaded).isBusy) {
+      return;
+    }
+    final id = _currentConversationId;
     final current = state as ChatLoaded;
-    final failedText = _lastFailedMessage ?? current.error?.failedMessageText;
-    if (failedText == null || failedText.isEmpty) return;
-    final quotes = _lastFailedQuotes;
-
-    final messages = List<ChatMessage>.from(current.messages);
-    if (messages.isNotEmpty && messages.last.hasError) messages.removeLast();
-    if (messages.isNotEmpty && messages.last.role == ChatRole.user) messages.removeLast();
-
-    emit(current.copyWith(messages: messages, clearError: true, isSending: false, isStreaming: false));
-    await sendMessage(failedText, quotedExcerpts: quotes);
+    if (id == null) {
+      await loadChat();
+      return;
+    }
+    ChatSession? session;
+    for (final item in current.sessions) {
+      if (item.id == id) {
+        session = item;
+        break;
+      }
+    }
+    if (session == null) {
+      await loadChat();
+      return;
+    }
+    await openSession(session);
   }
 
   void deleteFailedMessage() {
@@ -600,11 +751,10 @@ class ChatCubit extends Cubit<ChatState> {
     if (messages.isNotEmpty && messages.last.hasError) messages.removeLast();
     emit(current.copyWith(messages: messages, clearError: true));
     _lastFailedMessage = null;
-    _lastFailedQuotes = const [];
   }
 
   void dismissError() {
-    if (state is! ChatLoaded) return;
+    if (state is! ChatLoaded || _needsHistoryRefresh) return;
     emit((state as ChatLoaded).copyWith(clearError: true));
   }
 
@@ -623,9 +773,20 @@ class ChatCubit extends Cubit<ChatState> {
   void _invalidatePendingRequests() {
     _generation++;
     _conversationVersion++;
+    _appendWaiting = false;
+    _needsHistoryRefresh = false;
+    _lastFailedMessage = null;
     if (_cancelToken != null && !_cancelToken!.isCancelled) {
       _cancelToken!.cancel('Conversation changed');
     }
     _resetTurnState();
+  }
+
+  @override
+  Future<void> close() {
+    _session.userNotifier.removeListener(_onSessionChanged);
+    _invalidatePendingRequests();
+    _guard = null;
+    return super.close();
   }
 }

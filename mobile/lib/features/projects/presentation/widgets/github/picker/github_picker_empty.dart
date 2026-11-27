@@ -4,7 +4,12 @@ class GitHubPickerEmpty extends StatelessWidget {
   final IconData icon;
   final String title;
   final String description;
-  const GitHubPickerEmpty({super.key, required this.icon, required this.title, required this.description});
+  const GitHubPickerEmpty({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.description,
+  });
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);

@@ -2,8 +2,8 @@ import 'package:equatable/equatable.dart';
 
 /// ═══════════════════════════════════════════════════════════
 /// Base State
-/// 
-/// الـ Parent لكل الـ States في التطبيق
+///
+/// Base class for application states.
 /// ═══════════════════════════════════════════════════════════
 abstract class BaseState extends Equatable {
   const BaseState();
@@ -41,7 +41,7 @@ class ErrorState extends BaseState {
 
 /// ═══════════════════════════════════════════════════════════
 /// Success State (Base)
-/// 
+///
 /// ═══════════════════════════════════════════════════════════
 class SuccessState<T> extends BaseState {
   final T data;

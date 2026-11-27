@@ -12,7 +12,7 @@ class BugModel extends Equatable {
   final String? reporterId;
   final String? relatedCommitSha;
   final String? relatedTaskId;
-  final int recurrenceCount;     // ← للـ ML Model
+  final int recurrenceCount; // Used by the ML model.
   final List<String> affectedFiles;
   final DateTime? resolvedAt;
   final DateTime? createdAt;
@@ -125,17 +125,31 @@ class BugModel extends Equatable {
     );
   }
 
-  bool get isResolved => status == BugStatus.resolved || status == BugStatus.closed;
+  bool get isResolved =>
+      status == BugStatus.resolved || status == BugStatus.closed;
   bool get isCritical => severity == BugSeverity.critical;
   bool get isRecurring => recurrenceCount > 1;
   bool get isLinked => relatedCommitSha != null || relatedTaskId != null;
 
   @override
   List<Object?> get props => [
-        id, title, description, status, severity, priority, projectId,
-        assigneeId, reporterId, relatedCommitSha, relatedTaskId,
-        recurrenceCount, affectedFiles, resolvedAt, createdAt, updatedAt,
-      ];
+    id,
+    title,
+    description,
+    status,
+    severity,
+    priority,
+    projectId,
+    assigneeId,
+    reporterId,
+    relatedCommitSha,
+    relatedTaskId,
+    recurrenceCount,
+    affectedFiles,
+    resolvedAt,
+    createdAt,
+    updatedAt,
+  ];
 }
 
 enum BugStatus {

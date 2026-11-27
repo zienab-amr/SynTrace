@@ -15,7 +15,7 @@ class LogoMark extends StatelessWidget {
       child: Image.asset(
         'assets/icons/icon_dark.png',
         fit: BoxFit.contain,
-        color: isDark ? null : null, 
+        color: isDark ? null : null,
       ),
     );
   }

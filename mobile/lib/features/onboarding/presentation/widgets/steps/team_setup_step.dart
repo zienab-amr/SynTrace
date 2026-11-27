@@ -39,28 +39,46 @@ class _TeamSetupStepState extends State<TeamSetupStep> {
     final firstName = _firstNameController.text.trim();
     final lastName = _lastNameController.text.trim();
     final phone = _phoneController.text.trim();
-    final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
+    final email = _emailController.text.trim().toLowerCase();
+    final password = _passwordController.text;
+
+    final validEmail = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email);
+
+    final validPhone = RegExp(r'^\+?[0-9]{7,15}$').hasMatch(phone);
 
     if (firstName.isEmpty ||
-        email.isEmpty ||
-        !email.contains('@') ||
-        password.length < 6) {
+        lastName.isEmpty ||
+        !validPhone ||
+        !validEmail ||
+        password.length < 8) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Please fill all required fields correctly. Password min 6 chars.',
+            'Enter valid member details and a password '
+            'with at least 8 characters.',
           ),
-          backgroundColor: Colors.red,
         ),
       );
+
+      return;
+    }
+
+    final alreadyExists = widget.teamMembers.any(
+      (member) => member['email']?.toLowerCase() == email,
+    );
+
+    if (alreadyExists) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This member is already in the list.')),
+      );
+
       return;
     }
 
     widget.onAdd({
       'firstName': firstName,
-      'lastName': lastName.isEmpty ? '.' : lastName,
-      'phoneNumber': phone.isEmpty ? '0000000000' : phone,
+      'lastName': lastName,
+      'phoneNumber': phone,
       'email': email,
       'password': password,
       'role': _selectedRole,
@@ -94,7 +112,7 @@ class _TeamSetupStepState extends State<TeamSetupStep> {
           Text(
             'Create accounts for your team. You can add more later.',
             style: TextStyle(
-              color: theme.colorScheme.onSurface.withOpacity(0.6),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
               fontSize: 14,
             ),
           ),
@@ -114,7 +132,7 @@ class _TeamSetupStepState extends State<TeamSetupStep> {
               Expanded(
                 child: _buildTextField(
                   _lastNameController,
-                  'Last Name',
+                  'Last Name *',
                   Icons.person_outline,
                   theme,
                 ),
@@ -122,7 +140,12 @@ class _TeamSetupStepState extends State<TeamSetupStep> {
             ],
           ),
           const SizedBox(height: 12),
-          _buildTextField(_phoneController, 'Phone Number', Icons.phone, theme),
+          _buildTextField(
+            _phoneController,
+            'Phone Number *',
+            Icons.phone,
+            theme,
+          ),
           const SizedBox(height: 12),
           _buildTextField(
             _emailController,
@@ -185,7 +208,7 @@ class _TeamSetupStepState extends State<TeamSetupStep> {
             ...widget.teamMembers.map((member) {
               return ListTile(
                 leading: CircleAvatar(
-                  backgroundColor: AppColors.primary.withOpacity(0.2),
+                  backgroundColor: AppColors.primary.withValues(alpha: 0.2),
                   child: Text(
                     member['firstName']![0],
                     style: const TextStyle(color: AppColors.primary),
@@ -198,7 +221,7 @@ class _TeamSetupStepState extends State<TeamSetupStep> {
                 subtitle: Text(
                   member['email']!,
                   style: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                   ),
                 ),
                 trailing: IconButton(
@@ -206,7 +229,7 @@ class _TeamSetupStepState extends State<TeamSetupStep> {
                   onPressed: () => widget.onRemove(member['email']!),
                 ),
               );
-            }).toList(),
+            }),
         ],
       ),
     );
@@ -226,11 +249,11 @@ class _TeamSetupStepState extends State<TeamSetupStep> {
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: TextStyle(
-          color: theme.colorScheme.onSurface.withOpacity(0.4),
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
         ),
         prefixIcon: Icon(
           icon,
-          color: theme.colorScheme.onSurface.withOpacity(0.5),
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
           size: 20,
         ),
         filled: true,

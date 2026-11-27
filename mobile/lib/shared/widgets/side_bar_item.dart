@@ -25,7 +25,7 @@ class SidebarItem extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       child: Material(
         color: isActive
-            ? AppColors.primary.withOpacity(0.15)
+            ? AppColors.primary.withValues(alpha: 0.15)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
@@ -52,8 +52,9 @@ class SidebarItem extends StatelessWidget {
                         color: isActive
                             ? AppColors.textPrimaryDark
                             : AppColors.textSecondaryDark,
-                        fontWeight:
-                            isActive ? FontWeight.w600 : FontWeight.normal,
+                        fontWeight: isActive
+                            ? FontWeight.w600
+                            : FontWeight.normal,
                       ),
                     ),
                   ),

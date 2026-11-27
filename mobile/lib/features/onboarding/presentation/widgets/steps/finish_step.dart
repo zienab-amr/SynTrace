@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:syntrace/core/theme/app_colors.dart';
+import 'package:syntrace/core/theme/theme_controller.dart';
 import 'package:syntrace/features/onboarding/data/onboarding_data.dart';
 
 class FinishStep extends StatelessWidget {
@@ -10,91 +10,78 @@ class FinishStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       child: Column(
         children: [
-          const SizedBox(height: 20),
-
-          // Success Icon
           Container(
-            width: 100,
-            height: 100,
+            width: 88,
+            height: 88,
             decoration: BoxDecoration(
+              color: scheme.primary.withValues(alpha: 0.12),
               shape: BoxShape.circle,
-              color: AppColors.secondary.withOpacity(0.15),
             ),
-            child: const Center(
-              child: Icon(
-                Icons.check_circle_outline,
-                size: 56,
-                color: AppColors.secondary,
-              ),
+            child: Icon(
+              Icons.fact_check_outlined,
+              size: 42,
+              color: scheme.primary,
             ),
           ),
-
           const SizedBox(height: 24),
-
-          // Title
           Text(
-            "You're all set!",
-            style: TextStyle(
-              color: theme.colorScheme.onSurface,
-              fontSize: 26,
-              fontWeight: FontWeight.bold,
+            'Ready to get started?',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.headlineMedium,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Review your setup before entering SynTrace.',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
             ),
           ),
-
-          const SizedBox(height: 8),
-
-          Text(
-            'Here\'s a quick summary:',
-            style: TextStyle(
-              color: theme.colorScheme.onSurface.withOpacity(0.6),
-              fontSize: 14,
-            ),
-          ),
-
           const SizedBox(height: 28),
-
-          // Summary Items
           _SummaryItem(
             icon: Icons.business_outlined,
             label: 'Organization',
-            value: data.organizationName,
+            value: data.organizationName.isEmpty
+                ? 'Unavailable'
+                : data.organizationName,
           ),
           _SummaryItem(
-            icon: Icons.category_outlined,
-            label: 'Industry',
-            value: data.industry == 'Other'
-                ? data.customIndustry
-                : data.industry,
+            icon: Icons.group_add_outlined,
+            label: 'Pending members',
+            value: '${data.teamMembers.length}',
           ),
-          _SummaryItem(
-            icon: Icons.groups_outlined,
-            label: 'Team Size',
-            value: data.teamSize,
-          ),
+          ValueListenableBuilder<ThemeMode>(
+            valueListenable: ThemeController.themeMode,
+            builder: (context, mode, _) {
+              final label = switch (mode) {
+                ThemeMode.light => 'Light',
+                ThemeMode.dark => 'Dark',
+                ThemeMode.system => 'System',
+              };
 
-          // Team Members Summary (Updated)
-          if (data.teamMembers.isNotEmpty)
-            _SummaryItem(
-              icon: Icons.person_add_alt_1_outlined,
-              label: 'Team Members',
-              value: '${data.teamMembers.length} added',
+              return _SummaryItem(
+                icon: Icons.palette_outlined,
+                label: 'Appearance',
+                value: label,
+              );
+            },
+          ),
+          const SizedBox(height: 20),
+          Text(
+            data.teamMembers.isEmpty
+                ? 'Continue to open your workspace.'
+                : 'Pending member accounts will be created '
+                      'when you complete setup.',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
             ),
-
-          // Preferences Summary
-          _SummaryItem(
-            icon: Icons.dark_mode_outlined,
-            label: 'Dark Mode',
-            value: data.isDarkMode ? 'Enabled' : 'Disabled',
-          ),
-          _SummaryItem(
-            icon: Icons.notifications_outlined,
-            label: 'Notifications',
-            value: data.notificationsEnabled ? 'Enabled' : 'Disabled',
           ),
         ],
       ),
@@ -118,35 +105,24 @@ class _SummaryItem extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: theme.dividerColor.withOpacity(0.5)),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.dividerColor),
       ),
       child: Row(
         children: [
-          Icon(icon, color: AppColors.primary, size: 20),
+          Icon(icon, color: theme.colorScheme.primary, size: 22),
           const SizedBox(width: 12),
-          Text(
-            label,
-            style: TextStyle(
-              color: theme.colorScheme.onSurface.withOpacity(0.5),
-              fontSize: 13,
-            ),
-          ),
-          const Spacer(),
+          Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
+          const SizedBox(width: 12),
           Flexible(
             child: Text(
-              value.isEmpty ? '-' : value,
+              value,
               textAlign: TextAlign.end,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: theme.colorScheme.onSurface,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
+              style: theme.textTheme.labelLarge,
             ),
           ),
         ],

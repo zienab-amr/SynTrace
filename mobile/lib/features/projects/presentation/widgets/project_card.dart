@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:syntrace/shared/widgets/design_system/design_system.dart';
+
 import '../../data/models/project_api_model.dart';
 
 class ProjectCard extends StatelessWidget {
@@ -11,161 +13,132 @@ class ProjectCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = theme.colorScheme;
+    final scheme = theme.colorScheme;
+    final description = project.description?.trim() ?? '';
 
-    final description = project.description?.trim();
-
-    return Material(
-      color: colors.surface,
-      borderRadius: BorderRadius.circular(16),
-
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-
-        child: Container(
-          padding: const EdgeInsets.all(16),
-
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-
-            border: Border.all(
-              color: theme.dividerColor.withValues(alpha: 0.4),
+    return AppCard(
+      onTap: onTap,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const _ProjectIcon(),
+              const Spacer(),
+              _ProjectStatusBadge(status: project.status),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Text(
+            project.name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
             ),
           ),
-
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-
+          const SizedBox(height: 8),
+          Text(
+            description.isEmpty ? 'No description provided.' : description,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Divider(height: 1),
+          const SizedBox(height: 14),
+          Row(
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-
-                    decoration: BoxDecoration(
-                      color: colors.primary.withValues(alpha: 0.1),
-
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-
-                    child: Icon(Icons.folder_outlined, color: colors.primary),
-                  ),
-
-                  const SizedBox(width: 12),
-
-                  Expanded(
-                    child: Text(
-                      project.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: colors.onSurfaceVariant,
-                  ),
-                ],
+              Expanded(
+                child: _ProjectIntegration(isLinked: project.hasJiraProject),
               ),
-
-              const SizedBox(height: 14),
-
-              Text(
-                description == null || description.isEmpty
-                    ? 'No description provided.'
-                    : description,
-
-                maxLines: 3,
-
-                overflow: TextOverflow.ellipsis,
-
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: colors.onSurfaceVariant,
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              const Divider(),
-
-              const SizedBox(height: 10),
-
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _buildJiraBadge(context),
-
-                  if (project.status != null &&
-                      project.status != ProjectApiStatus.unknown)
-                    _buildBadge(
-                      context,
-                      icon: Icons.info_outline,
-                      label: project.status!.label,
-                      color: colors.primary,
-                    ),
-                ],
+              Icon(
+                Icons.arrow_forward_rounded,
+                size: 18,
+                color: scheme.primary,
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildJiraBadge(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-
-    return _buildBadge(
-      context,
-
-      icon: project.hasJiraProject
-          ? Icons.link_rounded
-          : Icons.link_off_rounded,
-
-      label: project.hasJiraProject ? 'Jira Linked' : 'Jira Not Linked',
-
-      color: project.hasJiraProject ? colors.primary : colors.onSurfaceVariant,
-    );
-  }
-
-  Widget _buildBadge(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(8),
-      ),
-
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: color),
-
-          const SizedBox(width: 6),
-
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: color,
-            ),
-          ),
         ],
       ),
+    );
+  }
+}
+
+class _ProjectIcon extends StatelessWidget {
+  const _ProjectIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: 46,
+      height: 46,
+      decoration: BoxDecoration(
+        color: scheme.primary.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.15)),
+      ),
+      child: Icon(Icons.folder_copy_outlined, color: scheme.primary, size: 23),
+    );
+  }
+}
+
+class _ProjectStatusBadge extends StatelessWidget {
+  final ProjectApiStatus? status;
+
+  const _ProjectStatusBadge({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final tone = switch (status) {
+      ProjectApiStatus.inProgress => AppStatusTone.info,
+      ProjectApiStatus.completed => AppStatusTone.success,
+      ProjectApiStatus.onHold => AppStatusTone.warning,
+      ProjectApiStatus.cancelled => AppStatusTone.error,
+      _ => AppStatusTone.neutral,
+    };
+
+    return AppStatusBadge(
+      label: status?.label ?? 'Status unavailable',
+      tone: tone,
+    );
+  }
+}
+
+class _ProjectIntegration extends StatelessWidget {
+  final bool isLinked;
+
+  const _ProjectIntegration({required this.isLinked});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Row(
+      children: [
+        Icon(
+          isLinked ? Icons.link_rounded : Icons.link_off_rounded,
+          size: 18,
+          color: isLinked ? scheme.primary : scheme.onSurfaceVariant,
+        ),
+        const SizedBox(width: 7),
+        Flexible(
+          child: Text(
+            isLinked ? 'Jira linked' : 'Jira not linked',
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: isLinked ? scheme.primary : scheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

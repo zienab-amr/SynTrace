@@ -13,24 +13,16 @@ class ChatSourceModel extends Equatable {
   final String key;
   final String url;
 
-  const ChatSourceModel({
-    required this.key,
-    required this.url,
-  });
+  const ChatSourceModel({required this.key, required this.url});
 
-  factory ChatSourceModel.fromJson(
-    Map<String, dynamic> json,
-  ) {
+  factory ChatSourceModel.fromJson(Map<String, dynamic> json) {
     return ChatSourceModel(
       key: json['key'] is String ? (json['key'] as String).trim() : '',
       url: json['url'] is String ? (json['url'] as String).trim() : '',
     );
   }
 
-  Map<String, dynamic> toJson() => {
-        'key': key,
-        'url': url,
-      };
+  Map<String, dynamic> toJson() => {'key': key, 'url': url};
 
   static List<ChatSourceModel> parseList(dynamic raw) {
     if (raw is! List) return const [];
@@ -40,9 +32,10 @@ class ChatSourceModel extends Equatable {
     for (final item in raw) {
       if (item is! Map) continue;
 
-      final source = ChatSourceModel.fromJson(
-        { 'key': item['key'], 'url': item['url'] },
-      );
+      final source = ChatSourceModel.fromJson({
+        'key': item['key'],
+        'url': item['url'],
+      });
 
       if (source.key.isEmpty && source.url.isEmpty) {
         continue;
@@ -112,8 +105,7 @@ class ChatSourceModel extends Equatable {
       return ChatSourceType.githubPullRequest;
     }
 
-    if (segments.length >= 5 &&
-        segments[2] == 'blob') {
+    if (segments.length >= 5 && segments[2] == 'blob') {
       return ChatSourceType.githubFile;
     }
 
@@ -126,9 +118,7 @@ class ChatSourceModel extends Equatable {
       type == ChatSourceType.githubFile ||
       type == ChatSourceType.githubRepository;
 
-  bool get isAvailable =>
-      safeUri != null &&
-      type != ChatSourceType.unknown;
+  bool get isAvailable => safeUri != null && type != ChatSourceType.unknown;
 
   String? get repository {
     if (!isGitHub) return null;
@@ -162,9 +152,7 @@ class ChatSourceModel extends Equatable {
 
     if (sha == null) return null;
 
-    return sha.length > 7
-        ? sha.substring(0, 7)
-        : sha;
+    return sha.length > 7 ? sha.substring(0, 7) : sha;
   }
 
   int? get pullRequestNumber {
@@ -176,8 +164,7 @@ class ChatSourceModel extends Equatable {
   }
 
   String? get filePath {
-    if (type != ChatSourceType.githubFile ||
-        commitSha == null) {
+    if (type != ChatSourceType.githubFile || commitSha == null) {
       return null;
     }
 
@@ -200,13 +187,9 @@ class ChatSourceModel extends Equatable {
     if (match == null) return null;
 
     final start = int.tryParse(match.group(1)!);
-    final end = int.tryParse(
-      match.group(2) ?? match.group(1)!,
-    );
+    final end = int.tryParse(match.group(2) ?? match.group(1)!);
 
-    if (start == null ||
-        end == null ||
-        end < start) {
+    if (start == null || end == null || end < start) {
       return null;
     }
 
@@ -218,13 +201,10 @@ class ChatSourceModel extends Equatable {
 
     final match = _lineMatch!;
 
-    return int.tryParse(
-      match.group(2) ?? match.group(1)!,
-    );
+    return int.tryParse(match.group(2) ?? match.group(1)!);
   }
 
-  bool get hasLineRange =>
-      startLine != null && endLine != null;
+  bool get hasLineRange => startLine != null && endLine != null;
 
   bool get isPreciseCodeReference =>
       type == ChatSourceType.githubFile &&
@@ -263,16 +243,13 @@ class ChatSourceModel extends Equatable {
         return 'Pull Request #$pullRequestNumber';
 
       case ChatSourceType.githubFile:
-        return filePath ??
-            (key.isNotEmpty ? key : 'Source file');
+        return filePath ?? (key.isNotEmpty ? key : 'Source file');
 
       case ChatSourceType.githubRepository:
         return repository ?? 'Repository';
 
       case ChatSourceType.jira:
-        return key.isNotEmpty
-            ? key
-            : safeUri!.pathSegments.last;
+        return key.isNotEmpty ? key : safeUri!.pathSegments.last;
 
       case ChatSourceType.unknown:
         return 'Source unavailable';
@@ -280,9 +257,7 @@ class ChatSourceModel extends Equatable {
   }
 
   static bool _isCommitSha(String value) {
-    return RegExp(
-      r'^[a-fA-F0-9]{7,40}$',
-    ).hasMatch(value);
+    return RegExp(r'^[a-fA-F0-9]{7,40}$').hasMatch(value);
   }
 
   @override

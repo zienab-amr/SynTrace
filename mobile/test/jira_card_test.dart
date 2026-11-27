@@ -28,7 +28,9 @@ void main() {
   });
 
   group('JiraCardWidget', () {
-    testWidgets('displays the issue details correctly', (WidgetTester tester) async {
+    testWidgets('displays the issue details correctly', (
+      WidgetTester tester,
+    ) async {
       const testCard = JiraCardModel(
         issueKey: 'SYNT-999',
         summary: 'Refactor payment module',
@@ -42,9 +44,7 @@ void main() {
 
       await tester.pumpWidget(
         const MaterialApp(
-          home: Scaffold(
-            body: JiraCardWidget(card: testCard),
-          ),
+          home: Scaffold(body: JiraCardWidget(card: testCard)),
         ),
       );
 

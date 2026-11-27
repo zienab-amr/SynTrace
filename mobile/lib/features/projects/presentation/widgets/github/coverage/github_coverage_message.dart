@@ -4,7 +4,12 @@ class GitHubCoverageMessage extends StatelessWidget {
   final IconData icon;
   final String message;
   final Color color;
-  const GitHubCoverageMessage({super.key, required this.icon, required this.message, required this.color});
+  const GitHubCoverageMessage({
+    super.key,
+    required this.icon,
+    required this.message,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -37,5 +42,4 @@ class GitHubCoverageMessage extends StatelessWidget {
       ),
     );
   }
-
 }

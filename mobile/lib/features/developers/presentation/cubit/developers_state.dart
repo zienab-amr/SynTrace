@@ -11,10 +11,11 @@ class DevelopersLoading extends DevelopersState {}
 
 class DevelopersLoaded extends DevelopersState {
   final List<DeveloperModel> developers;
-  const DevelopersLoaded(this.developers);
+  final bool isFromCache;
+  const DevelopersLoaded(this.developers, {this.isFromCache = false});
 
   @override
-  List<Object?> get props => [developers];
+  List<Object?> get props => [developers, isFromCache];
 }
 
 class DevelopersError extends DevelopersState {

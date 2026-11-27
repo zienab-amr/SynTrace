@@ -1,6 +1,4 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:syntrace/core/services/current_user_service.dart';
-import 'package:syntrace/core/services/secure_storage_service.dart';
 import 'package:syntrace/features/auth/data/auth_repository.dart';
 import 'package:syntrace/features/auth/data/models/auth_models.dart';
 import 'package:syntrace/features/auth/data/pending_signup_service.dart';
@@ -43,11 +41,44 @@ class SignupCubit extends Cubit<SignupState> {
     );
 
     final otpResult = await _repository.sendOtp(trimmedEmail);
+    if (isClosed) return;
     if (otpResult.success) {
+      PendingSignupService.instance.markSent();
       emit(OtpSent(trimmedEmail));
     } else {
       PendingSignupService.instance.clear();
       emit(SignupError(otpResult.message));
+    }
+  }
+
+  Future<void> resendOtp(String email) async {
+    if (isClosed || state is SignupLoading) return;
+    final service = PendingSignupService.instance;
+    final pending = service.pendingRequest;
+    if (pending == null || pending.email != email.trim().toLowerCase()) {
+      emit(const SignupError('Signup data lost. Please start again.'));
+      return;
+    }
+    if (service.resendAt?.isAfter(DateTime.now()) ?? false) return;
+    emit(const SignupLoading());
+    final result = await _repository.sendOtp(pending.email);
+    if (!identical(service.pendingRequest, pending)) return;
+    if (result.success) {
+      service.markSent();
+      if (!isClosed) emit(OtpSent(pending.email));
+    } else {
+      if (result.statusCode == 429) {
+        service.resendAt = DateTime.now().add(const Duration(seconds: 60));
+      }
+      if (!isClosed) {
+        emit(
+          SignupError(
+            result.statusCode == 429
+                ? 'Too many requests. Please wait before requesting another code.'
+                : result.message,
+          ),
+        );
+      }
     }
   }
 
@@ -58,64 +89,48 @@ class SignupCubit extends Cubit<SignupState> {
     final trimmedEmail = email.trim().toLowerCase();
     final trimmedOtp = otp.trim();
 
+    final pending = PendingSignupService.instance.pendingRequest;
+    if (pending == null || pending.email != trimmedEmail) {
+      emit(const SignupError('Signup data lost. Please start again.'));
+      return;
+    }
+    final expiresAt = PendingSignupService.instance.expiresAt;
+    if (expiresAt != null && !expiresAt.isAfter(DateTime.now())) {
+      emit(const SignupError('Code expired. Request a new code.'));
+      return;
+    }
     final verifyResult = await _repository.verifyOtp(
       email: trimmedEmail,
       otp: trimmedOtp,
     );
-    if (!verifyResult.success || verifyResult.data != true) {
+    if (isClosed) return;
+    if (!identical(PendingSignupService.instance.pendingRequest, pending))
+      return;
+    final token = verifyResult.data?.verificationToken;
+    if (!verifyResult.success ||
+        verifyResult.data?.verified != true ||
+        token == null ||
+        token.isEmpty) {
       emit(SignupError(verifyResult.message));
       return;
     }
-
-    emit(const OtpVerified());
-
-    final pending = PendingSignupService.instance.pendingRequest;
-    if (pending == null) {
-      emit(const SignupError('Signup data lost. Please try again.'));
-      return;
-    }
-
-    final registerResult = await _repository.signup(pending);
-    if (!registerResult.success || registerResult.data == null) {
-      emit(SignupError(registerResult.message));
-      return;
-    }
-
-    final loginResult = await _repository.login(
-      LoginRequest(email: pending.email, password: pending.password),
+    final registerResult = await _repository.signup(
+      pending.withVerificationToken(token),
     );
-
-    if (loginResult.success && loginResult.data != null) {
-      await _saveTokens(loginResult.data!);
-
-      final fullName = '${pending.firstName} ${pending.lastName}'.trim();
-
-      final user = loginResult.data!.extractUser(
-        fallbackEmail: pending.email,
-        fallbackName: fullName,
-        fallbackCompanyName: pending.companyName,
+    if (isClosed) return;
+    if (!registerResult.success || registerResult.data == null) {
+      emit(
+        SignupError(
+          '${registerResult.message} Request a new code before trying again. If your account was created, sign in instead.',
+        ),
       );
-
-      if (user != null) {
-        await SecureStorageService.instance.saveUserId(user.id);
-        await SecureStorageService.instance.saveUserRole(user.role.value);
-        if (user.tenantId != null && user.tenantId!.isNotEmpty) {
-          await SecureStorageService.instance.saveTenantId(user.tenantId!);
-        }
-
-        await CurrentUserService.instance.setUser(user);
-      }
-
-      PendingSignupService.instance.clear();
-      emit(SignupSuccess(registerResult.data!));
-    } else {
-      emit(SignupError(loginResult.message));
+      return;
     }
-  }
 
-  Future<void> _saveTokens(AuthResponse response) async {
-    await SecureStorageService.instance.saveToken(response.accessToken);
-    await SecureStorageService.instance.saveRefreshToken(response.refreshToken);
+    PendingSignupService.instance.clear();
+    if (!isClosed) {
+      emit(SignupSuccess(registerResult.data!));
+    }
   }
 
   void reset() {

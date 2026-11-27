@@ -5,8 +5,7 @@ class SplashTitle extends StatelessWidget {
   const SplashTitle({super.key});
 
   @override
-  Widget build(BuildContext context)
-  {
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Column(
@@ -19,7 +18,7 @@ class SplashTitle extends StatelessWidget {
             return Opacity(
               opacity: value,
               child: Transform.translate(
-                offset: Offset(0, 15 * (1 - value)), 
+                offset: Offset(0, 15 * (1 - value)),
                 child: child,
               ),
             );
@@ -48,7 +47,7 @@ class SplashTitle extends StatelessWidget {
             style: TextStyle(
               color: Color(0xFF8892B0),
               fontSize: 11,
-              letterSpacing: 4.0, 
+              letterSpacing: 4.0,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -56,8 +55,8 @@ class SplashTitle extends StatelessWidget {
 
         const SizedBox(height: 40),
 
-        // Loading Indicator 
-         LoadingDots(),
+        // Loading Indicator
+        LoadingDots(),
       ],
     );
   }

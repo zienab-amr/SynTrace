@@ -71,13 +71,13 @@ class JiraCardModel extends Equatable {
 
   @override
   List<Object?> get props => [
-        issueKey,
-        summary,
-        status,
-        statusCategory,
-        priority,
-        issueType,
-        assigneeName,
-        url,
-      ];
+    issueKey,
+    summary,
+    status,
+    statusCategory,
+    priority,
+    issueType,
+    assigneeName,
+    url,
+  ];
 }

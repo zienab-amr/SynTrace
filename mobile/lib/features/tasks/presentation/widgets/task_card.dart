@@ -1,15 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:syntrace/features/projects/data/mock_projects.dart';
+import 'package:syntrace/features/tasks/data/models/task_model.dart';
 
 class TaskCard extends StatelessWidget {
-  final MockTaskItem task;
+  final TaskModel task;
   final VoidCallback? onTap;
 
-  const TaskCard({
-    super.key,
-    required this.task,
-    this.onTap,
-  });
+  const TaskCard({super.key, required this.task, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -31,12 +27,11 @@ class TaskCard extends StatelessWidget {
             color: theme.colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: theme.dividerColor.withOpacity(0.5),
+              color: theme.dividerColor.withValues(alpha: 0.5),
             ),
           ),
           child: Row(
             children: [
-              // ─── Priority Bar ───
               Container(
                 width: 4,
                 height: 50,
@@ -47,7 +42,6 @@ class TaskCard extends StatelessWidget {
               ),
               const SizedBox(width: 12),
 
-              // ─── Content ───
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -58,7 +52,7 @@ class TaskCard extends StatelessWidget {
                         Text(
                           task.id,
                           style: TextStyle(
-                            color: onSurface.withOpacity(0.5),
+                            color: onSurface.withValues(alpha: 0.5),
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
                           ),
@@ -66,7 +60,10 @@ class TaskCard extends StatelessWidget {
                         const SizedBox(width: 8),
                         _Badge(label: statusLabel, color: statusColor),
                         const Spacer(),
-                        _Badge(label: task.priority.toUpperCase(), color: priorityColor),
+                        _Badge(
+                          label: task.priority.toUpperCase(),
+                          color: priorityColor,
+                        ),
                       ],
                     ),
                     const SizedBox(height: 6),
@@ -88,13 +85,13 @@ class TaskCard extends StatelessWidget {
                         Icon(
                           Icons.person_outline,
                           size: 12,
-                          color: onSurface.withOpacity(0.4),
+                          color: onSurface.withValues(alpha: 0.4),
                         ),
                         const SizedBox(width: 4),
                         Text(
                           task.assigneeName,
                           style: TextStyle(
-                            color: onSurface.withOpacity(0.5),
+                            color: onSurface.withValues(alpha: 0.5),
                             fontSize: 12,
                           ),
                         ),
@@ -149,7 +146,7 @@ class _Badge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(

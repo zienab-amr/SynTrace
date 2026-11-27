@@ -4,9 +4,9 @@ import 'package:syntrace/core/theme/app_colors.dart';
 /// ═══════════════════════════════════════════════════════════
 /// DetailOverlay
 ///
-/// بيفتح Overlay فيه تفاصيل حاجة معينة
-/// - موبايل: Bottom Sheet طالع من تحت
-/// - ويب: Modal في النص
+/// Displays a detail overlay.
+/// - Mobile: bottom sheet.
+/// - Web: centered modal.
 /// ═══════════════════════════════════════════════════════════
 class DetailOverlay {
   DetailOverlay._();
@@ -20,7 +20,7 @@ class DetailOverlay {
     final isMobile = MediaQuery.of(context).size.width < 600;
 
     if (isMobile) {
-      // ─── موبايل: Bottom Sheet ───
+      // Mobile: bottom sheet
       return showModalBottomSheet(
         context: context,
         isScrollControlled: true,
@@ -30,10 +30,10 @@ class DetailOverlay {
       );
     }
 
-    // ─── ويب: Modal ───
+    // Web: modal
     return showDialog(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.6),
+      barrierColor: Colors.black.withValues(alpha: 0.6),
       builder: (_) =>
           _ModalContent(title: title, subtitle: subtitle, child: child),
     );
@@ -70,7 +70,7 @@ class _BottomSheetContent extends StatelessWidget {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: AppColors.textMuted.withOpacity(0.5),
+              color: AppColors.textMuted.withValues(alpha: 0.5),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -109,7 +109,7 @@ class _ModalContent extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppColors.backgroundDark,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.border.withOpacity(0.5)),
+            border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -125,7 +125,7 @@ class _ModalContent extends StatelessWidget {
 }
 
 /// ═══════════════════════════════════════════════════════════
-/// Header مشترك
+/// Shared header
 /// ═══════════════════════════════════════════════════════════
 class _OverlayHeader extends StatelessWidget {
   final String title;

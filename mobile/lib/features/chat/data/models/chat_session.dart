@@ -17,11 +17,11 @@ class ChatSession extends Equatable {
     return ChatSession(
       id: json['id']?.toString() ?? json['conversationId']?.toString() ?? '',
       title: json['title']?.toString() ?? 'New Chat',
-      lastMessageAt: json['updatedAt'] != null 
-          ? DateTime.parse(json['updatedAt'].toString()) 
-          : (json['lastMessageAt'] != null 
-              ? DateTime.parse(json['lastMessageAt'].toString()) 
-              : DateTime.now()),
+      lastMessageAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'].toString())
+          : (json['lastMessageAt'] != null
+                ? DateTime.parse(json['lastMessageAt'].toString())
+                : DateTime.now()),
       preview: json['preview']?.toString(),
     );
   }

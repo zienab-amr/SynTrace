@@ -7,7 +7,13 @@ class GitHubRepositoryList extends StatelessWidget {
   final int total;
   final Future<void> Function() onRefresh;
   final ValueChanged<GitHubRepositoryOption> onSelected;
-  const GitHubRepositoryList({super.key, required this.repositories, required this.total, required this.onRefresh, required this.onSelected});
+  const GitHubRepositoryList({
+    super.key,
+    required this.repositories,
+    required this.total,
+    required this.onRefresh,
+    required this.onSelected,
+  });
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);

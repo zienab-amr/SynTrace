@@ -4,7 +4,11 @@ import 'project_overview_surface.dart';
 class ProjectUnavailableCard extends StatelessWidget {
   final IconData icon;
   final String message;
-  const ProjectUnavailableCard({super.key, required this.icon, required this.message});
+  const ProjectUnavailableCard({
+    super.key,
+    required this.icon,
+    required this.message,
+  });
 
   @override
   Widget build(BuildContext context) {

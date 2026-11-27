@@ -36,33 +36,47 @@ class _TasksScreenState extends State<TasksScreen> {
     return AppPageScaffold(
       title: 'Tasks',
       subtitle: 'Manage all tasks across your projects',
-      searchBar: _buildSearchBar(),
-      filterBar: BlocBuilder<TasksCubit, TasksState>(
-        builder: (context, state) {
-          final statusFilter =
-              state is TasksLoaded ? state.statusFilter : null;
-          final priorityFilter =
-              state is TasksLoaded ? state.priorityFilter : null;
-          final hasActiveFilters =
-              state is TasksLoaded && state.hasActiveFilters;
+      searchBar: context.watch<TasksCubit>().state is TasksLoaded
+          ? _buildSearchBar()
+          : null,
+      filterBar: context.watch<TasksCubit>().state is TasksLoaded
+          ? BlocBuilder<TasksCubit, TasksState>(
+              builder: (context, state) {
+                final statusFilter = state is TasksLoaded
+                    ? state.statusFilter
+                    : null;
+                final priorityFilter = state is TasksLoaded
+                    ? state.priorityFilter
+                    : null;
+                final hasActiveFilters =
+                    state is TasksLoaded && state.hasActiveFilters;
 
-          return TaskFilters(
-            statusFilter: statusFilter,
-            priorityFilter: priorityFilter,
-            hasActiveFilters: hasActiveFilters,
-            onStatusChanged: (value) =>
-                context.read<TasksCubit>().setStatusFilter(value),
-            onPriorityChanged: (value) =>
-                context.read<TasksCubit>().setPriorityFilter(value),
-            onClearAll: () {
-              _searchController.clear();
-              context.read<TasksCubit>().clearFilters();
-            },
-          );
-        },
-      ),
+                return TaskFilters(
+                  statusFilter: statusFilter,
+                  priorityFilter: priorityFilter,
+                  hasActiveFilters: hasActiveFilters,
+                  onStatusChanged: (value) =>
+                      context.read<TasksCubit>().setStatusFilter(value),
+                  onPriorityChanged: (value) =>
+                      context.read<TasksCubit>().setPriorityFilter(value),
+                  onClearAll: () {
+                    _searchController.clear();
+                    context.read<TasksCubit>().clearFilters();
+                  },
+                );
+              },
+            )
+          : null,
       child: BlocBuilder<TasksCubit, TasksState>(
         builder: (context, state) {
+          if (state is TasksUnavailable) {
+            return const EmptyStateView(
+              icon: Icons.cloud_off,
+              title: 'Tasks unavailable',
+              message: 'Task data is not available from the server yet.',
+            );
+          }
+
           if (state is TasksLoading) {
             return const Center(
               child: CircularProgressIndicator(color: AppColors.primary),
@@ -88,8 +102,7 @@ class _TasksScreenState extends State<TasksScreen> {
                 message: state.hasActiveFilters
                     ? 'Try adjusting your search or filters'
                     : 'Tasks will appear here',
-                actionLabel:
-                    state.hasActiveFilters ? 'Clear filters' : null,
+                actionLabel: state.hasActiveFilters ? 'Clear filters' : null,
                 onAction: state.hasActiveFilters
                     ? () {
                         _searchController.clear();
@@ -132,9 +145,8 @@ class _TasksScreenState extends State<TasksScreen> {
           return ListView.separated(
             padding: const EdgeInsets.symmetric(vertical: 8),
             itemCount: state.tasks.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (context, index) =>
-                TaskCard(task: state.tasks[index]),
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
+            itemBuilder: (context, index) => TaskCard(task: state.tasks[index]),
           );
         },
       ),
@@ -149,16 +161,14 @@ class _TasksScreenState extends State<TasksScreen> {
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.dividerColor.withOpacity(0.5),
-        ),
+        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.5)),
       ),
       child: Row(
         children: [
           const SizedBox(width: 14),
           Icon(
             Icons.search,
-            color: theme.colorScheme.onSurface.withOpacity(0.4),
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
             size: 20,
           ),
           const SizedBox(width: 8),
@@ -175,7 +185,7 @@ class _TasksScreenState extends State<TasksScreen> {
               decoration: InputDecoration(
                 hintText: 'Search tasks...',
                 hintStyle: TextStyle(
-                  color: theme.colorScheme.onSurface.withOpacity(0.3),
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
                   fontSize: 14,
                 ),
                 border: InputBorder.none,
@@ -192,7 +202,7 @@ class _TasksScreenState extends State<TasksScreen> {
               },
               icon: Icon(
                 Icons.close,
-                color: theme.colorScheme.onSurface.withOpacity(0.4),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
                 size: 18,
               ),
             ),

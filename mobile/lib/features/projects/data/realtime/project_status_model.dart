@@ -14,9 +14,23 @@ class ProjectStatusModel {
   });
 
   factory ProjectStatusModel.fromJson(Map<String, dynamic> json) {
+    final projectId = json['projectId'];
+    final state = json['state'];
+    if (projectId is! String ||
+        projectId.trim().isEmpty ||
+        projectId.length > 450 ||
+        state is! String ||
+        !const {
+          'not-mapped',
+          'pending',
+          'retrying',
+          'synced',
+        }.contains(state)) {
+      throw const FormatException('Invalid project status event.');
+    }
     return ProjectStatusModel(
-      projectId: json['projectId'] as String,
-      state: json['state'] as String,
+      projectId: projectId,
+      state: state,
       requestedVersion: (json['requestedVersion'] as num?)?.toInt(),
       completedVersion: (json['completedVersion'] as num?)?.toInt(),
       lastSuccessAtUtc: DateTime.tryParse(

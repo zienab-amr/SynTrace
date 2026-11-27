@@ -52,7 +52,7 @@ class ChatHistoryPanel extends StatelessWidget {
                 Text(
                   'RECENT CHATS',
                   style: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.2,
@@ -74,7 +74,7 @@ class ChatHistoryPanel extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 2),
                   child: Material(
                     color: isSelected
-                        ? AppColors.primary.withOpacity(0.12)
+                        ? AppColors.primary.withValues(alpha: 0.12)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(10),
                     child: InkWell(
@@ -108,8 +108,9 @@ class ChatHistoryPanel extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color: theme.colorScheme.onSurface
-                                    .withOpacity(0.4),
+                                color: theme.colorScheme.onSurface.withValues(
+                                  alpha: 0.4,
+                                ),
                                 fontSize: 11,
                               ),
                             ),
