@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+
 import 'package:syntrace/core/router/routes.dart';
-import 'package:syntrace/core/theme/app_colors.dart';
+import 'package:syntrace/core/services/current_user_service.dart';
+import 'package:syntrace/core/services/secure_storage_service.dart';
+import 'package:syntrace/core/cache/cache_scope.dart';
+import 'package:syntrace/core/cache/cache_session_guard.dart';
+import 'package:syntrace/core/cache/cache_operation_lock.dart';
 import 'package:syntrace/features/onboarding/presentation/cubit/onboarding_cubit.dart';
 import 'package:syntrace/features/onboarding/presentation/cubit/onboarding_state.dart';
 import 'package:syntrace/features/onboarding/presentation/widgets/onboarding_navigation.dart';
@@ -22,197 +27,69 @@ class OnboardingWizardScreen extends StatefulWidget {
 }
 
 class _OnboardingWizardScreenState extends State<OnboardingWizardScreen> {
-  final _pageController = PageController();
-  int _lastStep = 0;
-
   @override
   void initState() {
     super.initState();
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<OnboardingCubit>().start();
+      if (!mounted) return;
+
+      if (CurrentUserService.instance.user?.isAdmin == true) {
+        context.read<OnboardingCubit>().start();
+      }
     });
   }
 
   @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
+    if (CurrentUserService.instance.user?.isAdmin != true) {
+      return const _MemberWelcome();
+    }
     return BlocConsumer<OnboardingCubit, OnboardingState>(
       listener: (context, state) {
-        if (state is OnboardingInProgress) {
-          if (_lastStep != state.currentStep && _pageController.hasClients) {
-            _lastStep = state.currentStep;
-            _pageController.animateToPage(
-              state.currentStep,
-              duration: const Duration(milliseconds: 400),
-              curve: Curves.easeInOut,
-            );
-          }
-        }
-
         if (state is OnboardingCompleted) {
           context.go(AppRoutes.dashboard);
         }
 
         if (state is OnboardingError) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.message),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 5),
-            ),
-          );
-          context.read<OnboardingCubit>().previousStep();
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: Theme.of(context).colorScheme.error,
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 5),
+              ),
+            );
         }
       },
       builder: (context, state) {
-        if (state is OnboardingLoading) {
-          return Scaffold(
-            backgroundColor: theme.scaffoldBackgroundColor,
-            body: const Center(
-              child: CircularProgressIndicator(color: AppColors.primary),
-            ),
-          );
-        }
+        final theme = Theme.of(context);
 
-        if (state is! OnboardingInProgress) {
-          return Scaffold(
+        return PopScope(
+          canPop: state is! OnboardingLoading,
+          child: Scaffold(
             backgroundColor: theme.scaffoldBackgroundColor,
-            body: const Center(
-              child: CircularProgressIndicator(color: AppColors.primary),
-            ),
-          );
-        }
-
-        return Scaffold(
-          backgroundColor: theme.scaffoldBackgroundColor,
-          body: Stack(
-            children: [
-              const Positioned.fill(
-                child: Opacity(opacity: 0.35, child: SplashBackground()),
-              ),
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: RadialGradient(
-                        center: Alignment.center,
-                        radius: 1.2,
-                        colors: [
-                          theme.scaffoldBackgroundColor.withOpacity(0.0),
-                          theme.scaffoldBackgroundColor.withOpacity(0.7),
-                        ],
-                        stops: const [0.3, 1.0],
-                      ),
+            body: Stack(
+              children: [
+                const Positioned.fill(
+                  child: IgnorePointer(
+                    child: Opacity(opacity: 0.35, child: SplashBackground()),
+                  ),
+                ),
+                SafeArea(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 720),
+                      child: state is OnboardingInProgress
+                          ? _WizardContent(state: state)
+                          : const _WizardLoading(),
                     ),
                   ),
                 ),
-              ),
-              SafeArea(
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 720),
-                    child: Column(
-                      children: [
-                        Expanded(
-                          child: PageView(
-                            controller: _pageController,
-                            physics: const PageScrollPhysics(),
-                            onPageChanged: (index) {
-                              if (index > _lastStep) {
-                                if (!state.canGoNext) {
-                                  _pageController.animateToPage(
-                                    _lastStep,
-                                    duration: const Duration(milliseconds: 200),
-                                    curve: Curves.easeOut,
-                                  );
-                                  return;
-                                }
-                              }
-                              _lastStep = index;
-                              context.read<OnboardingCubit>().goToStep(index);
-                            },
-                            children: [
-                              const _StepWrapper(child: WelcomeStep()),
-                              _StepWrapper(
-                                child: OrganizationInfoStep(
-                                  organizationName: state.data.organizationName,
-                                  industry: state.data.industry,
-                                  customIndustry: state.data.customIndustry,
-                                  teamSize: state.data.teamSize,
-                                  onNameChanged: (v) => context
-                                      .read<OnboardingCubit>()
-                                      .updateOrganizationName(v),
-                                  onIndustryChanged: (v) => context
-                                      .read<OnboardingCubit>()
-                                      .updateIndustry(v),
-                                  onCustomIndustryChanged: (v) => context
-                                      .read<OnboardingCubit>()
-                                      .updateCustomIndustry(v),
-                                  onTeamSizeChanged: (v) => context
-                                      .read<OnboardingCubit>()
-                                      .updateTeamSize(v),
-                                ),
-                              ),
-                              _StepWrapper(
-                                child: TeamSetupStep(
-                                  teamMembers: state.data.teamMembers,
-                                  onAdd: (member) => context
-                                      .read<OnboardingCubit>()
-                                      .addTeamMember(member),
-                                  onRemove: (email) => context
-                                      .read<OnboardingCubit>()
-                                      .removeTeamMember(email),
-                                ),
-                              ),
-                              _StepWrapper(
-                                child: PreferencesStep(
-                                  isDarkMode: state.data.isDarkMode,
-                                  notificationsEnabled:
-                                      state.data.notificationsEnabled,
-                                  onDarkModeChanged: (v) => context
-                                      .read<OnboardingCubit>()
-                                      .updateDarkMode(v),
-                                  onNotificationsChanged: (v) => context
-                                      .read<OnboardingCubit>()
-                                      .updateNotifications(v),
-                                ),
-                              ),
-                              _StepWrapper(child: FinishStep(data: state.data)),
-                            ],
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          child: OnboardingProgress(
-                            currentStep: state.currentStep,
-                            totalSteps: OnboardingInProgress.totalSteps,
-                          ),
-                        ),
-                        OnboardingNavigation(
-                          canGoBack: !state.isFirstStep,
-                          canGoNext: state.canGoNext,
-                          isLastStep: state.isLastStep,
-                          onBack: () =>
-                              context.read<OnboardingCubit>().previousStep(),
-                          onNext: () =>
-                              context.read<OnboardingCubit>().nextStep(),
-                          onSkip: state.currentStep == 2
-                              ? () => context.read<OnboardingCubit>().nextStep()
-                              : null,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -220,19 +97,222 @@ class _OnboardingWizardScreenState extends State<OnboardingWizardScreen> {
   }
 }
 
-class _StepWrapper extends StatelessWidget {
-  final Widget child;
-  const _StepWrapper({required this.child});
+class _WizardContent extends StatelessWidget {
+  final OnboardingInProgress state;
+
+  const _WizardContent({required this.state});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Center(
-        child: SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
-            child: child,
+    final cubit = context.read<OnboardingCubit>();
+
+    return Column(
+      children: [
+        Expanded(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) {
+              return FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0.025, 0),
+                    end: Offset.zero,
+                  ).animate(animation),
+                  child: child,
+                ),
+              );
+            },
+            child: SizedBox.expand(
+              key: ValueKey(state.currentStep),
+              child: _buildStep(context),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: OnboardingProgress(
+            currentStep: state.currentStep,
+            totalSteps: OnboardingInProgress.totalSteps,
+          ),
+        ),
+        OnboardingNavigation(
+          canGoBack: !state.isFirstStep,
+          canGoNext: state.canGoNext,
+          isLastStep: state.isLastStep,
+          onBack: cubit.previousStep,
+          onNext: cubit.nextStep,
+          onSkip: state.currentStep == 2 && state.data.teamMembers.isEmpty
+              ? cubit.nextStep
+              : null,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStep(BuildContext context) {
+    final cubit = context.read<OnboardingCubit>();
+    final data = state.data;
+
+    switch (state.currentStep) {
+      case 0:
+        return const _CenteredStep(child: WelcomeStep());
+
+      case 1:
+        return _CenteredStep(
+          child: OrganizationInfoStep(
+            organizationName: data.organizationName,
+            industry: data.industry,
+            customIndustry: data.customIndustry,
+            teamSize: data.teamSize,
+            onNameChanged: cubit.updateOrganizationName,
+            onIndustryChanged: cubit.updateIndustry,
+            onCustomIndustryChanged: cubit.updateCustomIndustry,
+            onTeamSizeChanged: cubit.updateTeamSize,
+          ),
+        );
+
+      case 2:
+        return TeamSetupStep(
+          teamMembers: data.teamMembers,
+          onAdd: cubit.addTeamMember,
+          onRemove: cubit.removeTeamMember,
+        );
+
+      case 3:
+        return PreferencesStep(
+          isDarkMode: data.isDarkMode,
+          notificationsEnabled: data.notificationsEnabled,
+          onDarkModeChanged: cubit.updateDarkMode,
+          onNotificationsChanged: cubit.updateNotifications,
+        );
+
+      case 4:
+        return FinishStep(data: data);
+
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+}
+
+class _CenteredStep extends StatelessWidget {
+  final Widget child;
+
+  const _CenteredStep({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class _WizardLoading extends StatelessWidget {
+  const _WizardLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 24),
+          Text(
+            'Preparing your workspace...',
+            style: theme.textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          Text('Please wait a moment.', style: theme.textTheme.bodySmall),
+        ],
+      ),
+    );
+  }
+}
+
+class _MemberWelcome extends StatefulWidget {
+  const _MemberWelcome();
+
+  @override
+  State<_MemberWelcome> createState() => _MemberWelcomeState();
+}
+
+class _MemberWelcomeState extends State<_MemberWelcome> {
+  bool _saving = false;
+
+  Future<void> _finish() async {
+    if (_saving) return;
+    final scope = CacheScope.fromCurrentUser();
+    if (scope == null) return;
+    setState(() => _saving = true);
+    try {
+      final guard = CacheSessionGuard.capture(scope);
+      await CacheOperationLock.instance.run(() async {
+        guard.ensureValid();
+        await SecureStorageService.instance.saveOnboardingCompleted(true);
+        guard.ensureValid();
+      });
+      if (mounted && guard.isValid) context.go(AppRoutes.dashboard);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to complete setup. Try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Icon(
+                    Icons.hub_outlined,
+                    size: 48,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Welcome to SynTrace',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Explore your assigned projects, connect your work and ask the assistant. Your workspace access is managed by your administrator.',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 32),
+                  FilledButton(
+                    onPressed: _saving ? null : _finish,
+                    child: Text(_saving ? 'Finishing…' : 'Get started'),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),

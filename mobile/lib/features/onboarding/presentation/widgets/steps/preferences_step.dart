@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:syntrace/core/theme/app_colors.dart';
+import 'package:syntrace/core/theme/theme_controller.dart';
 
 class PreferencesStep extends StatelessWidget {
   final bool isDarkMode;
@@ -20,45 +20,62 @@ class PreferencesStep extends StatelessWidget {
     final theme = Theme.of(context);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
+      padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Your preferences',
-            style: TextStyle(
-              color: theme.colorScheme.onSurface,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
+            'Personalize your workspace',
+            style: theme.textTheme.headlineMedium,
           ),
           const SizedBox(height: 8),
           Text(
-            'Customize your experience.',
-            style: TextStyle(
-              color: theme.colorScheme.onSurface.withOpacity(0.6),
-              fontSize: 14,
+            'Choose how SynTrace looks on your device.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
-
-          const SizedBox(height: 32),
-
-          _PreferenceTile(
-            icon: Icons.dark_mode_outlined,
-            title: 'Dark Mode',
-            subtitle: 'Use dark theme across the app',
-            value: isDarkMode,
-            onChanged: onDarkModeChanged,
+          const SizedBox(height: 28),
+          ValueListenableBuilder<ThemeMode>(
+            valueListenable: ThemeController.themeMode,
+            builder: (context, mode, _) {
+              return Column(
+                children: [
+                  _ThemeOption(
+                    icon: Icons.light_mode_outlined,
+                    title: 'Light',
+                    subtitle: 'A bright and clean workspace',
+                    selected: mode == ThemeMode.light,
+                    onTap: () => onDarkModeChanged(false),
+                  ),
+                  const SizedBox(height: 12),
+                  _ThemeOption(
+                    icon: Icons.dark_mode_outlined,
+                    title: 'Dark',
+                    subtitle: 'A comfortable low-light experience',
+                    selected: mode == ThemeMode.dark,
+                    onTap: () => onDarkModeChanged(true),
+                  ),
+                  const SizedBox(height: 12),
+                  _ThemeOption(
+                    icon: Icons.settings_brightness_outlined,
+                    title: 'System',
+                    subtitle: 'Follow your device appearance',
+                    selected: mode == ThemeMode.system,
+                    onTap: () {
+                      ThemeController.setTheme(ThemeMode.system);
+                    },
+                  ),
+                ],
+              );
+            },
           ),
-
-          const SizedBox(height: 12),
-
-          _PreferenceTile(
-            icon: Icons.notifications_outlined,
-            title: 'Notifications',
-            subtitle: 'Get updates about your projects',
-            value: notificationsEnabled,
-            onChanged: onNotificationsChanged,
+          const SizedBox(height: 24),
+          Text(
+            'You can change your appearance anytime in Settings.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
@@ -66,77 +83,69 @@ class PreferencesStep extends StatelessWidget {
   }
 }
 
-class _PreferenceTile extends StatelessWidget {
+class _ThemeOption extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
-  final bool value;
-  final ValueChanged<bool> onChanged;
+  final bool selected;
+  final VoidCallback onTap;
 
-  const _PreferenceTile({
+  const _ThemeOption({
     required this.icon,
     required this.title,
     required this.subtitle,
-    required this.value,
-    required this.onChanged,
+    required this.selected,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: value
-              ? AppColors.primary.withOpacity(0.5)
-              : theme.dividerColor,
-        ),
+    return Material(
+      color: selected ? scheme.primaryContainer : scheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: selected ? scheme.primary : theme.dividerColor),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: AppColors.primary, size: 22),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: theme.colorScheme.onSurface,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                size: 24,
+                color: selected ? scheme.primary : scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: theme.textTheme.titleSmall),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(0.5),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                selected ? Icons.check_circle : Icons.radio_button_unchecked,
+                size: 20,
+                color: selected ? scheme.primary : scheme.outline,
+              ),
+            ],
           ),
-          Switch(
-            value: value,
-            onChanged: onChanged,
-            activeThumbColor: AppColors.primary,
-          ),
-        ],
+        ),
       ),
     );
   }

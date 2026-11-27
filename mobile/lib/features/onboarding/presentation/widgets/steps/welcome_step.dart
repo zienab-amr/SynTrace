@@ -20,8 +20,8 @@ class WelcomeStep extends StatelessWidget {
             shape: BoxShape.circle,
             gradient: LinearGradient(
               colors: [
-                AppColors.primary.withOpacity(0.2),
-                AppColors.secondary.withOpacity(0.2),
+                AppColors.primary.withValues(alpha: 0.2),
+                AppColors.secondary.withValues(alpha: 0.2),
               ],
             ),
           ),
@@ -52,7 +52,7 @@ class WelcomeStep extends StatelessWidget {
           "Let's set up your workspace in just a few steps.",
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: theme.colorScheme.onSurface.withOpacity(0.6),
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
             fontSize: 15,
             height: 1.5,
           ),
