@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-class SettingsSidebar extends StatelessWidget
-{
+class SettingsSidebar extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onTabSelected;
 
@@ -20,8 +19,7 @@ class SettingsSidebar extends StatelessWidget
   ];
 
   @override
-  Widget build(BuildContext context)
-  {
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Container(
@@ -30,7 +28,7 @@ class SettingsSidebar extends StatelessWidget
         color: theme.colorScheme.surface,
         border: Border(
           right: BorderSide(
-            color: theme.dividerColor.withOpacity(0.3),
+            color: theme.dividerColor.withValues(alpha: 0.3),
             width: 1,
           ),
         ),
@@ -45,7 +43,7 @@ class SettingsSidebar extends StatelessWidget
             padding: const EdgeInsets.only(bottom: 4),
             child: Material(
               color: isSelected
-                  ? theme.colorScheme.primary.withOpacity(0.12)
+                  ? theme.colorScheme.primary.withValues(alpha: 0.12)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(10),
               child: InkWell(
@@ -63,7 +61,9 @@ class SettingsSidebar extends StatelessWidget
                         size: 18,
                         color: isSelected
                             ? theme.colorScheme.primary
-                            : theme.colorScheme.onSurface.withOpacity(0.6),
+                            : theme.colorScheme.onSurface.withValues(
+                                alpha: 0.6,
+                              ),
                       ),
                       const SizedBox(width: 12),
                       Text(
@@ -71,7 +71,9 @@ class SettingsSidebar extends StatelessWidget
                         style: TextStyle(
                           color: isSelected
                               ? theme.colorScheme.primary
-                              : theme.colorScheme.onSurface.withOpacity(0.7),
+                              : theme.colorScheme.onSurface.withValues(
+                                  alpha: 0.7,
+                                ),
                           fontSize: 13,
                           fontWeight: isSelected
                               ? FontWeight.w600

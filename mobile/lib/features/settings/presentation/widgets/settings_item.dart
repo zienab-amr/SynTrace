@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-class SettingsItem extends StatelessWidget 
-{
+class SettingsItem extends StatelessWidget {
   final IconData icon;
   final String title;
   final String? subtitle;
@@ -18,8 +17,7 @@ class SettingsItem extends StatelessWidget
   });
 
   @override
-  Widget build(BuildContext context)
-  {
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Material(
@@ -35,14 +33,10 @@ class SettingsItem extends StatelessWidget
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withOpacity(0.1),
+                  color: theme.colorScheme.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(
-                  icon,
-                  color: theme.colorScheme.primary,
-                  size: 20,
-                ),
+                child: Icon(icon, color: theme.colorScheme.primary, size: 20),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -62,7 +56,9 @@ class SettingsItem extends StatelessWidget
                       Text(
                         subtitle!,
                         style: TextStyle(
-                          color: theme.colorScheme.onSurface.withOpacity(0.5),
+                          color: theme.colorScheme.onSurface.withValues(
+                            alpha: 0.5,
+                          ),
                           fontSize: 12,
                         ),
                       ),
@@ -74,7 +70,7 @@ class SettingsItem extends StatelessWidget
                   Icon(
                     Icons.arrow_forward_ios,
                     size: 14,
-                    color: theme.colorScheme.onSurface.withOpacity(0.3),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
                   ),
             ],
           ),
