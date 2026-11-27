@@ -1,0 +1,50 @@
+# Flutter generated files
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Native platforms not needed for web build
+android/
+ios/
+linux/
+macos/
+windows/
+
+# Git
+.git/
+.gitignore
+
+# Cloudflare deployment files
+.wrangler/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Credentials
+*.pem
+*.key
+*.pfx
+*.p12
+*.jks
+*.keystore
+key.properties
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+
+# Logs and temporary files
+*.log
+.DS_Store
+Thumbs.db
+
+# Documentation
+README.md
