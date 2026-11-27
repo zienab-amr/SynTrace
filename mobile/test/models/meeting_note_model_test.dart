@@ -21,7 +21,7 @@ void main() {
       expect(updated.title, 'Sprint Planning (Updated)');
       expect(updated.isDraft, isTrue);
       expect(updated.participants.length, 2);
-      expect(updated.id, original.id); 
+      expect(updated.id, original.id);
     });
   });
 }
