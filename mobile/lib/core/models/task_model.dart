@@ -127,10 +127,22 @@ class TaskModel extends Equatable {
 
   @override
   List<Object?> get props => [
-        id, title, description, status, priority, projectId,
-        assigneeId, reporterId, sprintId, dueDate, estimatedHours,
-        loggedHours, tags, createdAt, updatedAt,
-      ];
+    id,
+    title,
+    description,
+    status,
+    priority,
+    projectId,
+    assigneeId,
+    reporterId,
+    sprintId,
+    dueDate,
+    estimatedHours,
+    loggedHours,
+    tags,
+    createdAt,
+    updatedAt,
+  ];
 }
 
 enum TaskStatus {

@@ -1,5 +1,5 @@
 import 'package:syntrace/core/state/base_state.dart';
-import 'package:syntrace/features/projects/data/mock_projects.dart';
+import 'package:syntrace/features/tasks/data/models/task_model.dart';
 
 abstract class TasksState extends BaseState {
   const TasksState();
@@ -14,7 +14,7 @@ class TasksLoading extends TasksState {
 }
 
 class TasksLoaded extends TasksState {
-  final List<MockTaskItem> tasks;
+  final List<TaskModel> tasks;
   final String searchQuery;
   final String? statusFilter;
   final String? priorityFilter;
@@ -27,9 +27,7 @@ class TasksLoaded extends TasksState {
   });
 
   bool get hasActiveFilters =>
-      searchQuery.isNotEmpty ||
-      statusFilter != null ||
-      priorityFilter != null;
+      searchQuery.isNotEmpty || statusFilter != null || priorityFilter != null;
 
   @override
   List<Object?> get props => [tasks, searchQuery, statusFilter, priorityFilter];
@@ -41,4 +39,8 @@ class TasksError extends TasksState {
 
   @override
   List<Object?> get props => [message];
+}
+
+class TasksUnavailable extends TasksState {
+  const TasksUnavailable();
 }
