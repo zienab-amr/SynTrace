@@ -70,11 +70,7 @@ class _SignupScreenState extends State<SignupScreen> {
       listener: (context, state) {
         if (state is OtpSent) {
           _showSuccess('OTP sent to ${state.email}');
-          Future.delayed(const Duration(milliseconds: 600), () {
-            if (mounted) {
-              context.go(AppRoutes.verifyOtp, extra: state.email);
-            }
-          });
+          context.go(AppRoutes.verifyOtp, extra: state.email);
         }
 
         if (state is SignupError) {
@@ -161,10 +157,12 @@ class _SignupScreenState extends State<SignupScreen> {
                   isPassword: true,
                   textInputAction: TextInputAction.done,
                   validator: (value) {
-                    if (value == null || value.isEmpty)
+                    if (value == null || value.isEmpty) {
                       return 'Confirm your password';
-                    if (value != _passwordController.text)
+                    }
+                    if (value != _passwordController.text) {
                       return 'Passwords do not match';
+                    }
                     return null;
                   },
                 ),
@@ -210,7 +208,7 @@ class _SignupScreenState extends State<SignupScreen> {
               borderRadius: BorderRadius.circular(6),
             ),
             side: BorderSide(
-              color: theme.colorScheme.onSurface.withOpacity(0.3),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
             ),
           ),
         ),
@@ -221,7 +219,7 @@ class _SignupScreenState extends State<SignupScreen> {
             child: RichText(
               text: TextSpan(
                 style: TextStyle(
-                  color: theme.colorScheme.onSurface.withOpacity(0.6),
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   fontSize: 12.5,
                   height: 1.5,
                 ),
