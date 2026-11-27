@@ -23,7 +23,7 @@ class MeetingsToolbar extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '${meetingCount} Meetings',
+                '$meetingCount Meetings',
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
