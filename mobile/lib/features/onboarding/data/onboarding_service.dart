@@ -1,15 +1,48 @@
 import 'dart:convert';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:syntrace/core/services/secure_storage_service.dart';
+
 import 'onboarding_data.dart';
 
 class OnboardingService {
   OnboardingService._();
+
   static final OnboardingService instance = OnboardingService._();
 
   final _storage = const FlutterSecureStorage();
-  static const _key = 'onboarding_data';
+
+  static const _legacyKey = 'onboarding_data';
+
+  Future<String?> _accountKey() async {
+    final storage = SecureStorageService.instance;
+
+    final userId = await storage.getUserId();
+    final tenantId = await storage.getTenantId();
+
+    if (userId == null ||
+        userId.isEmpty ||
+        tenantId == null ||
+        tenantId.isEmpty) {
+      return null;
+    }
+
+    return 'onboarding_data_v2_${tenantId}_$userId';
+  }
+
+  Future<void> clearLegacyData() async {
+    await _storage.delete(key: _legacyKey);
+  }
 
   Future<void> saveData(OnboardingData data) async {
+    await clearLegacyData();
+
+    final key = await _accountKey();
+
+    if (key == null) {
+      throw StateError('No authenticated account.');
+    }
+
     final jsonMap = {
       'organizationName': data.organizationName,
       'industry': data.industry,
@@ -17,33 +50,49 @@ class OnboardingService {
       'teamSize': data.teamSize,
       'userRole': data.userRole,
       'customRole': data.customRole,
-      'teamMembers': data.teamMembers,
       'isDarkMode': data.isDarkMode,
-      'notificationsEnabled': data.notificationsEnabled,
     };
-    await _storage.write(key: _key, value: jsonEncode(jsonMap));
+
+    await _storage.write(key: key, value: jsonEncode(jsonMap));
   }
 
   Future<OnboardingData?> loadData() async {
-    final jsonString = await _storage.read(key: _key);
+    await clearLegacyData();
+
+    final key = await _accountKey();
+
+    if (key == null) return null;
+
+    final jsonString = await _storage.read(key: key);
+
     if (jsonString == null) return null;
 
-    final Map<String, dynamic> jsonMap = jsonDecode(jsonString);
+    try {
+      final json = jsonDecode(jsonString) as Map<String, dynamic>;
 
-    return OnboardingData(
-      organizationName: jsonMap['organizationName'] ?? '',
-      industry: jsonMap['industry'] ?? '',
-      customIndustry: jsonMap['customIndustry'] ?? '',
-      teamSize: jsonMap['teamSize'] ?? '',
-      userRole: jsonMap['userRole'] ?? '',
-      customRole: jsonMap['customRole'] ?? '',
-      teamMembers: jsonMap['teamMembers'] != null
-          ? List<Map<String, String>>.from(
-              jsonMap['teamMembers'].map((x) => Map<String, String>.from(x)),
-            )
-          : [], // التعديل هنا
-      isDarkMode: jsonMap['isDarkMode'] ?? true,
-      notificationsEnabled: jsonMap['notificationsEnabled'] ?? true,
-    );
+      return OnboardingData(
+        organizationName: json['organizationName'] as String? ?? '',
+        industry: json['industry'] as String? ?? '',
+        customIndustry: json['customIndustry'] as String? ?? '',
+        teamSize: json['teamSize'] as String? ?? '',
+        userRole: json['userRole'] as String? ?? '',
+        customRole: json['customRole'] as String? ?? '',
+        isDarkMode: json['isDarkMode'] as bool? ?? true,
+      );
+    } on FormatException {
+      return null;
+    } on TypeError {
+      return null;
+    }
+  }
+
+  Future<void> clearData() async {
+    final key = await _accountKey();
+
+    if (key != null) {
+      await _storage.delete(key: key);
+    }
+
+    await clearLegacyData();
   }
 }
