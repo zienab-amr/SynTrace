@@ -4,8 +4,10 @@ import { Link, navigate, useLocation } from './router/router.jsx';
 import Intro from './components/Intro/Intro';
 import Login from './components/Login/Login';
 import Register from './components/Register/Register.jsx';
+import ForgotPassword from './components/ForgotPassword/ForgotPassword.jsx';
 import StatusPage from './components/common/StatusPage.jsx';
 import WorkspacePlaceholder from './components/Workspace/WorkspacePlaceholder.jsx';
+import JiraCallbackRedirect from './components/Workspace/JiraCallbackRedirect.jsx';
 import './App.css';
 
 // Sends anonymous visitors to /login and brings them back after signing in.
@@ -29,9 +31,8 @@ function Routes() {
   if (pathname === '/register') {
     return <Register />;
   }
-  if (pathname === '/forgot-password') {
-    return <StatusPage title="Reset your password" message="Password reset is coming to the web app soon." />;
-  }
+  if (pathname === '/forgot-password') return <ForgotPassword />;
+  if (pathname === '/jira/callback') return <JiraCallbackRedirect />;
   if (pathname === '/app' || pathname.startsWith('/app/')) {
     return <RequireAuth><WorkspacePlaceholder /></RequireAuth>;
   }
@@ -41,7 +42,7 @@ function Routes() {
 export default function App() {
   return (
     <AuthProvider>
-      <WorkspacePlaceholder />
+      <Routes />
     </AuthProvider>
   );
 }

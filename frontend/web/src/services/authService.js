@@ -2,13 +2,11 @@ import { ENDPOINTS, USE_MOCK_AUTH } from '../config/api.js';
 import { HttpError, refreshSession, request } from './apiClient.js';
 import { tokenStore } from './tokenStore.js';
 
-// Every failure becomes one of these codes. The UI shows generic messages on purpose:
-// it must never reveal whether an email exists.
 export class AuthError extends Error {
-  constructor(code, { retryAfter } = {}) {
-    super(code);
+  constructor(code, { retryAfter, message } = {}) {
+    super(message || code);
     this.name = 'AuthError';
-    this.code = code; // INVALID_CREDENTIALS | FORBIDDEN | RATE_LIMITED | NETWORK | SERVER
+    this.code = code;
     this.retryAfter = retryAfter;
   }
 }
@@ -16,73 +14,91 @@ export class AuthError extends Error {
 function mapError(error) {
   if (error instanceof AuthError) return error;
   if (error instanceof HttpError) {
-    if (error.status === 400 || error.status === 401) return new AuthError('INVALID_CREDENTIALS');
-    if (error.status === 403) return new AuthError('FORBIDDEN');
+    const message = error.data?.detail || error.data?.message || error.data?.title;
+    if (error.status === 400 || error.status === 401) return new AuthError('INVALID_CREDENTIALS', { message });
+    if (error.status === 403) return new AuthError('FORBIDDEN', { message });
     if (error.status === 429) {
       const seconds = Number.parseInt(error.headers?.get('Retry-After') ?? '', 10);
-      return new AuthError('RATE_LIMITED', { retryAfter: Number.isFinite(seconds) ? seconds : 60 });
+      return new AuthError('RATE_LIMITED', { retryAfter: Number.isFinite(seconds) ? seconds : 60, message });
     }
-    return new AuthError('SERVER');
+    return new AuthError('SERVER', { message });
   }
-  return new AuthError('NETWORK');
+  if (error?.name === 'AbortError' || error?.name === 'TimeoutError') return new AuthError('NETWORK', { message: 'The server did not respond in time.' });
+  return new AuthError('NETWORK', { message: error?.message });
 }
 
-// Keep only the fields the UI needs.
-const toUser = (raw) =>
-  raw && typeof raw === 'object'
-    ? { id: raw.id, name: raw.name, email: raw.email, role: raw.role, companyId: raw.companyId }
-    : null;
+function read(raw, camel, pascal) { return raw?.[camel] ?? raw?.[pascal]; }
+function toUser(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const roles = read(raw, 'roles', 'Roles') || [];
+  const roleNames = roles.map((item) => item?.name ?? item?.Name).filter(Boolean);
+  const firstName = read(raw, 'firstName', 'FirstName') || '';
+  const lastName = read(raw, 'lastName', 'LastName') || '';
+  return {
+    id: read(raw, 'id', 'Id'),
+    name: `${firstName} ${lastName}`.trim() || read(raw, 'email', 'Email') || 'Workspace member',
+    firstName,
+    lastName,
+    email: read(raw, 'email', 'Email'),
+    phoneNumber: read(raw, 'phoneNumber', 'PhoneNumber'),
+    role: roleNames[0] || 'Workspace member',
+    roles: roleNames,
+    companyId: read(raw, 'companyId', 'CompanyId'),
+  };
+}
 
-/* ------------------------- real backend ------------------------- */
+async function getCurrentUser() {
+  const raw = await request(ENDPOINTS.me);
+  const user = toUser(raw);
+  if (!user?.id || !user.companyId) throw new Error('The current employee endpoint returned an incomplete profile.');
+  return user;
+}
+
 const realAuth = {
   async login(email, password) {
     try {
-      const data = await request(ENDPOINTS.login, { method: 'POST', body: { email, password }, auth: false });
-      tokenStore.set(data?.accessToken);
-      return toUser(data?.user);
-    } catch (error) {
-      throw mapError(error);
-    }
+      const tokens = await request(ENDPOINTS.login, {
+        method: 'POST', auth: false,
+        body: { request: { email, password } },
+      });
+      if (!tokens?.accessToken || !tokens?.refreshToken) throw new Error('The login endpoint did not return both tokens.');
+      tokenStore.setPair(tokens);
+      try { return await getCurrentUser(); }
+      catch (error) { tokenStore.clear(); throw error; }
+    } catch (error) { throw mapError(error); }
   },
   async restoreSession() {
+    if (!tokenStore.getRefresh()) return null;
     try {
-      const data = await refreshSession();
-      return toUser(data?.user);
+      await refreshSession();
+      return await getCurrentUser();
     } catch {
+      tokenStore.clear();
       return null;
     }
   },
   async logout() {
+    const refreshToken = tokenStore.getRefresh();
     try {
-      await request(ENDPOINTS.logout, { method: 'POST' });
-    } catch {
-      /* the local session is cleared either way */
-    } finally {
-      tokenStore.clear();
-    }
+      if (refreshToken) await request(ENDPOINTS.logout, { method: 'POST', body: { refreshToken }, auth: false });
+    } finally { tokenStore.clear(); }
   },
 };
 
-/* ---------------------- development mock only ---------------------- */
-// Demo account (mock only, never shipped): demo@syntrace.dev / SynTrace#2026
 const MOCK_KEY = 'st-mock-session';
 let mockFails = [];
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
 const mockAuth = {
   async login(email, password) {
-    await wait(650);
+    await wait(450);
     const now = Date.now();
     mockFails = mockFails.filter((time) => now - time < 60000);
     if (mockFails.length >= 8) throw new AuthError('RATE_LIMITED', { retryAfter: 20 });
     if (email === 'demo@syntrace.dev' && password === 'SynTrace#2026') {
-      const user = { id: 'u-demo', name: 'Demo Admin', email, role: 'Admin', companyId: 'c-demo' };
+      const user = { id: 'u-demo', name: 'Demo Admin', email, role: 'Admin', roles: ['Admin'], companyId: 'c-demo' };
       tokenStore.set('mock-access-token');
-      try {
-        sessionStorage.setItem(MOCK_KEY, JSON.stringify(user));
-      } catch {
-        /* ignore */
-      }
+      tokenStore.setRefresh('mock-refresh-token');
+      try { sessionStorage.setItem(MOCK_KEY, JSON.stringify(user)); } catch { /* ignore */ }
       return user;
     }
     mockFails.push(now);
@@ -91,22 +107,13 @@ const mockAuth = {
   async restoreSession() {
     try {
       const raw = sessionStorage.getItem(MOCK_KEY);
-      if (raw) {
-        tokenStore.set('mock-access-token');
-        return JSON.parse(raw);
-      }
-    } catch {
-      /* ignore */
-    }
+      if (raw) { tokenStore.set('mock-access-token'); tokenStore.setRefresh('mock-refresh-token'); return JSON.parse(raw); }
+    } catch { /* ignore */ }
     return null;
   },
   async logout() {
     tokenStore.clear();
-    try {
-      sessionStorage.removeItem(MOCK_KEY);
-    } catch {
-      /* ignore */
-    }
+    try { sessionStorage.removeItem(MOCK_KEY); } catch { /* ignore */ }
   },
 };
 
