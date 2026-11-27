@@ -3,7 +3,11 @@ import 'package:flutter/material.dart';
 class ProjectDetailsError extends StatelessWidget {
   final String? message;
   final VoidCallback onRetry;
-  const ProjectDetailsError({super.key, required this.message, required this.onRetry});
+  const ProjectDetailsError({
+    super.key,
+    required this.message,
+    required this.onRetry,
+  });
 
   @override
   Widget build(BuildContext context) {

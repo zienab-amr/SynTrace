@@ -4,7 +4,12 @@ class ProjectUnavailableTab extends StatelessWidget {
   final IconData icon;
   final String title;
   final String message;
-  const ProjectUnavailableTab({super.key, required this.icon, required this.title, required this.message});
+  const ProjectUnavailableTab({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
 
   @override
   Widget build(BuildContext context) {

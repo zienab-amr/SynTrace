@@ -30,7 +30,9 @@ class StatCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: theme.dividerColor.withOpacity(0.5)),
+            border: Border.all(
+              color: theme.dividerColor.withValues(alpha: 0.5),
+            ),
           ),
           child: FittedBox(
             fit: BoxFit.scaleDown,
@@ -53,7 +55,7 @@ class StatCard extends StatelessWidget {
                 Text(
                   label,
                   style: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(0.5),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                     fontSize: 11,
                   ),
                 ),
