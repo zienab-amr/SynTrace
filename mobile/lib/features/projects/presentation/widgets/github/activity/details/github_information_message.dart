@@ -4,7 +4,11 @@ class GitHubInformationMessage extends StatelessWidget {
   final IconData icon;
   final String message;
 
-  const GitHubInformationMessage({required this.icon, required this.message});
+  const GitHubInformationMessage({
+    super.key,
+    required this.icon,
+    required this.message,
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -6,6 +6,7 @@ class GitHubDetailsSection extends StatelessWidget {
   final List<Widget> children;
 
   const GitHubDetailsSection({
+    super.key,
     required this.title,
     required this.icon,
     required this.children,

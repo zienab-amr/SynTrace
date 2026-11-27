@@ -5,7 +5,7 @@ import 'github_details_section.dart';
 class GitHubActivityOverview extends StatelessWidget {
   final GitHubActivityItem item;
 
-  const GitHubActivityOverview({required this.item});
+  const GitHubActivityOverview({super.key, required this.item});
 
   @override
   Widget build(BuildContext context) {

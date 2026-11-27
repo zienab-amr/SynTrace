@@ -8,7 +8,7 @@ import 'github_activity_link_feedback.dart';
 class GitHubSourceSection extends StatelessWidget {
   final GitHubActivityItem item;
 
-  const GitHubSourceSection({required this.item});
+  const GitHubSourceSection({super.key, required this.item});
 
   @override
   Widget build(BuildContext context) {
