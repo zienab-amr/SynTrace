@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:syntrace/core/router/routes.dart';
+import 'package:syntrace/core/cache/cache_scope.dart';
+import 'package:syntrace/core/cache/cache_session_guard.dart';
 import 'package:syntrace/features/settings/data/models/github_model.dart';
-import 'package:syntrace/features/settings/presentation/cubit/integrations_cubit.dart';
-import 'package:syntrace/features/settings/presentation/cubit/integrations_state.dart';
+import 'package:syntrace/features/settings/presentation/cubit/github/github_cubit.dart';
+import 'package:syntrace/features/settings/presentation/cubit/github/github_state.dart';
 
 class GitHubCallbackScreen extends StatefulWidget {
   final String status;
@@ -28,10 +30,11 @@ class _GitHubCallbackScreenState extends State<GitHubCallbackScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<IntegrationsCubit>().handleGitHubCallback(
-            widget.status,
-            widget.completionId,
-          );
+      if (!mounted) return;
+      context.read<GitHubCubit>().handleGitHubCallback(
+        widget.status,
+        widget.completionId,
+      );
     });
   }
 
@@ -43,14 +46,27 @@ class _GitHubCallbackScreenState extends State<GitHubCallbackScreen> {
 
   void _showInstallations(GitHubInstallationSelectionRequired state) {
     if (_dialogOpen) return;
+    final scope = CacheScope.fromCurrentUser();
+    if (scope == null) return;
+    final guard = CacheSessionGuard.capture(scope);
     _dialogOpen = true;
-    final cubit = context.read<IntegrationsCubit>();
+    final cubit = context.read<GitHubCubit>();
 
     showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
         return AlertDialog(
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                _dialogOpen = false;
+                _goToSettings();
+              },
+              child: const Text('Cancel'),
+            ),
+          ],
           title: const Text('Select GitHub installation'),
           content: SizedBox(
             width: double.maxFinite,
@@ -66,6 +82,7 @@ class _GitHubCallbackScreenState extends State<GitHubCallbackScreen> {
                   onTap: () {
                     Navigator.of(dialogContext).pop();
                     _dialogOpen = false;
+                    if (!mounted || !guard.isValid || cubit.isClosed) return;
                     cubit.completeGitHubConnection(
                       state.completionId,
                       installation.installationId,
@@ -77,7 +94,12 @@ class _GitHubCallbackScreenState extends State<GitHubCallbackScreen> {
           ),
         );
       },
-    );
+    ).whenComplete(() {
+      if (_dialogOpen && mounted) {
+        _dialogOpen = false;
+        _goToSettings();
+      }
+    });
   }
 
   String _subtitle(GitHubInstallationOption installation) {
@@ -90,27 +112,25 @@ class _GitHubCallbackScreenState extends State<GitHubCallbackScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocListener<IntegrationsCubit, IntegrationsState>(
+    return BlocListener<GitHubCubit, GitHubState>(
       listener: (context, state) {
         if (state is GitHubInstallationSelectionRequired) {
           _showInstallations(state);
         } else if (state is GitHubApprovalPending) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(state.message)),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(state.message)));
           _goToSettings();
-        } else if (state is IntegrationsLoaded) {
+        } else if (state is GitHubLoaded) {
           _goToSettings();
-        } else if (state is IntegrationsError) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(state.message)),
-          );
+        } else if (state is GitHubError) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(state.message)));
           _goToSettings();
         }
       },
-      child: const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      ),
+      child: const Scaffold(body: Center(child: CircularProgressIndicator())),
     );
   }
 }
