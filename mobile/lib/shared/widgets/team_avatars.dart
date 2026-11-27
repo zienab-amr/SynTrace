@@ -24,7 +24,8 @@ class TeamAvatars extends StatelessWidget {
     final visibleUsers = users.take(maxVisible).toList();
     final remaining = users.length - maxVisible;
     final overlap = size * 0.7;
-    final totalWidth = (overlap * visibleUsers.length) +
+    final totalWidth =
+        (overlap * visibleUsers.length) +
         (remaining > 0 ? overlap : 0) +
         (size - overlap);
 
@@ -34,18 +35,15 @@ class TeamAvatars extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // ─── المستخدمين الظاهرين ───
+          // Visible users
           ...List.generate(visibleUsers.length, (index) {
             return Positioned(
               left: index * overlap,
-              child: _BorderedAvatar(
-                user: visibleUsers[index],
-                size: size,
-              ),
+              child: _BorderedAvatar(user: visibleUsers[index], size: size),
             );
           }),
 
-          // ─── العدد المتبقي ───
+          // Remaining user count
           if (remaining > 0)
             Positioned(
               left: visibleUsers.length * overlap,
@@ -62,7 +60,7 @@ class TeamAvatars extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════
-// Avatar مع حدود + Tooltip
+// Bordered avatar with tooltip
 // ═══════════════════════════════════════════════════════════
 class _BorderedAvatar extends StatelessWidget {
   final UserModel user;
@@ -80,10 +78,7 @@ class _BorderedAvatar extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(
-            color: theme.colorScheme.surface,
-            width: 2,
-          ),
+          border: Border.all(color: theme.colorScheme.surface, width: 2),
         ),
         child: UserAvatar(user: user, size: size - 4),
       ),
@@ -92,7 +87,7 @@ class _BorderedAvatar extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════
-// +N للأشخاص المتبقيين
+// +N for remaining users
 // ═══════════════════════════════════════════════════════════
 class _RemainingCount extends StatelessWidget {
   final int count;
@@ -119,17 +114,14 @@ class _RemainingCount extends StatelessWidget {
         height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: theme.colorScheme.onSurface.withOpacity(0.1),
-          border: Border.all(
-            color: theme.colorScheme.surface,
-            width: 2,
-          ),
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
+          border: Border.all(color: theme.colorScheme.surface, width: 2),
         ),
         child: Center(
           child: Text(
             '+$count',
             style: TextStyle(
-              color: theme.colorScheme.onSurface.withOpacity(0.8),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
               fontSize: size * 0.32,
               fontWeight: FontWeight.w600,
             ),
