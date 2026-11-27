@@ -12,6 +12,13 @@ class MeetingEvidenceSection extends StatelessWidget {
     KnowledgeSourceDetails details,
   ) {
     final theme = Theme.of(context);
+    final proposals = details.uniqueEvidence.where((item) => item.isProposal);
+    final pendingProposals = proposals
+        .where((item) => item.isProposalPending)
+        .toList(growable: false);
+    final reviewedProposals = proposals
+        .where((item) => !item.isProposalPending)
+        .toList(growable: false);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -75,8 +82,34 @@ class MeetingEvidenceSection extends StatelessWidget {
               context,
               child: const Text('These results belong to a rejected version.'),
             ),
+          if (pendingProposals.isNotEmpty) ...[
+            _buildSurface(
+              context,
+              child: const Text(
+                'These proposals require review. They are not confirmed '
+                'requirements or Jira drafts.',
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildEvidenceGroup(
+              context,
+              KnowledgeEvidenceKind.openQuestion,
+              pendingProposals,
+              title: 'Proposals to review',
+            ),
+          ],
+          if (reviewedProposals.isNotEmpty)
+            _buildEvidenceGroup(
+              context,
+              KnowledgeEvidenceKind.openQuestion,
+              reviewedProposals,
+              title: 'Reviewed proposals',
+            ),
           ...KnowledgeEvidenceKind.values.map((kind) {
-            final items = details.evidenceByKind(kind);
+            final items = details
+                .evidenceByKind(kind)
+                .where((item) => !item.isProposal)
+                .toList(growable: false);
 
             if (items.isEmpty) {
               return const SizedBox.shrink();
@@ -92,8 +125,9 @@ class MeetingEvidenceSection extends StatelessWidget {
   Widget _buildEvidenceGroup(
     BuildContext context,
     KnowledgeEvidenceKind kind,
-    List<KnowledgeEvidenceModel> items,
-  ) {
+    List<KnowledgeEvidenceModel> items, {
+    String? title,
+  }) {
     final theme = Theme.of(context);
     final color = _getEvidenceColor(context, kind);
 
@@ -111,7 +145,7 @@ class MeetingEvidenceSection extends StatelessWidget {
 
               Expanded(
                 child: Text(
-                  _getEvidenceGroupTitle(context, kind),
+                  title ?? _getEvidenceGroupTitle(context, kind),
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
