@@ -26,6 +26,7 @@ public sealed class MeetingGateway(
     {
         var ctx = await GetContextAsync(ct);
         Require(ctx, MeetingPermission.Create);
+        Require(ctx, MeetingPermission.ReadPending);
         var project = ctx.Projects.FirstOrDefault(p => string.Equals(p, input.ProjectKey, StringComparison.OrdinalIgnoreCase))
             ?? throw new RequestFailureException(403, "Project is not accessible.");
         if (input.SourceType is not ("online" or "offline" or "note" or "pdf") ||
@@ -67,7 +68,21 @@ public sealed class MeetingGateway(
         RequireReadPermission(ctx);
         var source = await ReadSourceAsync(ctx, id, ct);
         RequireRead(ctx, source.Status);
-        return await SendAsync(HttpMethod.Get, Path(id) + "/document" + Query(ctx), null, ct);
+        var document = await SendAsync(HttpMethod.Get, Path(id) + "/document" + Query(ctx), null, ct);
+        try
+        {
+            using var json = JsonDocument.Parse(document.Body);
+            if (json.RootElement.ValueKind != JsonValueKind.Object ||
+                !json.RootElement.TryGetProperty("status", out var state) || state.ValueKind != JsonValueKind.String ||
+                state.GetString() is not ("processing" or "pending_review" or "approved" or "failed"))
+                throw new RequestFailureException(503, "Invalid meeting document state.");
+            RequireRead(ctx, state.GetString()!);
+        }
+        catch (JsonException)
+        {
+            throw new RequestFailureException(503, "Invalid meeting document response.");
+        }
+        return document;
     }
 
     public async Task<MeetingGatewayResult> EditDocumentAsync(string id, EditMeetingDocumentRequest input, CancellationToken ct)
@@ -131,17 +146,6 @@ public sealed class MeetingGateway(
         if (source.Status != "approved") throw new RequestFailureException(409, "Meeting must be approved first.");
         return await SendAsync(HttpMethod.Get, Path(id) + "/requirements.pdf" + Query(ctx), null, ct,
             fileName: $"requirements-{id}.pdf");
-    }
-
-    public async Task<MeetingGatewayResult> DeleteAsync(string id, CancellationToken ct)
-    {
-        var ctx = await GetContextAsync(ct);
-        Require(ctx, MeetingPermission.Delete);
-        Require(ctx, MeetingPermission.ReadPending);
-        var source = await ReadSourceAsync(ctx, id, ct);
-        if (source.Status == "approved")
-            throw new RequestFailureException(409, "Approved meetings cannot be deleted by this endpoint.");
-        return await SendAsync(HttpMethod.Delete, Path(id) + Query(ctx), null, ct);
     }
 
     private async Task<Context> GetContextAsync(CancellationToken ct)

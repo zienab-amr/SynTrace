@@ -26,6 +26,7 @@ x-ai-env: &ai-env
   EMBED_ON_WEBHOOK: "1"
   GROQ_API_KEY: ${GROQ_API_KEY:-}
   GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-120b}
+  CONVERSATION_TURNS: ${SYNTRACE_AI_CONVERSATION_TURNS:-3}
   SEMANTIC_K: ${SEMANTIC_K:-5}
   SEMANTIC_MIN_SCORE: ${SEMANTIC_MIN_SCORE:-0.5}
   AI_API_KEY: ${AI_API_KEY:-}
@@ -84,6 +85,8 @@ services:
       AiService__ApiKey: ${AI_API_KEY:-}
       AiService__TimeoutSeconds: "90"
       AiService__EnableSynTraceProjectScope: "true"
+      AiService__EnableMeetingContract: ${SYNTRACE_ENABLE_MEETING_CONTRACT:-false}
+      AiService__MeetingHistoryCount: ${SYNTRACE_MEETING_HISTORY_COUNT:-20}
       GithubOAuth__AppId: ${SYNTRACE_GITHUB_APP_ID:-0}
       GithubOAuth__AppSlug: ${SYNTRACE_GITHUB_APP_SLUG:-}
       GithubOAuth__ClientId: ${SYNTRACE_GITHUB_CLIENT_ID:-}

@@ -259,8 +259,8 @@ public sealed class AssistantConversationService(
                 throw new RequestFailureException(403, "No accessible projects are available for this assistant.");
 
             var history = edited is null
-                ? await repository.GetLastMessagesAsync(chat.Id, access.HistoryCount, ct)
-                : await repository.GetLastMessagesBeforeSequenceAsync(chat.Id, edited.SequenceNumber, access.HistoryCount, ct);
+                ? await repository.GetLastMessagesAsync(chat.Id, access.HistoryCount, linked.Token)
+                : await repository.GetLastMessagesBeforeSequenceAsync(chat.Id, edited.SequenceNumber, access.HistoryCount, linked.Token);
             var turns = history.Select(m => new AssistantHistoryTurn(
                 Truncate(m.Question, MaxQuestionLength), Truncate(m.Answer, 8000))).ToArray();
 

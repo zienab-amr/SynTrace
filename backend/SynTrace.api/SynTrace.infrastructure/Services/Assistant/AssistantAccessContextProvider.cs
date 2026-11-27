@@ -25,7 +25,10 @@ public sealed class AssistantAccessContextProvider(
 
         var jiraAccountId = await db.JiraConnections.AsNoTracking()
             .Where(c => c.CompanyId == companyId && c.ConnectedByEmployeeId == employeeId &&
-                        c.JiraConnectionType == JiraConnectionType.Employee && c.status)
+                        c.JiraConnectionType == JiraConnectionType.Employee && c.status &&
+                        db.JiraConnections.Any(company => company.CompanyId == companyId && company.status &&
+                            company.JiraConnectionType == JiraConnectionType.Company &&
+                            company.CloudId == c.CloudId))
             .Select(c => c.JiraAccountId).FirstOrDefaultAsync(ct);
 
         if (!options.Value.EnableMeetingContract)

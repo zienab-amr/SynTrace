@@ -19,5 +19,4 @@ public interface IMeetingGateway
     Task<MeetingGatewayResult> RewriteDocumentAsync(string id, RewriteMeetingDocumentRequest input, CancellationToken ct);
     Task<MeetingGatewayResult> ReviewAsync(string id, ReviewMeetingRequest input, CancellationToken ct);
     Task<MeetingGatewayResult> GetPdfAsync(string id, CancellationToken ct);
-    Task<MeetingGatewayResult> DeleteAsync(string id, CancellationToken ct);
 }

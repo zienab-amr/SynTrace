@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SynTrace.Application.Contracts;
 using SynTrace.Application.Contracts.Meetings;
 
 namespace SynTrace.Api.Controllers;
@@ -39,9 +40,15 @@ public sealed class MeetingsController(IMeetingGateway meetings) : ControllerBas
     public async Task<IActionResult> GetPdf(string id, CancellationToken ct) =>
         ToAction(await meetings.GetPdfAsync(id, ct));
 
-    [HttpDelete("{id}")]
-    public async Task<IActionResult> Delete(string id, CancellationToken ct) =>
-        ToAction(await meetings.DeleteAsync(id, ct));
+    [HttpGet("permissions")]
+    public async Task<IActionResult> GetPermissions([FromServices] IMeetingPermissionService permissionService,
+        [FromServices] ICurrentTenant tenant, [FromServices] ICurrentEmployee employee, CancellationToken ct)
+    {
+        var grants = await permissionService.GetForEmployeeAsync(tenant.CompanyId, employee.EmployeeId, ct);
+        Response.Headers.CacheControl = "no-store";
+        return Ok(new { permissions = grants.OrderBy(x => x, StringComparer.Ordinal),
+            assistant = MeetingAssistantPermissions.From(grants) });
+    }
 
     private IActionResult ToAction(MeetingGatewayResult response)
     {
