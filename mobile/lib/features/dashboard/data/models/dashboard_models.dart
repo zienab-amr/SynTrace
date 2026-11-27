@@ -1,31 +1,69 @@
-class DashboardStats {
-  final int activeProjects;
-  final int openTasks;
-  final int totalCommits;
-  final int teamMembers;
+import 'package:equatable/equatable.dart';
 
-  DashboardStats({
-    required this.activeProjects,
-    required this.openTasks,
-    required this.totalCommits,
-    required this.teamMembers,
+import 'package:syntrace/features/projects/data/models/project_api_model.dart';
+
+class DashboardData extends Equatable {
+  final List<ProjectApiModel>? projects;
+  final int? teamMembersCount;
+
+  final String? projectsError;
+  final String? teamError;
+
+  const DashboardData({
+    this.projects,
+    this.teamMembersCount,
+    this.projectsError,
+    this.teamError,
   });
-}
 
-class RecentActivity {
-  final String id;
-  final String title;
-  final String description;
-  final DateTime timestamp;
-  final String type; // 'commit', 'task', 'meeting'
-  final String? targetId;
+  int? get totalProjects => projects?.length;
 
-  RecentActivity({
-    required this.id,
-    required this.title,
-    required this.description,
-    required this.timestamp,
-    required this.type,
-    this.targetId,
-  });
+  int? get activeProjects {
+    final items = projects;
+
+    if (items == null) return null;
+
+    if (items.any(
+      (project) =>
+          project.status == null || project.status == ProjectApiStatus.unknown,
+    )) {
+      return null;
+    }
+
+    return items
+        .where((project) => project.status == ProjectApiStatus.inProgress)
+        .length;
+  }
+
+  int? get completedProjects {
+    final items = projects;
+
+    if (items == null) return null;
+
+    if (items.any(
+      (project) =>
+          project.status == null || project.status == ProjectApiStatus.unknown,
+    )) {
+      return null;
+    }
+
+    return items
+        .where((project) => project.status == ProjectApiStatus.completed)
+        .length;
+  }
+
+  List<ProjectApiModel> get previewProjects =>
+      List.unmodifiable(projects?.take(3) ?? const <ProjectApiModel>[]);
+
+  bool get hasProjectsError => projectsError != null;
+
+  bool get hasTeamError => teamError != null;
+
+  @override
+  List<Object?> get props => [
+    projects,
+    teamMembersCount,
+    projectsError,
+    teamError,
+  ];
 }
