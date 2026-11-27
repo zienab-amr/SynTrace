@@ -4,7 +4,9 @@ import 'package:syntrace/features/chat/data/models/jira_card_model.dart';
 import 'package:syntrace/features/chat/presentation/widgets/jira_card_widget.dart';
 
 void main() {
-  testWidgets('JiraCardWidget displays the issue details correctly', (WidgetTester tester) async {
+  testWidgets('JiraCardWidget displays the issue details correctly', (
+    WidgetTester tester,
+  ) async {
     const testCard = JiraCardModel(
       issueKey: 'SYNT-999',
       summary: 'Refactor payment module',
@@ -18,9 +20,7 @@ void main() {
 
     await tester.pumpWidget(
       const MaterialApp(
-        home: Scaffold(
-          body: JiraCardWidget(card: testCard),
-        ),
+        home: Scaffold(body: JiraCardWidget(card: testCard)),
       ),
     );
 
