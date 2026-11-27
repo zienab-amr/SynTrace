@@ -84,9 +84,24 @@ services:
       AiService__ApiKey: ${AI_API_KEY:-}
       AiService__TimeoutSeconds: "90"
       AiService__EnableSynTraceProjectScope: "true"
+      GithubOAuth__AppId: ${SYNTRACE_GITHUB_APP_ID:-0}
+      GithubOAuth__AppSlug: ${SYNTRACE_GITHUB_APP_SLUG:-}
+      GithubOAuth__ClientId: ${SYNTRACE_GITHUB_CLIENT_ID:-}
+      GithubOAuth__ClientSecret: ${SYNTRACE_GITHUB_CLIENT_SECRET:-}
+      GithubOAuth__WebhookSecret: ${SYNTRACE_GITHUB_WEBHOOK_SECRET:-}
+      GithubOAuth__RedirectUri: ${SYNTRACE_GITHUB_REDIRECT_URI:-}
+      GithubOAuth__FrontendRedirectUri: ${SYNTRACE_GITHUB_FRONTEND_REDIRECT_URI:-}
+      GithubOAuth__PrivateKeyPath: /run/secrets/github-app.pem
+      GitHubSync__Enabled: ${SYNTRACE_GITHUB_SYNC_ENABLED:-false}
+      GmailSMTP__Host: smtp.gmail.com
+      GmailSMTP__Port: "587"
+      GmailSMTP__Email: ${SYNTRACE_SMTP_EMAIL:?Set SMTP email}
+      GmailSMTP__AppPassword: ${SYNTRACE_SMTP_APP_PASSWORD:?Set SMTP app password}
+      GmailSMTP__FromName: SynTrace
     volumes:
       # Jira tokens are encrypted with these keys. Without this volume, a new container cannot read them.
       - dataprotection_keys:/root/.aspnet/DataProtection-Keys
+      - "${SYNTRACE_GITHUB_PRIVATE_KEY_FILE}:/run/secrets/github-app.pem:ro"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -103,6 +118,17 @@ services:
       DOTNET_ENVIRONMENT: Development
       ConnectionStrings__ConnectionDB: *db
       RabbitMQ__ClientProvidedName: "SynTrace.Worker"
+      GithubOAuth__AppId: ${SYNTRACE_GITHUB_APP_ID:-0}
+      GithubOAuth__AppSlug: ${SYNTRACE_GITHUB_APP_SLUG:-}
+      GithubOAuth__ClientId: ${SYNTRACE_GITHUB_CLIENT_ID:-}
+      GithubOAuth__ClientSecret: ${SYNTRACE_GITHUB_CLIENT_SECRET:-}
+      GithubOAuth__WebhookSecret: ${SYNTRACE_GITHUB_WEBHOOK_SECRET:-}
+      GithubOAuth__RedirectUri: ${SYNTRACE_GITHUB_REDIRECT_URI:-}
+      GithubOAuth__FrontendRedirectUri: ${SYNTRACE_GITHUB_FRONTEND_REDIRECT_URI:-}
+      GithubOAuth__PrivateKeyPath: /run/secrets/github-app.pem
+      GitHubSync__Enabled: ${SYNTRACE_GITHUB_SYNC_ENABLED:-false}
+    volumes:
+      - "${SYNTRACE_GITHUB_PRIVATE_KEY_FILE}:/run/secrets/github-app.pem:ro"
     depends_on:
       migrate:
         condition: service_completed_successfully

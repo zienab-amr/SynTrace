@@ -1,9 +1,48 @@
-
+# .NET build artifacts
 **/bin/
 **/obj/
-.vs/
-.git/
+**/TestResults/
+**/coverage/
+**/*.user
+**/*.suo
 
-**/*.pem
+# Git
+.git/
+**/.git/
+
+# IDE
+.vs/
+**/.vs/
+**/.vscode/
+**/.idea/
+
+# Environment configuration
 **/.env
 **/.env.*
+!**/.env.example
+
+# Local application settings
+**/appsettings.Local.json
+**/appsettings.Secrets.json
+**/secrets.json
+
+# Private keys and certificates
+**/*.pem
+**/*.key
+**/*.pfx
+**/*.p12
+**/*.snk
+
+# Logs and temporary files
+**/*.log
+**/*.tmp
+**/.DS_Store
+**/Thumbs.db
+
+# Database backups
+**/*.bak
+**/*.mdf
+**/*.ldf
+
+# Documentation
+**/docs/

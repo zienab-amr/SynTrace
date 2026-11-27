@@ -1,0 +1,19 @@
+.theme-toggle {
+  position: relative;
+  display: inline-grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid var(--st-border);
+  border-radius: 50%;
+  background: var(--st-surface);
+  color: var(--st-text);
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: transform 0.25s var(--st-ease), border-color 0.2s ease, background 0.2s ease;
+}
+.theme-toggle:hover { transform: rotate(14deg) scale(1.06); border-color: var(--st-accent); }
+.theme-toggle svg { position: absolute; width: 18px; height: 18px; transition: transform 0.5s var(--st-ease), opacity 0.3s ease; }
+/* dark theme shows the sun (click = go light); light theme shows the moon */
+:root[data-theme='light'] .theme-toggle__sun { opacity: 0; transform: rotate(-90deg) scale(0.4); }
+:root:not([data-theme='light']) .theme-toggle__moon { opacity: 0; transform: rotate(90deg) scale(0.4); }
