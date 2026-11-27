@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+
 import 'package:syntrace/features/settings/data/models/github_model.dart';
+
 import '../../../cubit/github/project_github_state.dart';
+
 import 'github_integration_surface.dart';
 import '../github_sync_status_badge.dart';
 
@@ -9,7 +12,14 @@ class GitHubUnlinkedRepository extends StatelessWidget {
   final GitHubProjectStatus integration;
   final bool canManage;
   final VoidCallback onSelect;
-  const GitHubUnlinkedRepository({super.key, required this.state, required this.integration, required this.canManage, required this.onSelect});
+
+  const GitHubUnlinkedRepository({
+    super.key,
+    required this.state,
+    required this.integration,
+    required this.canManage,
+    required this.onSelect,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -18,60 +28,89 @@ class GitHubUnlinkedRepository extends StatelessWidget {
 
     final unavailable = integration.isUnavailable;
 
+    final title = unavailable
+        ? 'GitHub unavailable'
+        : integration.canSelectRepository
+        ? 'No repository linked'
+        : 'Repository status unavailable';
+
+    final description = unavailable
+        ? 'Check your company GitHub integration.'
+        : canManage
+        ? 'Connect your project\'s repository.'
+        : 'Contact your company administrator.';
+
+    final canLink = canManage && integration.canSelectRepository;
+
+    final isEnabled =
+        state.canSelectRepository &&
+        state.status == ProjectGitHubRequestStatus.success;
+
     return GitHubIntegrationSurface(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            unavailable ? Icons.cloud_off_outlined : Icons.link_off_rounded,
-            size: 44,
-            color: colors.onSurfaceVariant,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  unavailable
+                      ? Icons.cloud_off_outlined
+                      : Icons.link_off_rounded,
+                  size: 20,
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+
+              const SizedBox(width: 10),
+
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+
+                    const SizedBox(height: 4),
+
+                    Text(description, style: theme.textTheme.bodySmall),
+
+                    const SizedBox(height: 8),
+
+                    GitHubSyncStatusBadge(status: integration.syncStatus),
+                  ],
+                ),
+              ),
+            ],
           ),
 
-          const SizedBox(height: 16),
-
-          Text(
-            unavailable
-                ? 'GitHub unavailable'
-                : integration.canSelectRepository
-                ? 'No repository linked'
-                : 'Repository status unavailable',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          Text(
-            unavailable
-                ? 'Check your company GitHub integration.'
-                : canManage
-                ? 'Connect a repository to import '
-                      'commits, pull requests and code.'
-                : 'A company administrator can '
-                      'connect a repository to this project.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall,
-          ),
-
-          const SizedBox(height: 16),
-
-          GitHubSyncStatusBadge(status: integration.syncStatus),
-
-          if (canManage && integration.canSelectRepository) ...[
-            const SizedBox(height: 20),
+          if (canLink) ...[
+            const SizedBox(height: 12),
 
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed:
-                    state.canSelectRepository &&
-                        state.status == ProjectGitHubRequestStatus.success
-                    ? onSelect
-                    : null,
-                icon: const Icon(Icons.add_link_rounded),
-                label: const Text('Link Repository'),
+                onPressed: isEnabled ? onSelect : null,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 48),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                ),
+                icon: const Icon(Icons.add_link_rounded, size: 18),
+                label: const Text('Link repository'),
               ),
             ),
           ],

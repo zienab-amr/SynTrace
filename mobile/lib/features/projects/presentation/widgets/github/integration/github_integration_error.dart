@@ -5,7 +5,11 @@ import 'github_integration_surface.dart';
 class GitHubIntegrationError extends StatelessWidget {
   final ProjectGitHubState state;
   final VoidCallback onRefresh;
-  const GitHubIntegrationError({super.key, required this.state, required this.onRefresh});
+  const GitHubIntegrationError({
+    super.key,
+    required this.state,
+    required this.onRefresh,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -39,9 +43,7 @@ class GitHubIntegrationError extends StatelessWidget {
           const SizedBox(height: 16),
 
           OutlinedButton.icon(
-            onPressed: state.isBusy || state.isRefreshing
-                ? null
-                : onRefresh,
+            onPressed: state.isBusy || state.isRefreshing ? null : onRefresh,
             icon: const Icon(Icons.refresh_rounded),
             label: const Text('Try Again'),
           ),
