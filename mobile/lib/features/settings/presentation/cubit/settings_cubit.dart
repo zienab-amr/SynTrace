@@ -1,163 +1,59 @@
+import 'package:dio/dio.dart';
+import 'package:syntrace/core/cache/cache_session.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:syntrace/core/models/user_profile_model.dart';
-import 'package:syntrace/core/network/api_client.dart';
 import 'package:syntrace/core/network/api_endpoints.dart';
 import 'package:syntrace/core/services/current_user_service.dart';
 import 'package:syntrace/core/services/secure_storage_service.dart';
-import 'package:syntrace/features/onboarding/data/onboarding_service.dart';
 import 'settings_state.dart';
 
 class SettingsCubit extends Cubit<SettingsState> {
   SettingsCubit() : super(const SettingsInitial());
 
-  UserProfileModel? _original;
-
   Future<void> loadProfile() async {
-    emit(const SettingsLoading());
-
+    if (isClosed) return;
     final user = CurrentUserService.instance.user;
-
     if (user == null) {
-      emit(const SettingsError('Failed to load profile'));
+      emit(const SettingsError('Profile unavailable.'));
       return;
     }
-
-    final storedName = await SecureStorageService.instance.getUserName();
-    var storedCompany = await SecureStorageService.instance.getCompanyName();
-
-    if (storedCompany == null || storedCompany.isEmpty) {
-      final onboardingData = await OnboardingService.instance.loadData();
-      if (onboardingData != null &&
-          onboardingData.organizationName.isNotEmpty) {
-        storedCompany = onboardingData.organizationName;
-        await SecureStorageService.instance.saveCompanyName(storedCompany);
-      }
-    }
-
-    final profile = UserProfileModel(
-      id: user.id,
-      fullName: storedName ?? user.name,
-      email: user.email,
-      role: _capitalize(user.role.value),
-      organizationName: storedCompany ?? user.companyName ?? 'Organization',
-      organizationId: user.tenantId ?? '',
-      avatarUrl: user.avatarUrl,
-      phoneNumber: user.phoneNumber,
-      permissions: const [
-        'Projects',
-        'Reports',
-        'Knowledge Graph',
-        'AI Assistant',
-        'Security Center',
-      ],
-    );
-
-    _original = profile;
-    emit(SettingsLoaded(profile: profile));
-  }
-    
-  void startEditing() {
-    if (state is SettingsLoaded) {
-      emit((state as SettingsLoaded).copyWith(isEditing: true));
-    }
+    emit(SettingsLoaded(profile: UserProfileModel.fromUser(user)));
   }
 
-  void cancelEditing() {
-    if (state is SettingsLoaded && _original != null) {
-      emit(SettingsLoaded(profile: _original!));
-    }
-  }
-
-  void updateField({String? fullName, String? email}) {
-    if (state is! SettingsLoaded) return;
-
-    final current = state as SettingsLoaded;
-    final updated = current.profile.copyWith(fullName: fullName, email: email);
-
-    emit(current.copyWith(profile: updated));
-  }
-
-  Future<void> saveChanges() async {
-    if (state is! SettingsLoaded) return;
-
-    final current = state as SettingsLoaded;
-
-    final trimmed = current.profile.fullName.trim();
-    final spaceIndex = trimmed.indexOf(' ');
-    final firstName = spaceIndex == -1
-        ? trimmed
-        : trimmed.substring(0, spaceIndex).trim();
-    final lastName = spaceIndex == -1
-        ? ''
-        : trimmed.substring(spaceIndex + 1).trim();
-
-    emit(current.copyWith(isSaving: true));
-
+  Future<void> logout() async {
+    final current = CurrentUserService.instance;
+    final generation = CacheSession.instance.generation;
+    final storage = SecureStorageService.instance;
+    // Invalidate immediately, before any network call.
+    final tokenFuture = storage.getRefreshToken();
+    final accessFuture = storage.getToken();
+    final clearing = current.clearUser(expectedGeneration: generation);
     try {
-      final response = await ApiClient.instance.put(
-        ApiEndpoints.updateEmployee,
-        data: {
-          'employeeId': current.profile.id,
-          'firstName': firstName,
-          'lastName': lastName,
-          'email': current.profile.email,
-          'phoneNumber': current.profile.phoneNumber ?? '',
-        },
+      await clearing;
+      if (!isClosed) emit(const SettingsLoggedOut());
+      final refresh = await tokenFuture;
+      final access = await accessFuture;
+      if (refresh == null || refresh.isEmpty) return;
+      final dio = Dio(
+        BaseOptions(
+          baseUrl: ApiEndpoints.baseUrl,
+          followRedirects: false,
+          connectTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 10),
+          sendTimeout: const Duration(seconds: 10),
+          headers: {
+            'ngrok-skip-browser-warning': 'true',
+            if (access != null) 'Authorization': 'Bearer $access',
+          },
+        ),
       );
-
-      final status = response.statusCode ?? 0;
-
-      if (status == 200 || status == 204) {
-        await SecureStorageService.instance.saveUserName(
-          current.profile.fullName,
-        );
-        await SecureStorageService.instance.saveCompanyName(
-          current.profile.organizationName,
-        );
-
-        final user = CurrentUserService.instance.user;
-        if (user != null) {
-          CurrentUserService.instance.setUser(
-            user.copyWith(
-              name: current.profile.fullName,
-              email: current.profile.email,
-              companyName: current.profile.organizationName,
-            ),
-          );
-        }
-
-        _original = current.profile;
-        emit(current.copyWith(isSaving: false, isEditing: false));
-      } else {
-        emit(const SettingsError('Failed to update profile on server.'));
+      try {
+        await dio.post(ApiEndpoints.logout, data: {'refreshToken': refresh});
+      } finally {
+        dio.close();
       }
-    } catch (e) {
-      emit(SettingsError('Error: $e'));
+    } catch (_) {
+      if (!isClosed && current.user == null) emit(const SettingsLoggedOut());
     }
-  }
-
- Future<void> logout() async {
-    try {
-      final refreshToken = await SecureStorageService.instance.getRefreshToken();
-
-      if (refreshToken != null && refreshToken.isNotEmpty) {
-        await ApiClient.instance.post(
-          ApiEndpoints.logout,
-          data: {'refreshToken': refreshToken},
-        );
-      }
-    } catch (e) {
-      print('Logout API failed: $e');
-    } finally {
-      await CurrentUserService.instance.clearUser();
-      await SecureStorageService.instance.clearAll(); // مسح كل حاجة بالكامل
-      
-      emit(const SettingsLoggedOut());
-    }
-  }
-
-  String _capitalize(String value) {
-    if (value.isEmpty) return value;
-    return '${value[0].toUpperCase()}${value.substring(1)}';
   }
 }

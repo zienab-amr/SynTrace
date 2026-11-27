@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:syntrace/core/models/user_model.dart';
-import 'package:syntrace/core/network/api_client.dart';
-import 'package:syntrace/core/network/api_endpoints.dart';
+import 'package:syntrace/core/cache/cache_scope.dart';
+import 'package:syntrace/core/cache/cache_session_guard.dart';
 import 'package:syntrace/core/services/current_user_service.dart';
-import 'package:syntrace/core/services/secure_storage_service.dart';
-import 'package:syntrace/core/theme/app_colors.dart';
+import 'package:syntrace/core/services/self_profile_service.dart';
+import 'package:syntrace/core/theme/app_theme_extension.dart';
 import 'package:syntrace/features/settings/presentation/cubit/settings_cubit.dart';
+
+import 'profile_edit_dialog.dart';
 
 class ProfileTab extends StatefulWidget {
   const ProfileTab({super.key});
@@ -16,156 +17,171 @@ class ProfileTab extends StatefulWidget {
 }
 
 class _ProfileTabState extends State<ProfileTab> {
-  final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _companyController = TextEditingController();
+  final _profileService = SelfProfileService();
+  bool _openingEditor = false;
 
-  bool _isEditing = false;
-  bool _isSaving = false;
-  bool _isAdmin = false;
-  String _role = 'Admin';
-  List<String> _permissions = const [];
+  Future<void> _editProfile() async {
+    if (_openingEditor) return;
+    final scope = CacheScope.fromCurrentUser();
+    if (scope == null) return;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadData();
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _emailController.dispose();
-    _companyController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadData() async {
-    final user = CurrentUserService.instance.user;
-    if (user == null) return;
-
-    final storedName = await SecureStorageService.instance.getUserName();
-    final storedCompany = await SecureStorageService.instance.getCompanyName();
-
-    if (!mounted) return;
-
-    setState(() {
-      _nameController.text = storedName ?? user.name;
-      _emailController.text = user.email;
-      String company = storedCompany ?? user.companyName ?? '';
-      if (company.isEmpty || company == 'My Organization') {
-        company = user.companyName ?? 'My Organization';
-      }
-      _companyController.text = company;
-      _role = _capitalize(user.role.value);
-      _isAdmin = user.role == UserRole.admin;
-      _permissions = const [
-        'Projects',
-        'Reports',
-        'Knowledge Graph',
-        'AI Assistant',
-        'Security Center',
-      ];
-    });
-  }
-
-  Future<void> _onSave() async {
-    setState(() => _isSaving = true);
-
-    final user = CurrentUserService.instance.user;
-    if (user == null) return;
-
-    final trimmed = _nameController.text.trim();
-    final spaceIndex = trimmed.indexOf(' ');
-    final firstName = spaceIndex == -1
-        ? trimmed
-        : trimmed.substring(0, spaceIndex).trim();
-    final lastName = spaceIndex == -1
-        ? ''
-        : trimmed.substring(spaceIndex + 1).trim();
+    final guard = CacheSessionGuard.capture(scope);
+    setState(() => _openingEditor = true);
 
     try {
-      final response = await ApiClient.instance.put(
-        ApiEndpoints.updateEmployee,
-        data: {
-          'employeeId': user.id,
-          'firstName': firstName,
-          'lastName': lastName,
-          'email': _emailController.text.trim(),
-          'phoneNumber': user.phoneNumber ?? '',
-        },
-      );
+      final details = await _profileService.refresh();
+      if (!mounted || !guard.isValid) return;
 
-      if (response.statusCode == 200 || response.statusCode == 204) {
-        await SecureStorageService.instance.saveUserName(_nameController.text);
-        await SecureStorageService.instance.saveCompanyName(
-          _companyController.text,
-        );
-
-        await CurrentUserService.instance.setUser(
-          user.copyWith(
-            name: _nameController.text,
-            email: _emailController.text,
-            companyName: _companyController.text,
-          ),
-        );
-
-        if (!mounted) return;
-        setState(() {
-          _isSaving = false;
-          _isEditing = false;
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Profile updated successfully'),
-            backgroundColor: AppColors.secondary,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      } else {
-        throw Exception('Server returned ${response.statusCode}');
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isSaving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to update: $e'),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
+      final updated = await showDialog<SelfProfileDetails>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => ProfileEditDialog(
+          details: details,
+          guard: guard,
+          service: _profileService,
         ),
       );
+
+      if (!mounted || !guard.isValid || updated == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile updated successfully.')),
+      );
+    } catch (_) {
+      if (!mounted || !guard.isValid) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to load your profile. Please try again.'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _openingEditor = false);
     }
   }
 
-  void _onCancel() {
-    _loadData();
-    setState(() => _isEditing = false);
-  }
+  @override
+  Widget build(BuildContext context) {
+    final session = CurrentUserService.instance;
+    final colors = context.appColors;
 
-  void _showLogoutDialog() {
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Log Out'),
-          content: const Text('Are you sure you want to log out of SynTrace?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
+    return ValueListenableBuilder(
+      valueListenable: session.userNotifier,
+      builder: (context, user, _) {
+        if (user == null) {
+          return const Center(child: Text('Profile unavailable'));
+        }
+
+        final name = user.name.trim();
+        final parts = name.split(RegExp(r'\s+'));
+
+        final initials = name.isEmpty
+            ? '?'
+            : parts.length == 1
+            ? parts.first[0].toUpperCase()
+            : '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(12, 16, 12, 32),
+          children: [
+            _ProfileCard(
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 30,
+                      backgroundColor: colors.selected,
+                      child: Text(
+                        initials,
+                        style: TextStyle(
+                          color: colors.textPrimary,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name.isEmpty ? 'Name unavailable' : name,
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            user.companyName?.isNotEmpty == true
+                                ? user.companyName!
+                                : 'Workspace member',
+                            style: TextStyle(color: colors.textSecondary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                _ProfileField(label: 'Full name', value: user.name),
+                const SizedBox(height: 18),
+                _ProfileField(label: 'Email address', value: user.email),
+                const SizedBox(height: 18),
+                _ProfileField(
+                  label: 'Phone number',
+                  value: user.phoneNumber ?? '',
+                ),
+                const SizedBox(height: 18),
+                _ProfileField(
+                  label: 'Organization',
+                  value: user.companyName ?? '',
+                ),
+              ],
             ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                context.read<SettingsCubit>().logout();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.error,
-                foregroundColor: Colors.white,
+            const SizedBox(height: 16),
+            _ProfileCard(
+              children: [
+                Text(
+                  'Workspace roles',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final role in user.roleNames) Chip(label: Text(role)),
+                  ],
+                ),
+                if (user.roleNames.isEmpty)
+                  const Text('No verified roles available.'),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton(
+                onPressed: _openingEditor ? null : _editProfile,
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 16,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: _openingEditor
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Edit Profile'),
               ),
-              child: const Text('Log Out'),
+            ),
+            const SizedBox(height: 24),
+            OutlinedButton.icon(
+              onPressed: () => _confirmLogout(context),
+              icon: Icon(Icons.logout_rounded, color: colors.error, size: 18),
+              label: Text('Log out', style: TextStyle(color: colors.error)),
             ),
           ],
         );
@@ -173,374 +189,88 @@ class _ProfileTabState extends State<ProfileTab> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        _buildProfileCard(theme),
-        const SizedBox(height: 20),
-        _buildPermissionsCard(theme),
-        const SizedBox(height: 24),
-        _buildActions(),
-        
-        const SizedBox(height: 48),
-        Divider(color: theme.dividerColor.withOpacity(0.3)),
-        const SizedBox(height: 16),
-        
-        // Logout Button
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: _showLogoutDialog,
-            icon: const Icon(Icons.logout, color: AppColors.error, size: 20),
-            label: const Text(
-              'Log Out',
-              style: TextStyle(
-                color: AppColors.error,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            ),
-          ),
+  Future<void> _confirmLogout(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Log out?'),
+        content: const Text(
+          'You will need to sign in again to access your workspace.',
         ),
-        const SizedBox(height: 24),
-      ],
-    );
-  }
-
-  Widget _buildProfileCard(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'PROFILE',
-            style: TextStyle(
-              color: theme.colorScheme.onSurface.withOpacity(0.5),
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.2,
-            ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
           ),
-          const SizedBox(height: 24),
-          _buildAvatarRow(theme),
-          const SizedBox(height: 28),
-          _buildFieldsRow1(theme),
-          const SizedBox(height: 16),
-          _buildFieldsRow2(theme),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Log out'),
+          ),
         ],
       ),
     );
-  }
 
-  Widget _buildAvatarRow(ThemeData theme) {
-    return Row(
-      children: [
-        Container(
-          width: 72,
-          height: 72,
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            color: AppColors.primary,
-          ),
-          child: Center(
-            child: Text(
-              _initials(_nameController.text),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _nameController.text.isEmpty ? 'User' : _nameController.text,
-                style: TextStyle(
-                  color: theme.colorScheme.onSurface,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '$_role · ${_companyController.text}',
-                style: TextStyle(
-                  color: theme.colorScheme.onSurface.withOpacity(0.5),
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+    if (confirmed == true && context.mounted) {
+      await context.read<SettingsCubit>().logout();
+    }
+  }
+}
+
+class _ProfileCard extends StatelessWidget {
+  final List<Widget> children;
+
+  const _ProfileCard({required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      ),
     );
   }
+}
 
-  Widget _buildFieldsRow1(ThemeData theme) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: _buildField(
-            theme: theme,
-            label: 'Full Name',
-            controller: _nameController,
-            enabled: _isEditing,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildField(
-            theme: theme,
-            label: 'Email Address',
-            controller: _emailController,
-            enabled: _isEditing && _isAdmin,
-          ),
-        ),
-      ],
-    );
-  }
+class _ProfileField extends StatelessWidget {
+  final String label;
+  final String value;
 
-  Widget _buildFieldsRow2(ThemeData theme) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: _buildField(
-            theme: theme,
-            label: 'Role',
-            controller: TextEditingController(text: _role),
-            enabled: false,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildField(
-            theme: theme,
-            label: 'Organization',
-            controller: _companyController,
-            enabled: _isEditing && _isAdmin,
-          ),
-        ),
-      ],
-    );
-  }
+  const _ProfileField({required this.label, required this.value});
 
-  Widget _buildField({
-    required ThemeData theme,
-    required String label,
-    required TextEditingController controller,
-    required bool enabled,
-  }) {
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: TextStyle(
-            color: theme.colorScheme.onSurface.withOpacity(0.5),
-            fontSize: 12,
-          ),
+          style: TextStyle(color: colors.textSecondary, fontSize: 12),
         ),
         const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          enabled: enabled,
-          onChanged: (_) => setState(() {}),
-          style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 14),
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: enabled
-                ? theme.colorScheme.surface
-                : theme.scaffoldBackgroundColor.withOpacity(0.3),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 14,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(
-                color: theme.dividerColor.withOpacity(0.3),
-              ),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(
-                color: theme.dividerColor.withOpacity(0.3),
-              ),
-            ),
-            disabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(
-                color: theme.dividerColor.withOpacity(0.15),
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(
-                color: AppColors.primary,
-                width: 1.5,
-              ),
-            ),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            color: colors.surfaceMuted,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: SelectableText(
+            value.trim().isEmpty ? 'Not available' : value,
+            style: TextStyle(color: colors.textPrimary, fontSize: 14),
           ),
         ),
       ],
     );
-  }
-
-  Widget _buildPermissionsCard(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'ROLE & PERMISSIONS',
-            style: TextStyle(
-              color: theme.colorScheme.onSurface.withOpacity(0.5),
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.2,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _chip(theme, _role, filled: true),
-              ..._permissions.map<Widget>((p) => _chip(theme, p)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _chip(ThemeData theme, String label, {bool filled = false}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: filled
-            ? AppColors.primary.withOpacity(0.15)
-            : theme.scaffoldBackgroundColor.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: filled
-              ? AppColors.primary.withOpacity(0.4)
-              : theme.dividerColor.withOpacity(0.3),
-        ),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: filled
-              ? AppColors.primary
-              : theme.colorScheme.onSurface.withOpacity(0.75),
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActions() {
-    if (!_isEditing) {
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: ElevatedButton(
-          onPressed: () => setState(() => _isEditing = true),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-          child: const Text(
-            'Edit Profile',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-          ),
-        ),
-      );
-    }
-
-    return Row(
-      children: [
-        ElevatedButton(
-          onPressed: _isSaving ? null : _onSave,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-          child: _isSaving
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    color: Colors.white,
-                    strokeWidth: 2,
-                  ),
-                )
-              : const Text(
-                  'Save Changes',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                ),
-        ),
-        const SizedBox(width: 12),
-        OutlinedButton(
-          onPressed: _isSaving ? null : _onCancel,
-          style: OutlinedButton.styleFrom(
-            foregroundColor: Theme.of(context).colorScheme.onSurface,
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-            side: BorderSide(
-              color: Theme.of(context).dividerColor.withOpacity(0.3),
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-          child: const Text('Cancel', style: TextStyle(fontSize: 13)),
-        ),
-      ],
-    );
-  }
-
-  String _initials(String name) {
-    if (name.isEmpty) return '?';
-    final parts = name.trim().split(' ');
-    if (parts.length == 1) return parts[0][0].toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  }
-
-  String _capitalize(String value) {
-    if (value.isEmpty) return value;
-    return '${value[0].toUpperCase()}${value.substring(1)}';
   }
 }
