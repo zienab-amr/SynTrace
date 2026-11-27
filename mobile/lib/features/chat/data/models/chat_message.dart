@@ -60,16 +60,19 @@ class ChatMessage extends Equatable {
       timestamp: DateTime.parse(json['timestamp'] as String),
       isStreaming: json['isStreaming'] as bool? ?? false,
       hasError: json['hasError'] as bool? ?? false,
-      steps: (json['steps'] as List<dynamic>?)
+      steps:
+          (json['steps'] as List<dynamic>?)
               ?.map((e) => ProgressStep.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
-      jiraCards: (json['jiraCards'] as List<dynamic>?)
+      jiraCards:
+          (json['jiraCards'] as List<dynamic>?)
               ?.map((e) => JiraCardModel.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
       sources: ChatSourceModel.parseList(json['sources']),
-      quotedExcerpts: (json['quotedExcerpts'] as List<dynamic>?)
+      quotedExcerpts:
+          (json['quotedExcerpts'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
           [],
@@ -113,6 +116,16 @@ class ChatMessage extends Equatable {
   }
 
   @override
-  List<Object?> get props =>
-      [id, role, content, timestamp, isStreaming, hasError, steps, jiraCards, sources, quotedExcerpts];
+  List<Object?> get props => [
+    id,
+    role,
+    content,
+    timestamp,
+    isStreaming,
+    hasError,
+    steps,
+    jiraCards,
+    sources,
+    quotedExcerpts,
+  ];
 }
