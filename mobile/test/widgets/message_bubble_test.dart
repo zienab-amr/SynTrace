@@ -4,7 +4,9 @@ import 'package:syntrace/features/chat/data/models/chat_message.dart';
 import 'package:syntrace/features/chat/presentation/widgets/message_bubble.dart';
 
 void main() {
-  testWidgets('MessageBubble displays user message text', (WidgetTester tester) async {
+  testWidgets('MessageBubble displays user message text', (
+    WidgetTester tester,
+  ) async {
     final msg = ChatMessage(
       id: '1',
       role: ChatRole.user,
