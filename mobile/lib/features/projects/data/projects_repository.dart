@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import 'package:syntrace/core/network/api_client.dart';
 import 'package:syntrace/core/network/api_endpoints.dart';
+import 'package:syntrace/features/projects/data/models/project_team_member.dart';
 
 import 'models/project_api_model.dart';
 
@@ -81,6 +82,7 @@ class ProjectsRepository {
   }) async {
     final response = await _apiClient.post(
       ApiEndpoints.projects,
+      options: Options(extra: {'allow_retry': false}),
       data: {
         'clientId': clientId,
         'name': name.trim(),
@@ -169,6 +171,23 @@ class ProjectsRepository {
   // ═══════════════════════════════════════════
   // Add Project Member
   // ═══════════════════════════════════════════
+  Future<List<ProjectTeamMember>> getProjectMembers(
+    String projectId, {
+    CancelToken? cancelToken,
+  }) async {
+    final response = await _apiClient.get(
+      ApiEndpoints.projectMembers(projectId),
+      cancelToken: cancelToken,
+    );
+
+    _ensureSuccess(response);
+
+    final members = _asList(
+      response.data,
+    ).map((item) => ProjectTeamMember.fromJson(_asMap(item))).toList();
+
+    return List.unmodifiable(members);
+  }
 
   Future<void> addProjectMember({
     required String projectId,
