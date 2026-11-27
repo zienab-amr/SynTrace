@@ -6,7 +6,11 @@ import 'github_coverage_detail_row.dart';
 class GitHubCoverageDetails extends StatelessWidget {
   final GitHubSyncCoverage coverage;
   final DateTime? lastSuccessAtUtc;
-  const GitHubCoverageDetails({super.key, required this.coverage, this.lastSuccessAtUtc});
+  const GitHubCoverageDetails({
+    super.key,
+    required this.coverage,
+    this.lastSuccessAtUtc,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -54,6 +58,7 @@ class GitHubCoverageDetails extends StatelessWidget {
       ],
     );
   }
+
   Widget _buildIndexingInformation(BuildContext context) {
     final data = coverage;
     final theme = Theme.of(context);

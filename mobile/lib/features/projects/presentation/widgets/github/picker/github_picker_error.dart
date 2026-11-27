@@ -3,7 +3,11 @@ import 'package:flutter/material.dart';
 class GitHubPickerError extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
-  const GitHubPickerError({super.key, required this.message, required this.onRetry});
+  const GitHubPickerError({
+    super.key,
+    required this.message,
+    required this.onRetry,
+  });
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -29,10 +33,7 @@ class GitHubPickerError extends StatelessWidget {
 
             const SizedBox(height: 8),
 
-            Text(
-              message,
-              textAlign: TextAlign.center,
-            ),
+            Text(message, textAlign: TextAlign.center),
 
             const SizedBox(height: 20),
 

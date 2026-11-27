@@ -5,7 +5,11 @@ class GitHubRepositoryCard extends StatelessWidget {
   final GitHubRepositoryOption repository;
   final VoidCallback onTap;
 
-  const GitHubRepositoryCard({super.key, required this.repository, required this.onTap});
+  const GitHubRepositoryCard({
+    super.key,
+    required this.repository,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {

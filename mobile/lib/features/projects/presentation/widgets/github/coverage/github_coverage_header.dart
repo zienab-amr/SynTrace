@@ -40,5 +40,4 @@ class GitHubCoverageHeader extends StatelessWidget {
       ],
     );
   }
-
 }

@@ -4,7 +4,12 @@ class GitHubCoverageDetailRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
-  const GitHubCoverageDetailRow({super.key, required this.icon, required this.label, required this.value});
+  const GitHubCoverageDetailRow({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -40,5 +45,4 @@ class GitHubCoverageDetailRow extends StatelessWidget {
       ],
     );
   }
-
 }
