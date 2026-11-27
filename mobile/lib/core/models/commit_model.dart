@@ -2,18 +2,18 @@ import 'package:equatable/equatable.dart';
 
 class CommitModel extends Equatable {
   final String id;
-  final String sha;             // hash بتاع الـ commit
+  final String sha; // Commit hash.
   final String message;
   final String authorName;
   final String? authorEmail;
-  final String? authorId;       // ← يربط بالـ User
+  final String? authorId; // Links to the user.
   final String repositoryName;
   final String branch;
   final int additions;
   final int deletions;
   final int changedFiles;
   final DateTime committedAt;
-  final String? taskId;         // ← يربط بالـ Task (SYNT-XX)
+  final String? taskId; // Links to the task (SYNT-XX).
   final String? projectId;
   final DateTime? createdAt;
 
@@ -121,8 +121,20 @@ class CommitModel extends Equatable {
 
   @override
   List<Object?> get props => [
-        id, sha, message, authorName, authorEmail, authorId,
-        repositoryName, branch, additions, deletions, changedFiles,
-        committedAt, taskId, projectId, createdAt,
-      ];
+    id,
+    sha,
+    message,
+    authorName,
+    authorEmail,
+    authorId,
+    repositoryName,
+    branch,
+    additions,
+    deletions,
+    changedFiles,
+    committedAt,
+    taskId,
+    projectId,
+    createdAt,
+  ];
 }
