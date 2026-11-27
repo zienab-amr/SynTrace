@@ -14,6 +14,32 @@ class LoginRequest extends Equatable {
 
   @override
   List<Object?> get props => [email, password];
+
+  @override
+  bool get stringify => false;
+}
+
+enum OtpPurpose { registration, passwordReset }
+
+class OtpVerificationResult {
+  final bool verified;
+  final String? verificationToken;
+
+  const OtpVerificationResult({required this.verified, this.verificationToken});
+
+  factory OtpVerificationResult.fromJson(Map<String, dynamic> json) {
+    final verified = json['verified'];
+    final token = json['verificationToken'];
+    if (verified is! bool ||
+        (verified &&
+            (token is! String || token.trim().isEmpty || token.length > 64))) {
+      throw const FormatException('Invalid verification response');
+    }
+    return OtpVerificationResult(
+      verified: verified,
+      verificationToken: verified ? token as String : null,
+    );
+  }
 }
 
 class SignupRequest extends Equatable {
@@ -23,6 +49,7 @@ class SignupRequest extends Equatable {
   final String email;
   final String? phoneNumber;
   final String password;
+  final String? verificationToken;
 
   const SignupRequest({
     required this.companyName,
@@ -31,6 +58,7 @@ class SignupRequest extends Equatable {
     required this.email,
     this.phoneNumber,
     required this.password,
+    this.verificationToken,
   });
 
   Map<String, dynamic> toJson() => {
@@ -41,8 +69,22 @@ class SignupRequest extends Equatable {
       'email': email,
       'phoneNumber': phoneNumber,
       'password': password,
+      if (verificationToken != null) 'verificationToken': verificationToken,
     },
   };
+
+  SignupRequest withVerificationToken(String token) => SignupRequest(
+    companyName: companyName,
+    firstName: firstName,
+    lastName: lastName,
+    email: email,
+    phoneNumber: phoneNumber,
+    password: password,
+    verificationToken: token,
+  );
+
+  @override
+  bool get stringify => false;
 
   @override
   List<Object?> get props => [
@@ -52,6 +94,7 @@ class SignupRequest extends Equatable {
     email,
     phoneNumber,
     password,
+    verificationToken,
   ];
 }
 
@@ -96,16 +139,18 @@ class AuthResponse extends Equatable {
       final claims = jsonDecode(payload) as Map<String, dynamic>;
 
       final userId =
-          claims['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier']
-              as String? ??
-          claims['sub'] as String? ??
-          '';
-      final companyId = claims['CompanyId'] as String? ?? '';
-      final role =
-          claims['http://schemas.microsoft.com/ws/2008/06/identity/claims/role']
-              as String? ??
-          claims['role'] as String? ??
-          'Employee';
+          (claims['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier']
+                      as String? ??
+                  claims['sub'] as String? ??
+                  '')
+              .trim();
+      final companyId = (claims['CompanyId'] as String? ?? '').trim();
+      if (userId.isEmpty || companyId.isEmpty) return null;
+      final roles = UserRole.readNames([
+        claims['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'],
+        claims['role'],
+      ]);
+      final role = UserRole.fromNames(roles);
       final email =
           claims['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress']
               as String? ??
@@ -121,7 +166,8 @@ class AuthResponse extends Equatable {
         id: userId,
         name: name,
         email: email,
-        role: UserRole.fromString(role),
+        role: role,
+        roleNames: roles,
         tenantId: companyId,
         companyName: fallbackCompanyName,
       );
@@ -139,6 +185,9 @@ class AuthResponse extends Equatable {
         .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
         .join(' ');
   }
+
+  @override
+  bool get stringify => false;
 
   @override
   List<Object?> get props => [
@@ -161,6 +210,13 @@ class RegisterResponse extends Equatable {
   });
 
   factory RegisterResponse.fromJson(Map<String, dynamic> json) {
+    if ([
+      json['employeeId'],
+      json['companyId'],
+      json['email'],
+    ].any((v) => v is! String || v.trim().isEmpty)) {
+      throw const FormatException('Invalid registration response');
+    }
     return RegisterResponse(
       employeeId: json['employeeId'] as String? ?? '',
       companyId: json['companyId'] as String? ?? '',
@@ -170,4 +226,27 @@ class RegisterResponse extends Equatable {
 
   @override
   List<Object?> get props => [employeeId, companyId, email];
+}
+
+class ResetPasswordRequest {
+  final String email;
+  final String otp;
+  final String newPassword;
+  final String confirmPassword;
+
+  const ResetPasswordRequest({
+    required this.email,
+    required this.otp,
+    required this.newPassword,
+    required this.confirmPassword,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'request': {
+      'email': email,
+      'otp': otp,
+      'newPassword': newPassword,
+      'confirmPassword': confirmPassword,
+    },
+  };
 }

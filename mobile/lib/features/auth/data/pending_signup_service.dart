@@ -8,6 +8,24 @@ class PendingSignupService {
 
   SignupRequest? get pendingRequest => _pendingRequest;
 
-  void save(SignupRequest request) => _pendingRequest = request;
-  void clear() => _pendingRequest = null;
+  DateTime? resendAt;
+  DateTime? expiresAt;
+
+  void markSent() {
+    final now = DateTime.now();
+    resendAt = now.add(const Duration(seconds: 60));
+    expiresAt = now.add(const Duration(minutes: 5));
+  }
+
+  void save(SignupRequest request) {
+    _pendingRequest = request;
+    resendAt = null;
+    expiresAt = null;
+  }
+
+  void clear() {
+    _pendingRequest = null;
+    resendAt = null;
+    expiresAt = null;
+  }
 }
