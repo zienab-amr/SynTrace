@@ -1,8 +1,10 @@
+import 'package:syntrace/core/cache/cache_session.dart';
+import 'package:syntrace/core/services/self_profile_service.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:syntrace/core/services/current_user_service.dart';
-import 'package:syntrace/core/services/secure_storage_service.dart';
 import 'package:syntrace/features/auth/data/auth_repository.dart';
 import 'package:syntrace/features/auth/data/models/auth_models.dart';
+
 import 'login_state.dart';
 
 class LoginCubit extends Cubit<LoginState> {
@@ -14,61 +16,66 @@ class LoginCubit extends Cubit<LoginState> {
 
   Future<void> login({required String email, required String password}) async {
     if (state is LoginLoading) return;
+
+    final generation = CacheSession.instance.generation;
     emit(const LoginLoading());
 
-    final result = await _repository.login(
-      LoginRequest(email: email, password: password),
-    );
+    try {
+      final normalizedEmail = email.trim().toLowerCase();
 
-    if (result.success && result.data != null) {
-      await _saveTokens(result.data!);
+      final result = await _repository.login(
+        LoginRequest(email: normalizedEmail, password: password),
+      );
 
-      var user = result.data!.extractUser(fallbackEmail: email);
+      if (isClosed) return;
 
-      if (user != null) {
-        await SecureStorageService.instance.saveUserId(user.id);
-        await SecureStorageService.instance.saveUserRole(user.role.value);
-        if (user.tenantId != null && user.tenantId!.isNotEmpty) {
-          await SecureStorageService.instance.saveTenantId(user.tenantId!);
-        }
-
-        if (user.id.isNotEmpty) {
-          final profileResult = await _repository.getEmployeeProfile(user.id);
-
-          if (profileResult.success && profileResult.data != null) {
-            final data = profileResult.data!;
-
-            final firstName = data['firstName']?.toString() ?? '';
-            final lastName = data['lastName']?.toString() ?? '';
-            final fullName = '$firstName $lastName'.trim();
-            final phoneNumber = data['phoneNumber']?.toString();
-
-            String? companyName;
-            if (data['companyName'] != null) {
-              companyName = data['companyName'].toString();
-            } else if (data['company'] is Map &&
-                data['company']['companyName'] != null) {
-              companyName = data['company']['companyName'].toString();
-            }
-
-            user = user.copyWith(
-              name: fullName.isNotEmpty ? fullName : user.name,
-              phoneNumber: phoneNumber,
-              companyName: companyName ?? user.companyName,
-            );
-          }
-        }
-
-        await CurrentUserService.instance.setUser(user);
+      if (!result.success || result.data == null) {
+        emit(LoginError(result.message));
+        return;
       }
-      emit(LoginSuccess(result.data!));
-    } else {
-      emit(LoginError(result.message));
-    }
-  }
 
-  Future<void> _saveTokens(AuthResponse response) async {
-    await SecureStorageService.instance.saveToken(response.accessToken);
-    await SecureStorageService.instance.saveRefreshToken(response.refreshToken);
+      final response = result.data!;
+
+      final user = response.extractUser(fallbackEmail: normalizedEmail);
+
+      if (user == null ||
+          user.id.isEmpty ||
+          user.tenantId == null ||
+          user.tenantId!.isEmpty ||
+          response.accessToken.isEmpty ||
+          response.refreshToken.isEmpty) {
+        emit(
+          const LoginError(
+            'Unable to initialize your account. Please try again.',
+          ),
+        );
+        return;
+      }
+
+      await CurrentUserService.instance.establishSession(
+        user,
+        response,
+        expectedGeneration: generation,
+      );
+      final activeGeneration = CacheSession.instance.generation;
+
+      try {
+        await SelfProfileService().refresh();
+      } catch (_) {
+        // A temporary profile failure must not prevent successful sign-in.
+        // Settings will retry and will not invent missing profile data.
+      }
+      if (isClosed ||
+          CacheSession.instance.generation != activeGeneration ||
+          CurrentUserService.instance.user == null) {
+        return;
+      }
+
+      emit(LoginSuccess(response));
+    } catch (_) {
+      if (isClosed) return;
+
+      emit(const LoginError('Unable to sign in. Please try again.'));
+    }
   }
 }
