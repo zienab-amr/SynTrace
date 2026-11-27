@@ -26,7 +26,7 @@ class AppTopBar extends StatelessWidget {
             onPressed: () {},
             icon: Icon(
               Icons.notifications_outlined,
-              color: theme.colorScheme.onSurface.withOpacity(0.6),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
             ),
           ),
           const SizedBox(width: 8),

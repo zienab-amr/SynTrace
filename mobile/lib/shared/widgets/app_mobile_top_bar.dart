@@ -1,164 +1,137 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
 import 'package:syntrace/core/models/user_model.dart';
 import 'package:syntrace/core/router/routes.dart';
 import 'package:syntrace/core/services/current_user_service.dart';
-import 'package:syntrace/core/theme/app_colors.dart';
-import 'package:syntrace/shared/widgets/logo_mark.dart';
-import 'package:syntrace/shared/widgets/user_avatar.dart';
+import 'package:syntrace/core/theme/app_premium_icons.dart';
+import 'package:syntrace/core/theme/app_theme_extension.dart';
 
-/// ═══════════════════════════════════════════════════════════
-/// AppMobileTopBar
-/// 
-/// Top Bar للموبايل — بيظهر فوق كل الشاشات
-/// ═══════════════════════════════════════════════════════════
-class AppMobileTopBar extends StatelessWidget {
+import 'app_icon_button.dart';
+import 'logo_mark.dart';
+import 'user_avatar.dart';
+
+class AppMobileTopBar extends StatefulWidget {
   const AppMobileTopBar({super.key});
 
   @override
+  State<AppMobileTopBar> createState() => _AppMobileTopBarState();
+}
+
+class _AppMobileTopBarState extends State<AppMobileTopBar> {
+  bool _isNavigating = false;
+
+  Future<void> _openPage(String path) async {
+    if (_isNavigating || !mounted) return;
+
+    final currentPath = GoRouterState.of(context).uri.path;
+
+    if (currentPath == path) return;
+
+    setState(() => _isNavigating = true);
+
+    try {
+      await context.push<void>(path);
+    } finally {
+      if (mounted) {
+        setState(() => _isNavigating = false);
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final colors = context.appColors;
+    final path = GoRouterState.of(context).uri.path;
+
+    final isActivity = path == AppRoutes.jiraActivity;
+
+    final isSettings = path == AppRoutes.settings;
 
     return Container(
-      height: 56,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      height: 60,
+      padding: const EdgeInsets.only(left: 20, right: 12),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: theme.dividerColor.withOpacity(0.5),
-            width: 1,
-          ),
-        ),
+        color: colors.surface,
+        border: Border(bottom: BorderSide(color: colors.border, width: 0.8)),
       ),
       child: Row(
         children: [
-          // ─── Logo ───
-          const LogoMark(size: 32),
-          const SizedBox(width: 10),
-          const Text(
-            'SynTrace',
-            style: TextStyle(
-              color: AppColors.textPrimaryDark,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.3,
+          const LogoMark(size: 29),
+
+          const SizedBox(width: 9),
+
+          Expanded(
+            child: Text(
+              'SynTrace',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.appText.titleMedium?.copyWith(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.7,
+                color: colors.textPrimary,
+              ),
             ),
           ),
 
-          const Spacer(),
-
-          // ─── Search ───
-          IconButton(
-            onPressed: () => _onSearchTap(context),
-            icon: Icon(
-              Icons.search,
-              color: theme.colorScheme.onSurface.withOpacity(0.7),
-              size: 22,
-            ),
-            tooltip: 'Search',
+          AppIconButton(
+            icon: AppPremiumIcons.activity,
+            tooltip: 'Activity',
+            selected: isActivity,
+            iconSize: 23,
+            onPressed: _isNavigating || isActivity
+                ? null
+                : () => _openPage(AppRoutes.jiraActivity),
           ),
 
-          // ─── Notifications ───
-          Stack(
-            children: [
-              IconButton(
-                onPressed: () => context.go(AppRoutes.jiraActivity),
-                icon: Icon(
-                  Icons.notifications_outlined,
-                  color: theme.colorScheme.onSurface.withOpacity(0.7),
-                  size: 22,
-                ),
-                tooltip: 'Notifications',
-              ),
-              // ─── Red Dot ───
-              Positioned(
-                right: 8,
-                top: 8,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: AppColors.error,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-            ],
-          ),
+          const SizedBox(width: 2),
 
-          const SizedBox(width: 4),
-
-          // ─── Avatar ───
-          ValueListenableBuilder<UserModel?>(
-            valueListenable: CurrentUserService.instance.userNotifier,
-            builder: (context, user, _) {
-              return UserAvatar(
-                user: user,
-                size: 32,
-                onTap: () => context.go(AppRoutes.profile),
-              );
-            },
+          _ProfileAction(
+            enabled: !_isNavigating && !isSettings,
+            onTap: () => _openPage(AppRoutes.settings),
           ),
         ],
       ),
     );
   }
-
-  // ═══════════════════════════════════════════════════════
-  // Search Tap
-  // ═══════════════════════════════════════════════════════
-  void _onSearchTap(BuildContext context) {
-    showSearch(
-      context: context,
-      delegate: _MobileSearchDelegate(),
-    );
-  }
 }
 
-// ═══════════════════════════════════════════════════════════
-// Search Delegate بسيط
-// ═══════════════════════════════════════════════════════════
-class _MobileSearchDelegate extends SearchDelegate {
-  @override
-  List<Widget>? buildActions(BuildContext context) {
-    return [
-      IconButton(
-        onPressed: () => query = '',
-        icon: const Icon(Icons.clear),
-      ),
-    ];
-  }
+class _ProfileAction extends StatelessWidget {
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const _ProfileAction({required this.enabled, required this.onTap});
 
   @override
-  Widget? buildLeading(BuildContext context) {
-    return IconButton(
-      onPressed: () => close(context, null),
-      icon: const Icon(Icons.arrow_back),
-    );
-  }
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
 
-  @override
-  Widget buildResults(BuildContext context) {
-    return Center(
-      child: Text(
-        'Search results for: $query',
-        style: const TextStyle(color: AppColors.textPrimaryDark),
-      ),
-    );
-  }
-
-  @override
-  Widget buildSuggestions(BuildContext context) {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(24),
-        child: Text(
-          'Search projects, developers, PRs, bugs...',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: AppColors.textSecondaryDark),
-        ),
-      ),
+    return ValueListenableBuilder<UserModel?>(
+      valueListenable: CurrentUserService.instance.userNotifier,
+      builder: (context, user, _) {
+        return Tooltip(
+          message: 'Account settings',
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: enabled && user != null ? onTap : null,
+            child: SizedBox(
+              width: 48,
+              height: 48,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: colors.borderStrong, width: 0.8),
+                  ),
+                  child: UserAvatar(user: user, size: 30),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
