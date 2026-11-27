@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-class LoadingDots extends StatefulWidget
-{
+class LoadingDots extends StatefulWidget {
   const LoadingDots({super.key});
 
   @override
@@ -51,8 +50,9 @@ class _LoadingDotsState extends State<LoadingDots>
               height: 6,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color:theme.colorScheme.primary
-                    .withOpacity((0.3 + (opacity * 0.7)).clamp(0.0, 1.0)),
+                color: theme.colorScheme.primary.withValues(
+                  alpha: (0.3 + (opacity * 0.7)).clamp(0.0, 1.0),
+                ),
               ),
             );
           }),
