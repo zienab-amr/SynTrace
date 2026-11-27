@@ -19,14 +19,14 @@ class DeveloperModel {
     required this.name,
     required this.role,
     required this.email,
-    this.team = 'Engineering',
+    this.team = '',
     this.isOverloaded = false,
     this.commits = 0,
     this.prs = 0,
     this.openTasks = 0,
     this.velocity = 0,
-    this.healthPercent = 100,
-    this.techStack = const ['Flutter'],
+    this.healthPercent = 0,
+    this.techStack = const [],
     required this.initials,
   });
 
