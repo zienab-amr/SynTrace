@@ -1,6 +1,4 @@
-import 'dart:async';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 
 class RetryInterceptor extends Interceptor {
   final Dio dio;
@@ -9,63 +7,72 @@ class RetryInterceptor extends Interceptor {
 
   RetryInterceptor({
     required this.dio,
-    this.maxRetries = 3,
-    this.retryDelay = const Duration(seconds: 2),
+    this.maxRetries = 2,
+    this.retryDelay = const Duration(seconds: 1),
   });
 
+  static const _attemptKey = 'retry_attempt';
+
+  static const allowRetryKey = 'allow_retry';
+
   @override
-  void onError(DioException err, ErrorInterceptorHandler handler) async {
-    if (err.requestOptions.path.contains('/assistant/ask')) {
-      return handler.next(err);
+  Future<void> onError(
+    DioException err,
+    ErrorInterceptorHandler handler,
+  ) async {
+    final request = err.requestOptions;
+    final method = request.method.toUpperCase();
+
+    final isSafeRead = method == 'GET' || method == 'HEAD';
+
+    final allowRetry = request.extra[allowRetryKey] == true;
+
+    if (!isSafeRead || !allowRetry || !_shouldRetry(err)) {
+      handler.next(err);
+      return;
     }
 
-    if (!_shouldRetry(err)) {
-      return handler.next(err);
+    final attempt = request.extra[_attemptKey] as int? ?? 0;
+
+    if (attempt >= maxRetries || request.cancelToken?.isCancelled == true) {
+      handler.next(err);
+      return;
     }
 
-    final attempt = err.requestOptions.extra['retry_attempt'] as int? ?? 0;
+    request.extra[_attemptKey] = attempt + 1;
 
-    if (attempt >= maxRetries) {
-      if (kDebugMode) {
-        debugPrint('❌ Retry: Gave up after $attempt attempts');
-      }
-      return handler.next(err);
+    await Future<void>.delayed(retryDelay * (attempt + 1));
+
+    if (request.cancelToken?.isCancelled == true) {
+      handler.next(err);
+      return;
     }
-
-    err.requestOptions.extra['retry_attempt'] = attempt + 1;
-
-    final delay = retryDelay * (attempt + 1);
-    
-    if (kDebugMode) {
-      debugPrint('🔄 Retry: Attempt ${attempt + 1}/$maxRetries (waiting ${delay.inSeconds}s)');
-    }
-    
-    await Future.delayed(delay);
 
     try {
-      final response = await dio.fetch(err.requestOptions);
+      final response = await dio.fetch(request);
+
       handler.resolve(response);
-    } on DioException catch (e) {
-      handler.next(e);
+    } on DioException catch (error) {
+      handler.next(error);
+    } catch (_) {
+      handler.next(err);
     }
   }
 
-  bool _shouldRetry(DioException err) {
-    switch (err.type) {
+  bool _shouldRetry(DioException error) {
+    switch (error.type) {
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
-      case DioExceptionType.transformTimeout:
       case DioExceptionType.connectionError:
         return true;
 
       case DioExceptionType.badResponse:
-        final statusCode = err.response?.statusCode ?? 0;
-        return statusCode >= 500 && statusCode < 600;
+        final status = error.response?.statusCode;
 
-      case DioExceptionType.cancel:
-      case DioExceptionType.badCertificate:
-      case DioExceptionType.unknown:
+        return status == 502 || status == 503 || status == 504;
+
+      default:
         return false;
     }
   }

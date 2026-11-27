@@ -3,10 +3,7 @@ import 'package:syntrace/core/network/api_exceptions.dart';
 
 class ErrorInterceptor extends Interceptor {
   @override
-  void onError(
-    DioException err,
-    ErrorInterceptorHandler handler,
-  ) {
+  void onError(DioException err, ErrorInterceptorHandler handler) {
     final apiException = _mapDioException(err);
 
     handler.reject(
@@ -190,8 +187,7 @@ class ErrorInterceptor extends Interceptor {
       return 'Invalid email or password';
     }
 
-    if (lower.contains('invalid otp') ||
-        lower.contains('otp is invalid')) {
+    if (lower.contains('invalid otp') || lower.contains('otp is invalid')) {
       return 'Invalid or expired OTP';
     }
 

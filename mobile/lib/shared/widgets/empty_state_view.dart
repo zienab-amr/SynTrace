@@ -27,16 +27,12 @@ class EmptyStateView extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              size: 64,
-              color: onSurface.withOpacity(0.2),
-            ),
+            Icon(icon, size: 64, color: onSurface.withValues(alpha: 0.2)),
             const SizedBox(height: 16),
             Text(
               title,
               style: TextStyle(
-                color: onSurface.withOpacity(0.7),
+                color: onSurface.withValues(alpha: 0.7),
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
               ),
@@ -46,7 +42,7 @@ class EmptyStateView extends StatelessWidget {
               message,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: onSurface.withOpacity(0.4),
+                color: onSurface.withValues(alpha: 0.4),
                 fontSize: 13,
               ),
             ),
