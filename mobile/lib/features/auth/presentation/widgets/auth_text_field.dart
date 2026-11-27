@@ -59,11 +59,11 @@ class _AuthTextFieldState extends State<AuthTextField> {
           decoration: InputDecoration(
             hintText: widget.hint,
             hintStyle: TextStyle(
-              color: theme.colorScheme.onSurface.withOpacity(0.3),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
             ),
             prefixIcon: Icon(
               widget.icon,
-              color: theme.colorScheme.onSurface.withOpacity(0.5),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
               size: 20,
             ),
             suffixIcon: widget.isPassword
@@ -71,7 +71,7 @@ class _AuthTextFieldState extends State<AuthTextField> {
                     onPressed: () => setState(() => _obscure = !_obscure),
                     icon: Icon(
                       _obscure ? Icons.visibility_off : Icons.visibility,
-                      color: theme.colorScheme.onSurface.withOpacity(0.5),
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                       size: 20,
                     ),
                   )
@@ -83,33 +83,24 @@ class _AuthTextFieldState extends State<AuthTextField> {
               vertical: 18,
             ),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),   // ← 16
+              borderRadius: BorderRadius.circular(16), // ← 16
               borderSide: BorderSide(color: theme.dividerColor),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),   // ← 16
+              borderRadius: BorderRadius.circular(16), // ← 16
               borderSide: BorderSide(color: theme.dividerColor),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),   // ← 16
-              borderSide: const BorderSide(
-                color: AppColors.primary,
-                width: 2,
-              ),
+              borderRadius: BorderRadius.circular(16), // ← 16
+              borderSide: const BorderSide(color: AppColors.primary, width: 2),
             ),
             errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),   // ← 16
-              borderSide: const BorderSide(
-                color: AppColors.error,
-                width: 1.5,
-              ),
+              borderRadius: BorderRadius.circular(16), // ← 16
+              borderSide: const BorderSide(color: AppColors.error, width: 1.5),
             ),
             focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),   // ← 16
-              borderSide: const BorderSide(
-                color: AppColors.error,
-                width: 2,
-              ),
+              borderRadius: BorderRadius.circular(16), // ← 16
+              borderSide: const BorderSide(color: AppColors.error, width: 2),
             ),
           ),
         ),

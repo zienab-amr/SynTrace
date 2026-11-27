@@ -4,9 +4,9 @@ import 'package:syntrace/features/auth/presentation/widgets/auth_header.dart';
 
 /// ═══════════════════════════════════════════════════════════
 /// AuthScreenLayout
-/// 
+///
 /// Widget(Login + Signup)
-/// Layout، Background، Branding Panel، Header
+/// Layout, background, branding panel, and header.
 /// ═══════════════════════════════════════════════════════════
 class AuthScreenLayout extends StatelessWidget {
   final String title;
@@ -46,10 +46,7 @@ class AuthScreenLayout extends StatelessWidget {
     return Row(
       children: [
         // ═══ Left: Branding ═══
-        const Expanded(
-          flex: 6,
-          child: AuthBrandingPanel(),
-        ),
+        const Expanded(flex: 6, child: AuthBrandingPanel()),
 
         // ═══ Right: Form ═══
         Expanded(
@@ -112,10 +109,7 @@ class AuthScreenLayout extends StatelessWidget {
         submitButton,
 
         // ═══ Demo Hint ═══
-        if (demoHint != null) ...[
-          const SizedBox(height: 16),
-          demoHint!,
-        ],
+        if (demoHint != null) ...[const SizedBox(height: 16), demoHint!],
 
         const SizedBox(height: 24),
 
@@ -124,18 +118,18 @@ class AuthScreenLayout extends StatelessWidget {
 
         const SizedBox(height: 20),
 
-        // ═══ Security Note ═══
-        _buildSecurityNote(context),
+        // ═══ Workspace Note ═══
+        _buildWorkspaceNote(context),
       ],
     );
   }
 
-  Widget _buildSecurityNote(BuildContext context) {
+  Widget _buildWorkspaceNote(BuildContext context) {
     return Text(
-      'Enterprise-grade security · SOC 2 Type II',
+      'SynTrace · Engineering workspace',
       textAlign: TextAlign.center,
       style: TextStyle(
-        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3),
         fontSize: 10,
         letterSpacing: 0.3,
       ),

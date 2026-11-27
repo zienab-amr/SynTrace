@@ -63,7 +63,7 @@ class _AuthBrandingPanelState extends State<AuthBrandingPanel>
                 Text(
                   'SOFTWARE ENGINEERING INTELLIGENCE',
                   style: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(0.4),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 2.0,
@@ -103,7 +103,9 @@ class _AuthBrandingPanelState extends State<AuthBrandingPanel>
                         'engineering intelligence — powered by knowledge '
                         'graphs and AI.',
                         style: TextStyle(
-                          color: theme.colorScheme.onSurface.withOpacity(0.55),
+                          color: theme.colorScheme.onSurface.withValues(
+                            alpha: 0.55,
+                          ),
                           fontSize: 15,
                           height: 1.6,
                         ),
@@ -126,65 +128,64 @@ class _AuthBrandingPanelState extends State<AuthBrandingPanel>
                   ],
                 ),
 
-                // ─── Bottom: Testimonial (أصغر) ───
+                // Bottom: product overview
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 600),
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: theme.scaffoldBackgroundColor.withOpacity(0.5),
+                      color: theme.scaffoldBackgroundColor.withValues(
+                        alpha: 0.5,
+                      ),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: theme.dividerColor.withOpacity(0.2),
+                        color: theme.dividerColor.withValues(alpha: 0.2),
                       ),
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // ─── Avatar ───
+                        // Product icon
                         Container(
                           width: 32,
                           height: 32,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: AppColors.primary.withOpacity(0.15),
+                            color: AppColors.primary.withValues(alpha: 0.15),
                           ),
                           child: const Center(
-                            child: Text(
-                              'AK',
-                              style: TextStyle(
-                                color: AppColors.primary,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 11,
-                              ),
+                            child: Icon(
+                              Icons.hub_outlined,
+                              color: AppColors.primary,
+                              size: 18,
                             ),
                           ),
                         ),
                         const SizedBox(width: 12),
 
-                        // ─── Quote ───
+                        // Product description
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '"SynTrace gave us visibility we never had before. '
-                                'We traced a critical bug to a meeting decision '
-                                'made 3 sprints ago."',
+                                'Connect project activity, meeting notes, and '
+                                'AI-assisted analysis in one workspace.',
                                 style: TextStyle(
-                                  color:
-                                      theme.colorScheme.onSurface.withOpacity(0.75),
+                                  color: theme.colorScheme.onSurface.withValues(
+                                    alpha: 0.75,
+                                  ),
                                   fontSize: 12,
                                   height: 1.4,
-                                  fontStyle: FontStyle.italic,
                                 ),
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'Ahmed Kamal · CTO',
+                                'SynTrace · Engineering Intelligence',
                                 style: TextStyle(
-                                  color:
-                                      theme.colorScheme.onSurface.withOpacity(0.5),
+                                  color: theme.colorScheme.onSurface.withValues(
+                                    alpha: 0.5,
+                                  ),
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -220,16 +221,14 @@ class _FeatureChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: theme.scaffoldBackgroundColor.withOpacity(0.5),
+        color: theme.scaffoldBackgroundColor.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: theme.dividerColor.withOpacity(0.3),
-        ),
+        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.3)),
       ),
       child: Text(
         label,
         style: TextStyle(
-          color: theme.colorScheme.onSurface.withOpacity(0.75),
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
           fontSize: 12,
           fontWeight: FontWeight.w500,
         ),
@@ -260,15 +259,21 @@ class _GraphVisualPainter extends CustomPainter {
       _Node(Offset(size.width * 0.85, size.height * 0.88), 'Developer'),
     ];
 
-    // ─── Line Opacity (حسب الثيم) ───
+    // Theme-dependent line opacity
     final lineOpacity = isDark ? 0.08 : 0.12;
     final linePaint = Paint()
-      ..color = AppColors.primary.withOpacity(lineOpacity)
+      ..color = AppColors.primary.withValues(alpha: lineOpacity)
       ..strokeWidth = 1.0
       ..style = PaintingStyle.stroke;
 
     final connections = [
-      [0, 1], [1, 2], [2, 3], [2, 4], [4, 5], [1, 4], [0, 2],
+      [0, 1],
+      [1, 2],
+      [2, 3],
+      [2, 4],
+      [4, 5],
+      [1, 4],
+      [0, 2],
     ];
 
     for (final conn in connections) {
@@ -285,46 +290,47 @@ class _GraphVisualPainter extends CustomPainter {
     final dotBase = isDark ? 0.5 : 0.4;
     final labelBase = isDark ? 0.4 : 0.35;
 
-    // ─── Nodes (بـ Pulse) ───
+    // Pulsing nodes
     for (int i = 0; i < nodes.length; i++) {
       final node = nodes[i];
 
-      // ─── Pulse (Phase مختلفة لكل Node) ───
+      // Pulse with a distinct phase for each node
       final phase = (i * 0.17) % 1.0;
       final pulse = (sin((animationValue + phase) * 2 * pi) + 1) / 2;
 
-      // ─── Sizes متغيرة ───
-      final glowRadius = 35 + (pulse * 10);    // 35 → 45
-      final circleRadius = 14 + (pulse * 3);   // 14 → 17
-      final dotRadius = 2.5 + (pulse * 1.0);   // 2.5 → 3.5
+      // Animated sizes
+      final glowRadius = 35 + (pulse * 10); // 35 → 45
+      final circleRadius = 14 + (pulse * 3); // 14 → 17
+      final dotRadius = 2.5 + (pulse * 1.0); // 2.5 → 3.5
 
-      // ─── Opacities متغيرة ───
+      // Animated opacities
       final glowOpacity = glowBase + (pulse * 0.08);
       final circleOpacity = circleBase + (pulse * 0.10);
       final dotOpacity = dotBase + (pulse * 0.20);
 
       // ─── Glow ───
       final glowPaint = Paint()
-        ..shader = RadialGradient(
-          colors: [
-            AppColors.primary.withOpacity(glowOpacity),
-            AppColors.primary.withOpacity(0.0),
-          ],
-        ).createShader(
-          Rect.fromCircle(center: node.position, radius: glowRadius),
-        );
+        ..shader =
+            RadialGradient(
+              colors: [
+                AppColors.primary.withValues(alpha: glowOpacity),
+                AppColors.primary.withValues(alpha: 0.0),
+              ],
+            ).createShader(
+              Rect.fromCircle(center: node.position, radius: glowRadius),
+            );
       canvas.drawCircle(node.position, glowRadius, glowPaint);
 
       // ─── Outer Circle ───
       final circlePaint = Paint()
-        ..color = AppColors.primary.withOpacity(circleOpacity)
+        ..color = AppColors.primary.withValues(alpha: circleOpacity)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.0;
       canvas.drawCircle(node.position, circleRadius, circlePaint);
 
       // ─── Inner Dot ───
       final dotPaint = Paint()
-        ..color = AppColors.primary.withOpacity(dotOpacity)
+        ..color = AppColors.primary.withValues(alpha: dotOpacity)
         ..style = PaintingStyle.fill;
       canvas.drawCircle(node.position, dotRadius, dotPaint);
 
@@ -333,7 +339,7 @@ class _GraphVisualPainter extends CustomPainter {
         text: TextSpan(
           text: node.label,
           style: TextStyle(
-            color: AppColors.primary.withOpacity(labelBase),
+            color: AppColors.primary.withValues(alpha: labelBase),
             fontSize: 9,
             fontWeight: FontWeight.w500,
           ),
