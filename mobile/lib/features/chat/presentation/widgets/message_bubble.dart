@@ -6,6 +6,8 @@ import 'package:syntrace/features/chat/presentation/widgets/ai_progress_steps.da
 import 'package:syntrace/features/chat/presentation/widgets/jira_cards_list.dart';
 
 import 'chat_sources_list.dart';
+import 'package:syntrace/features/meetings/data/repositories/meeting_contract_repository.dart';
+import 'package:syntrace/features/meetings/presentation/screens/meeting_contract_screen.dart';
 
 class MessageBubble extends StatefulWidget {
   final ChatMessage message;
@@ -13,6 +15,7 @@ class MessageBubble extends StatefulWidget {
   final VoidCallback? onDelete;
   final Function(String newText)? onEdit;
   final Function(String quotedText)? onReply;
+  final ValueChanged<String>? onChoice;
 
   const MessageBubble({
     super.key,
@@ -21,6 +24,7 @@ class MessageBubble extends StatefulWidget {
     this.onDelete,
     this.onEdit,
     this.onReply,
+    this.onChoice,
   });
 
   @override
@@ -297,6 +301,36 @@ class _MessageBubbleState extends State<MessageBubble> {
             const SizedBox(height: 4),
             _BlinkingCursor(color: theme.colorScheme.onSurface),
           ],
+          if (!widget.message.isStreaming &&
+              widget.message.choices.isNotEmpty &&
+              widget.onChoice != null) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final choice in widget.message.choices)
+                  OutlinedButton(
+                    onPressed: () => widget.onChoice!(choice),
+                    child: Text(choice),
+                  ),
+              ],
+            ),
+          ],
+          if (MeetingContractRepository.enabled &&
+              !widget.message.isStreaming &&
+              widget.message.meetingSourceId != null)
+            OutlinedButton.icon(
+              icon: const Icon(Icons.rate_review_outlined),
+              label: const Text('Open meeting review'),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => MeetingContractScreen(
+                    initialMeetingId: widget.message.meetingSourceId,
+                  ),
+                ),
+              ),
+            ),
           if (widget.message.sources.isNotEmpty) ...[
             const SizedBox(height: 12),
             ChatSourcesList(sources: widget.message.sources),

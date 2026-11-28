@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
 import 'package:syntrace/shared/widgets/layouts/app_page_scaffold.dart';
 
+import '../../data/repositories/meeting_contract_repository.dart';
 import '../cubit/meeting_notes_cubit.dart';
 import '../cubit/meeting_notes_state.dart';
 import '../widgets/list/meetings_toolbar.dart';
@@ -13,6 +14,7 @@ import '../widgets/shared/meeting_empty_view.dart';
 import '../widgets/shared/meeting_error_view.dart';
 
 import 'create_meeting_screen.dart';
+import 'meeting_contract_screen.dart';
 import 'meeting_details_screen.dart';
 
 class MeetingNotesScreen extends StatefulWidget {
@@ -71,6 +73,19 @@ class _MeetingNotesScreenState extends State<MeetingNotesScreen> {
       body: AppPageScaffold(
         title: 'Meeting Notes',
         subtitle: 'Manage your meeting notes and transcripts',
+        actions: [
+          if (MeetingContractRepository.enabled)
+            OutlinedButton.icon(
+              icon: const Icon(Icons.auto_awesome_outlined),
+              onPressed: () => Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const MeetingContractScreen(),
+                ),
+              ),
+              label: const Text('Meeting AI'),
+            ),
+        ],
 
         child: BlocBuilder<MeetingNotesCubit, MeetingNotesState>(
           builder: (context, state) {

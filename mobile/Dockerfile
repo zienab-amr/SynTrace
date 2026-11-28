@@ -3,7 +3,7 @@
 # ==============================
 FROM ubuntu:24.04 AS build
 
-ARG FLUTTER_VERSION=3.44.2
+ARG FLUTTER_VERSION=3.50.1
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH="/opt/flutter/bin:/opt/flutter/bin/cache/dart-sdk/bin:${PATH}"
@@ -38,13 +38,13 @@ WORKDIR /app
 # Restore project dependencies
 COPY pubspec.yaml pubspec.lock ./
 
-RUN flutter pub get
+RUN flutter pub get --enforce-lockfile
 
 # Copy application source
 COPY . .
 
-# Public backend configuration
-ARG API_BASE_URL=https://jackeline-cibarious-supergallantly.ngrok-free.dev/api
+# Same-origin backend configuration
+ARG API_BASE_URL=/api
 
 # Build production web application
 RUN flutter build web \

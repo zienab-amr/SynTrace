@@ -274,6 +274,36 @@ class MeetingGraphTests(unittest.TestCase):
         self.assertEqual(again["source"]["status"], mn.PENDING)
         self.assertIsNone(again["source"]["error"])
 
+    def test_a_failed_source_is_retried_from_its_stored_text(self):
+        failed = self.process(reply="sorry")
+        self.assertEqual(failed["source"]["status"], mn.FAILED)
+        jobs = []
+        with patch.object(mn, "_enqueue", lambda uid, job: jobs.append((uid, job))):
+            queued = mn.retry_source(self.ctx, "m1")
+        self.assertEqual((queued["source"]["status"], queued["source"]["error"]), (mn.PROCESSING, None))
+        uid, job = jobs[0]
+        with patch.object(mn, "suggest_links", self.suggest_dark_theme), \
+                patch.object(mn, "_llm", lambda prompt: REPLY):
+            mn.process_job(uid, job, llm=lambda prompt: REPLY)
+        self.assertEqual(mn.get_source(self.ctx, "m1")["source"]["status"], mn.PENDING)
+        with self.assertRaises(mn.MeetingError) as caught:   # only a failed source
+            mn.retry_source(self.ctx, "m1")
+        self.assertEqual(caught.exception.status, 409)
+        with self.assertRaises(mn.MeetingError) as caught:   # another company never sees it
+            mn.retry_source(AccessContext("other-" + self.tenant, ("SYNTECH",)), "m1")
+        self.assertEqual(caught.exception.status, 404)
+
+    def test_the_project_meetings_list(self):
+        self.process("m1")
+        self.process("m2", reply="sorry")
+        listed = mn.list_sources(self.ctx, "syntech")
+        self.assertEqual({s["source_id"]: s["status"] for s in listed}, {"m1": mn.PENDING, "m2": mn.FAILED})
+        first = next(s for s in listed if s["source_id"] == "m1")
+        self.assertGreater(first["items"], 0)
+        self.assertNotIn("text", first)
+        self.assertEqual([s["source_id"] for s in mn.list_sources(self.ctx, "SYNTECH", status=mn.FAILED)], ["m2"])
+        self.assertEqual(mn.list_sources(AccessContext("other-" + self.tenant, ("SYNTECH",)), "SYNTECH"), [])
+
     def test_processing_source_cannot_be_reviewed_but_can_be_deleted(self):
         with patch.object(mn, "_enqueue", lambda uid, job: None):
             queued = mn.submit_source(self.ctx, "p1", "SYNTECH", "note", "Note", None, text=TRANSCRIPT)

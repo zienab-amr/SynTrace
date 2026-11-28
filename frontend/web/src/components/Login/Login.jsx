@@ -1,3 +1,4 @@
+import { assetUrl } from '../../lib/assetUrl.js';
 import { useEffect, useId, useRef, useState } from 'react';
 import ThemeToggle from '../common/ThemeToggle.jsx';
 import LoginStage from './LoginStage.jsx';
@@ -72,7 +73,7 @@ export default function Login() {
 
       <section className="login__panel">
         <header className="login__brand">
-          <img src="/assets/syntrace-mark.webp" alt="" height="56" />
+          <img src={assetUrl('assets/syntrace-mark.webp')} alt="" height="56" />
           <span className="login__wordmark">SynTrace</span>
           <p>Connect. Understand. Trace.</p>
         </header>

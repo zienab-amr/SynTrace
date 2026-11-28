@@ -656,6 +656,46 @@ def submit_source(ctx, source_id, project, source_type, title, meeting_date=None
     return get_source(ctx, source_id)
 
 
+def retry_source(ctx, source_id):
+    """Read a failed source again from the text it was sent with: the app does not need to send the
+    transcript or PDF a second time. Only a failed source can be retried. -> the review view of the source."""
+    uid = source_uid(ctx.tenant_id, source_id)
+    job = uuid.uuid4().hex
+
+    def work(tx):
+        found = _load_source(tx, uid, ctx)
+        if not found:
+            raise MeetingError("source not found", 404)
+        if found["status"] != FAILED:
+            raise MeetingError("only a failed source can be retried", 409)
+        tx.run("MATCH (s:Source {uid: $uid, status: $failed}) SET s.status = $processing, s.job_id = $job, "
+               "s.error = null", uid=uid, failed=FAILED, processing=PROCESSING, job=job)
+    with get_driver().session() as session:
+        session.execute_write(work)
+    _enqueue(uid, job)
+    return get_source(ctx, source_id)
+
+
+def list_sources(ctx, project, status=None, limit=200):
+    """The project's meetings, newest first, for the app's list: no transcript and no items."""
+    project = (project or "").strip().upper()
+    _check_scope(ctx, project)
+    if status is not None and status not in (PROCESSING, PENDING, APPROVED, FAILED):
+        raise MeetingError("status must be processing, pending_review, approved or failed")
+    rows = run_query(
+        """
+        MATCH (s:Source {tenant_id: $tenant, project_key: $project})
+        WHERE $status IS NULL OR s.status = $status
+        OPTIONAL MATCH (s)-[:HAS_ITEM]->(i:MeetingItem)
+        WITH s, count(i) AS items, sum(CASE WHEN i.needs_review THEN 1 ELSE 0 END) AS to_review
+        RETURN s {.source_id, .source_type, .title, .meeting_date, .status, .project_key, .error,
+                  .linked_source_id, .created_at, .created_by} AS source, items, to_review
+        ORDER BY s.meeting_date DESC, s.created_at DESC
+        LIMIT $limit
+        """, tenant=ctx.tenant_id, project=project, status=status, limit=max(1, min(int(limit), 500)))
+    return [{**dict(r["source"]), "items": r["items"], "to_review": r["to_review"]} for r in rows]
+
+
 def _write_items(tx, uid, job, items, unresolved, rejected, tenant, analysis=None, analysis_error=None):
     current = tx.run("MATCH (s:Source {uid: $uid, job_id: $job, status: $processing}) RETURN s.project_key AS project",
                      uid=uid, job=job, processing=PROCESSING).single()

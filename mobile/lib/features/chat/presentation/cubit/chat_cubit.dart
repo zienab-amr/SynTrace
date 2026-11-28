@@ -100,9 +100,10 @@ class ChatCubit extends Cubit<ChatState> {
       (a, b) =>
           (a['sequenceNumber'] as num).compareTo(b['sequenceNumber'] as num),
     );
-    final knownQuotes = <String, List<String>>{
+    final knownMessages = <String, ChatMessage>{
       if (state is ChatLoaded)
-        for (final m in (state as ChatLoaded).messages) m.id: m.quotedExcerpts,
+        for (final message in (state as ChatLoaded).messages)
+          message.id: message,
     };
     final seen = <String>{};
     final result = <ChatMessage>[];
@@ -123,7 +124,7 @@ class ChatCubit extends Cubit<ChatState> {
           hasError: !answered && status.toLowerCase() != 'pending',
           quotedExcerpts: row.containsKey('quotedExcerpts')
               ? _parseQuotes(row['quotedExcerpts'])
-              : knownQuotes[id] ?? const [],
+              : knownMessages[id]?.quotedExcerpts ?? const [],
         ),
       );
       if (answered) {
@@ -134,6 +135,16 @@ class ChatCubit extends Cubit<ChatState> {
             content: row['answer'] as String,
             timestamp: timestamp,
             sources: ChatSourceModel.parseList(row['links']),
+            meeting: row.containsKey('meeting')
+                ? row['meeting'] as Map<String, dynamic>?
+                : knownMessages['ai-$id']?.content == row['answer']
+                ? knownMessages['ai-$id']?.meeting
+                : null,
+            choices: row.containsKey('choices')
+                ? ChatMessage.parseChoices(row['choices'])
+                : knownMessages['ai-$id']?.content == row['answer']
+                ? knownMessages['ai-$id']!.choices
+                : const [],
           ),
         );
       }
@@ -250,11 +261,36 @@ class ChatCubit extends Cubit<ChatState> {
 
   // ───────────────────────── Send / Append ─────────────────────────
 
+  Future<bool> selectChoice(String answerId, String choice) async {
+    final current = state;
+    if (current is! ChatLoaded ||
+        current.isBusy ||
+        current.messages.length < 2) {
+      return false;
+    }
+    final answer = current.messages.last;
+    final question = current.messages[current.messages.length - 2];
+    if (answer.id != answerId ||
+        answer.role != ChatRole.ai ||
+        !answer.choices.contains(choice) ||
+        question.role != ChatRole.user) {
+      return false;
+    }
+    if (answer.meeting?['needsProject'] == true) return sendMessage(choice);
+    final arabic = RegExp(r'[؀-ۿ]').hasMatch(question.content);
+    final label = arabic ? 'الاختيار' : 'Selected option';
+    return sendMessage(
+      '${question.content}\n\n$label: $choice',
+      quotedExcerpts: question.quotedExcerpts,
+    );
+  }
+
   Future<bool> sendMessage(
     String text, {
     List<String> quotedExcerpts = const [],
+    String? transcript,
   }) async {
-    if (!canSend) return false;
+    if (!canSend || (transcript != null && _isTurnActive)) return false;
     final question = text.trim();
     final clientId = _uuid.v4();
     final appendId = _isTurnActive ? _firstClientMessageId : null;
@@ -319,6 +355,7 @@ class ChatCubit extends Cubit<ChatState> {
         clientMessageId: clientId,
         appendToMessageId: effectiveAppend,
         quotedExcerpts: effectiveQuotes,
+        transcript: transcript,
         generation: generation,
       ),
     );
@@ -329,6 +366,7 @@ class ChatCubit extends Cubit<ChatState> {
     required String question,
     required String clientMessageId,
     String? appendToMessageId,
+    String? transcript,
     List<String> quotedExcerpts = const [],
     required int generation,
   }) async {
@@ -340,6 +378,9 @@ class ChatCubit extends Cubit<ChatState> {
       final data = <String, dynamic>{
         'question': question,
         'clientMessageId': clientMessageId,
+        'transcript': ?transcript,
+        if (transcript != null)
+          'meetingDate': DateTime.now().toIso8601String().split('T').first,
       };
       if (quotedExcerpts.isNotEmpty) data['quotedExcerpts'] = quotedExcerpts;
       if (_currentConversationId != null) {
@@ -418,6 +459,11 @@ class ChatCubit extends Cubit<ChatState> {
       timestamp: DateTime.now(),
       isStreaming: true,
       sources: sources,
+      choices: ChatMessage.parseChoices(
+        data['choices'] ??
+            (data['meeting'] is Map ? data['meeting']['choices'] : null),
+      ),
+      meeting: data['meeting'] is Map<String, dynamic> ? data['meeting'] : null,
     );
     final updatedMessages = latest.messages.map((m) {
       if (m.id != rootId) return m;

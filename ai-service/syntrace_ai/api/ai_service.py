@@ -325,6 +325,11 @@ class ReviewRequest(CamelModel):
     links: Dict[str, List[str]] = Field(default_factory=dict, max_length=500)   # item id -> confirmed suggested keys
 
 
+class ScopeRequest(CamelModel):
+    company_id: str = Field(min_length=1, max_length=200)
+    allowed_projects: List[str] = Field(default_factory=list, max_length=5000)
+
+
 def _meeting_ctx(company_id, projects):
     return AccessContext(company_id, tuple(p.strip().upper() for p in projects if p.strip()))
 
@@ -428,6 +433,35 @@ def review_meeting(source_id: str, request: ReviewRequest, x_internal_api_key: O
                                                      request.reviewer_id, request.links), correlation)
     _answers.clear()   # cached answers must not hide newly approved meetings
     return _meeting_response(result, correlation)
+
+
+@app.post("/meetings/{source_id}/retry", status_code=202)
+def retry_meeting(source_id: str, request: ScopeRequest, x_internal_api_key: Optional[str] = Header(default=None),
+                  x_correlation_id: Optional[str] = Header(default=None)):
+    """Read a failed meeting again from the text it was sent with (409 when it did not fail)."""
+    _authorize(x_internal_api_key)
+    correlation = x_correlation_id or uuid.uuid4().hex
+    ctx = _meeting_ctx(request.company_id, request.allowed_projects)
+    return _meeting_response(_meeting_call(lambda m: m.retry_source(ctx, source_id), correlation), correlation)
+
+
+@app.get("/projects/{project_key}/meetings")
+def list_meetings(project_key: str, company_id: str = Query(alias="companyId", min_length=1),
+                  allowed_projects: str = Query(alias="allowedProjects", default=""),
+                  status: Optional[str] = Query(default=None, max_length=20),
+                  x_internal_api_key: Optional[str] = Header(default=None),
+                  x_correlation_id: Optional[str] = Header(default=None)):
+    """The project's meetings, newest first, without their text or items (`status` narrows the list)."""
+    _authorize(x_internal_api_key)
+    correlation = x_correlation_id or uuid.uuid4().hex
+    ctx = _meeting_ctx(company_id, allowed_projects.split(","))
+    found = _meeting_call(lambda m: m.list_sources(ctx, project_key, status or None), correlation)
+    return {"meetings": [{"sourceId": s["source_id"], "sourceType": s["source_type"], "title": s.get("title"),
+                          "meetingDate": s.get("meeting_date"), "status": s["status"], "projectKey": s["project_key"],
+                          "error": s.get("error"), "linkedSourceId": s.get("linked_source_id"),
+                          "createdAt": s.get("created_at"), "createdBy": s.get("created_by"),
+                          "items": s["items"], "toReview": s["to_review"]} for s in found],
+            "correlationId": correlation}
 
 
 @app.delete("/meetings/{source_id}", status_code=204)

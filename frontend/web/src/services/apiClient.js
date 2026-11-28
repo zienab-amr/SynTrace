@@ -1,11 +1,11 @@
 import { API_BASE_URL, ENDPOINTS } from '../config/api.js';
 import { tokenStore } from './tokenStore.js';
 
-const TIMEOUT_MS = 15000;
+const TIMEOUT_MS = 20000;
 
 export class HttpError extends Error {
   constructor(status, data, headers) {
-    super(`HTTP ${status}`);
+    super(data?.detail || data?.message || data?.title || `HTTP ${status}`);
     this.name = 'HttpError';
     this.status = status;
     this.data = data;
@@ -13,54 +13,68 @@ export class HttpError extends Error {
   }
 }
 
-async function send(path, { method = 'GET', body, auth = true, signal } = {}) {
+async function send(path, { method = 'GET', body, auth = true, signal, timeoutMs = TIMEOUT_MS } = {}) {
+  // An empty API_BASE_URL is intentional in production: fetch('/api/...')
+  // reaches the shared domain root, independently of the React '/web/' mount.
+
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  signal?.addEventListener('abort', () => controller.abort(), { once: true });
+  const abortFromCaller = () => controller.abort(signal?.reason);
+  const timer = window.setTimeout(() => controller.abort(new DOMException('Request timed out', 'TimeoutError')), timeoutMs);
+  signal?.addEventListener('abort', abortFromCaller, { once: true });
+  if (signal?.aborted) abortFromCaller();
 
   const headers = { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const token = tokenStore.get();
   if (auth && token) headers.Authorization = `Bearer ${token}`;
 
-  let response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
-      credentials: 'include', // sends the HttpOnly refresh cookie
-      cache: 'no-store', // never cache auth responses
-      redirect: 'error', // never follow redirects with credentials
+      // The current API returns refresh tokens in JSON, not cookies. Omitting credentials
+      // also matches the API's non-credentialed CORS policy.
+      credentials: 'omit',
+      cache: 'no-store',
+      redirect: 'error',
       signal: controller.signal,
     });
-  } finally {
-    clearTimeout(timer);
-  }
 
-  const isJson = response.headers.get('content-type')?.includes('application/json');
-  const data = isJson ? await response.json().catch(() => null) : null;
-  if (!response.ok) throw new HttpError(response.status, data, response.headers);
-  return data;
+    if (response.status === 204) return null;
+    const contentType = response.headers.get('content-type') || '';
+    let data = null;
+    if (contentType.includes('json')) data = await response.json().catch(() => null);
+    else {
+      const text = await response.text().catch(() => '');
+      data = text ? { message: text } : null;
+    }
+    if (!response.ok) throw new HttpError(response.status, data, response.headers);
+    return data;
+  } finally {
+    window.clearTimeout(timer);
+    signal?.removeEventListener('abort', abortFromCaller);
+  }
 }
 
-// One refresh at a time, even if several requests fail together.
 let refreshing = null;
 export function refreshSession() {
   if (!refreshing) {
-    refreshing = send(ENDPOINTS.refresh, { method: 'POST', auth: false })
-      .then((data) => {
-        tokenStore.set(data?.accessToken);
-        return data;
-      })
-      .finally(() => {
-        refreshing = null;
-      });
+    const refreshToken = tokenStore.getRefresh();
+    if (!refreshToken) return Promise.reject(new HttpError(401, { message: 'No refresh token is available.' }, null));
+    refreshing = send(ENDPOINTS.refresh, {
+      method: 'POST',
+      auth: false,
+      body: { refreshToken },
+    }).then((data) => {
+      if (!data?.accessToken || !data?.refreshToken) throw new Error('The refresh endpoint returned an incomplete token response.');
+      tokenStore.setPair(data);
+      return data;
+    }).finally(() => { refreshing = null; });
   }
   return refreshing;
 }
 
-// Authenticated request: on 401 refresh once and retry once, otherwise end the session.
 export async function request(path, options = {}) {
   try {
     return await send(path, options);
@@ -68,10 +82,10 @@ export async function request(path, options = {}) {
     if (error instanceof HttpError && error.status === 401 && options.auth !== false) {
       try {
         await refreshSession();
-      } catch {
+      } catch (refreshError) {
         tokenStore.clear();
         window.dispatchEvent(new Event('auth:expired'));
-        throw error;
+        throw refreshError instanceof HttpError ? refreshError : error;
       }
       return send(path, options);
     }

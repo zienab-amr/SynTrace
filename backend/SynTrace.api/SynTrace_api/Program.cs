@@ -14,9 +14,37 @@ using Scalar.AspNetCore;
 using SynTrace.Application;
 using SynTrace.Infrastructure;
 using SynTrace.Infrastructure.Identity;
+using Microsoft.AspNetCore.HttpOverrides;
+using System.Net;
 
 
 var builder = WebApplication.CreateBuilder(args);
+
+var trustedProxy =
+    builder.Configuration["ReverseProxy:KnownProxy"];
+
+if (!string.IsNullOrWhiteSpace(trustedProxy))
+{
+    if (!IPAddress.TryParse(trustedProxy, out var proxyAddress))
+    {
+        throw new InvalidOperationException(
+            "ReverseProxy:KnownProxy must contain a valid IP address.");
+    }
+
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders =
+            ForwardedHeaders.XForwardedFor |
+            ForwardedHeaders.XForwardedProto;
+
+        options.ForwardLimit = 1;
+
+        options.KnownProxies.Clear();
+        options.KnownIPNetworks.Clear();
+
+        options.KnownProxies.Add(proxyAddress);
+    });
+}
 
 // Add services to the container.
 builder.Services.AddApplicationDI();
@@ -86,6 +114,12 @@ builder.Services.AddRateLimiter(options =>
 });
 
 var app = builder.Build();
+
+if (!string.IsNullOrWhiteSpace(trustedProxy))
+{
+    app.UseForwardedHeaders();
+}
+
 app.UseExceptionHandler();
 
 // Configure the HTTP request pipeline.
