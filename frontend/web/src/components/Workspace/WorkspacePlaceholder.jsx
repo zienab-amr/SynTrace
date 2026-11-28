@@ -4,6 +4,7 @@ import ThemeToggle from '../common/ThemeToggle.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { navigate } from '../../router/router.jsx';
 import ChatPage from '../Chat/ChatPage.jsx';
+import MeetingAI from './MeetingAI.jsx';
 import { getWorkspaceSnapshot, createProject, createClient, createMeetingNote, getKnowledgeSource, retryKnowledgeExtraction, reviewKnowledgeSource } from '../../services/workspaceService.js';
 import { connectJira, getPendingJiraSites, completeJiraConnection, startJiraSync, connectGitHub, getGitHubPending, completeGitHubConnection, getGitHubRepositories, getGitHubProjectStatus, mapGitHubRepository, unmapGitHubRepository, syncGitHubProject } from '../../integrations/integrationService.js';
 import WorkspaceCreateDialog from './WorkspaceCreateDialog.jsx';
@@ -387,12 +388,12 @@ export default function WorkspacePlaceholder() {
     { id: 'assistant', icon: 'chat', label: 'AI Assistant' },
     { id: 'graph', icon: 'graph', label: 'Knowledge Graph' },
     { id: 'projects', icon: 'folder', label: 'Projects', target: 'project-portfolio' },
-    { id: 'meetings', icon: 'calendar', label: 'Meeting Notes', target: 'meeting-panel' },
+    { id: 'meetings', icon: 'calendar', label: 'Meeting AI' },
     { id: 'integrations', icon: 'plug', label: 'Integrations' },
   ];
   const openNav = (item) => {
     setActiveNav(item.id); setProfileOpen(false); setNotificationsOpen(false); setCreateOpen(false);
-    if (item.id === 'assistant' || item.id === 'graph' || item.id === 'integrations') { setActiveView(item.id); setGraphZoom(1); return; }
+    if (item.id === 'assistant' || item.id === 'graph' || item.id === 'integrations' || item.id === 'meetings') { setActiveView(item.id); setGraphZoom(1); return; }
     setActiveView('overview');
     if (item.target) jumpTo(item.target, item.id);
     else if (item.id === 'overview') workspaceScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -663,7 +664,7 @@ export default function WorkspacePlaceholder() {
 
           <section className="st-workspace" aria-label="SynTrace workspace">
             <div className="st-workspace__scroll" ref={workspaceScrollRef} key={activeView}>
-              {activeView === 'assistant' ? <ChatPage currentUser={user}/> : activeView === 'integrations' ? (
+              {activeView === 'assistant' ? <ChatPage currentUser={user}/> : activeView === 'meetings' ? <MeetingAI projects={projects} onBack={() => openNav({ id: 'overview' })}/> : activeView === 'integrations' ? (
                 <IntegrationHub
                   githubStatus={githubStatus}
                   jiraStatus={jiraStatus}
@@ -675,8 +676,8 @@ export default function WorkspacePlaceholder() {
                   onManageGitHub={openGitHubMapping}
                   onConnectJira={handleJiraConnect}
                   onSyncJira={handleJiraSync}
-                  onCreateMeeting={() => setCreateMode('meeting')}
-                  onViewMeetings={() => openNav({ id: 'meetings', target: 'meeting-panel' })}
+                  onCreateMeeting={() => openNav({ id: 'meetings' })}
+                  onViewMeetings={() => openNav({ id: 'meetings' })}
                   onSlackConnect={() => setToast('Slack connection requires backend OAuth, secure token storage, callback and event/webhook endpoints. No Slack integration API is currently available.')}
                 />
               ) : activeView === 'graph' ? (
@@ -685,7 +686,7 @@ export default function WorkspacePlaceholder() {
                 <div className="st-overview-view st-view-enter">
                   <section className="st-project-heading">
                     <div className="st-project-heading__left"><div className="st-breadcrumb"><span>Workspace</span><b>/</b><strong>Overview</strong></div><div className="st-title-line"><div><span className="st-eyebrow">PROJECT INTELLIGENCE</span><h1>Workspace overview</h1></div><span className="st-demo-tag"><i/>{loading ? 'SYNCING WORKSPACE' : snapshot.failures.length ? 'PARTIAL API DATA' : 'API SNAPSHOT'}</span></div><p className="st-heading-copy">A connected view of your accessible projects, clients and project knowledge.</p></div>
-                    <div className="st-project-actions"><button type="button" className="st-text-action" onClick={() => openNav({ id: 'graph' })}><Icon name="graph" size={16}/> Explore context</button><div className="st-avatars" aria-label={`${employees.length} workspace members`}><span>{employees.length}</span><b>Members</b></div><div className="st-dropdown-anchor"><button type="button" className="st-new-button" onClick={() => setCreateOpen((open) => !open)} aria-expanded={createOpen}><Icon name="plus" size={15}/> New <Icon name="chevron" size={14}/></button>{createOpen && <div className="st-popover st-create-popover"><strong>Create in SynTrace</strong><button type="button" onClick={() => { setCreateOpen(false); openNav({ id: 'assistant' }); }}><Icon name="spark" size={15}/> Ask the assistant <small>Available</small></button><button type="button" disabled={!isAdmin || creating} onClick={() => { setCreateOpen(false); setCreateMode('project'); }}><Icon name="folder" size={15}/> New project <small>{isAdmin ? 'Admin' : 'Restricted'}</small></button><button type="button" disabled={!isAdmin || creating} onClick={() => { setCreateOpen(false); setCreateMode('client'); }}><Icon name="users" size={15}/> New client <small>{isAdmin ? 'Admin' : 'Restricted'}</small></button><button type="button" disabled={creating || !projects.length} onClick={() => { setCreateOpen(false); setCreateMode('meeting'); }}><Icon name="book" size={15}/> New meeting note <small>{projects.length ? 'Available' : 'No projects'}</small></button></div>}</div></div>
+                    <div className="st-project-actions"><button type="button" className="st-text-action" onClick={() => openNav({ id: 'graph' })}><Icon name="graph" size={16}/> Explore context</button><div className="st-avatars" aria-label={`${employees.length} workspace members`}><span>{employees.length}</span><b>Members</b></div><div className="st-dropdown-anchor"><button type="button" className="st-new-button" onClick={() => setCreateOpen((open) => !open)} aria-expanded={createOpen}><Icon name="plus" size={15}/> New <Icon name="chevron" size={14}/></button>{createOpen && <div className="st-popover st-create-popover"><strong>Create in SynTrace</strong><button type="button" onClick={() => { setCreateOpen(false); openNav({ id: 'assistant' }); }}><Icon name="spark" size={15}/> Ask the assistant <small>Available</small></button><button type="button" disabled={!isAdmin || creating} onClick={() => { setCreateOpen(false); setCreateMode('project'); }}><Icon name="folder" size={15}/> New project <small>{isAdmin ? 'Admin' : 'Restricted'}</small></button><button type="button" disabled={!isAdmin || creating} onClick={() => { setCreateOpen(false); setCreateMode('client'); }}><Icon name="users" size={15}/> New client <small>{isAdmin ? 'Admin' : 'Restricted'}</small></button><button type="button" disabled={creating || !projects.length} onClick={() => { setCreateOpen(false); openNav({ id: 'meetings' }); }}><Icon name="book" size={15}/> New meeting analysis <small>{projects.length ? 'Available' : 'No projects'}</small></button></div>}</div></div>
                   </section>
 
                   {loadError && <div className="st-api-warning" role="status"><Icon name="info" size={15}/><span>{loadError}</span><button type="button" onClick={reloadWorkspace}>Retry</button></div>}
@@ -738,12 +739,12 @@ export default function WorkspacePlaceholder() {
                       <section className="st-side-panel st-deadlines-panel" id="slack-panel" data-st-reveal>
                         <div className="st-side-panel__heading"><span className="st-panel-icon"><Icon name="chat" size={17}/></span><div><span className="st-section-label">TEAM COMMUNICATION</span><h2>Slack</h2></div><span className="st-panel-count">—</span></div>
                         <div className="st-jira-status-card"><div className="st-jira-status-card__top"><span className="st-jira-indicator"/><strong>Backend setup required</strong></div><p>Slack OAuth, workspace connection and event sync endpoints are not included in the current SynTrace backend.</p><small>No fake connected state or client-side token storage is used.</small></div>
-                        <button type="button" className="st-activity-link" onClick={() => setToast('Slack cannot be connected from the frontend alone. The backend needs Slack OAuth, secure token storage, callback and event/webhook endpoints first.')}><Icon name="info" size={13}/>Connect Slack · setup required</button>
+                        <button type="button" className="st-activity-link" disabled aria-disabled="true" title="Slack integration is unavailable until its backend OAuth and event APIs are deployed."><Icon name="info" size={13}/>Slack unavailable · backend setup required</button>
                       </section>
 
                       <section className="st-side-panel st-meetings-panel" id="meeting-panel" data-st-reveal><div className="st-side-panel__heading"><span className="st-panel-icon"><Icon name="book" size={17}/></span><div><span className="st-section-label">PROJECT KNOWLEDGE</span><h2>Meeting Notes</h2></div><span className="st-panel-count">{meetingNotes.length.toString().padStart(2, '0')}</span></div>
                         {meetingNotes.length ? <div className="st-meeting-agenda">{meetingNotes.slice(0, 4).map((note, index) => { const projectId = String(read(note, 'projectId', 'ProjectId') || ''); const project = projectById.get(projectId); return <button type="button" className="st-agenda-item st-agenda-item--button" key={sourceIdOf(note)} onClick={() => handleOpenMeetingNote(note)}><i className={`st-agenda-accent st-agenda-accent--${toneForIndex(index)}`}/><span><strong>{read(note, 'title', 'Title') || 'Meeting note'}</strong><small>{project ? projectLabel(project) : 'Client-level knowledge'} · {statusText(sourceStatus(note))}</small></span><time>v{read(note, 'version', 'Version') ?? '—'}</time></button>; })}</div> : <EmptyPanel icon="book" title="No meeting notes available" detail="Create a Meeting Notes knowledge source to see it here. The list shows only notes returned to your account by the Knowledge Sources API."/>}
-                        <button type="button" className="st-activity-link" disabled={creating || !projects.length} onClick={() => setCreateMode('meeting')}><Icon name="plus" size={13}/>New meeting note</button><div className="st-side-footnote">{knowledgeSources.length} accessible knowledge sources total · original content stays separate from AI-extracted evidence</div>
+                        <button type="button" className="st-activity-link" disabled={creating || !projects.length} onClick={() => openNav({ id: 'meetings' })}><Icon name="plus" size={13}/>New meeting analysis</button><div className="st-side-footnote">{knowledgeSources.length} accessible knowledge sources total · original content stays separate from AI-extracted evidence</div>
                       </section>
 
                       <section className="st-activity-panel" data-st-reveal><div className="st-side-panel__heading"><span className="st-panel-icon st-panel-icon--quiet"><Icon name="database" size={17}/></span><div><span className="st-section-label">WORKSPACE COVERAGE</span><h2>Connected records</h2></div></div>

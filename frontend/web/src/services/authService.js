@@ -27,43 +27,85 @@ function mapError(error) {
   return new AuthError('NETWORK', { message: error?.message });
 }
 
-function read(raw, camel, pascal) { return raw?.[camel] ?? raw?.[pascal]; }
-function toUser(raw) {
-  if (!raw || typeof raw !== 'object') return null;
-  const roles = read(raw, 'roles', 'Roles') || [];
-  const roleNames = roles.map((item) => item?.name ?? item?.Name).filter(Boolean);
-  const firstName = read(raw, 'firstName', 'FirstName') || '';
-  const lastName = read(raw, 'lastName', 'LastName') || '';
+function read(raw, ...keys) {
+  for (const key of keys) {
+    if (raw?.[key] !== undefined && raw?.[key] !== null) return raw[key];
+  }
+  return undefined;
+}
+
+// ASP.NET endpoints may return either the DTO directly or wrap it in a standard
+// data/result/employee envelope. Normalize that here so auth does not depend on
+// the serializer/envelope shape used by a particular gateway version.
+function unwrapPayload(value) {
+  let current = value;
+  for (let depth = 0; depth < 5; depth += 1) {
+    if (!current || typeof current !== 'object') return null;
+    if (Array.isArray(current)) return current[0] && typeof current[0] === 'object' ? current[0] : null;
+
+    const nested = read(current, 'data', 'Data', 'employee', 'Employee', 'result', 'Result', 'value', 'Value', 'payload', 'Payload');
+    if (!nested || typeof nested !== 'object') return current;
+    current = nested;
+  }
+  return current && typeof current === 'object' && !Array.isArray(current) ? current : null;
+}
+
+function normalizeRoles(raw) {
+  const roles = read(raw, 'roles', 'Roles');
+  const value = Array.isArray(roles) && roles.length === 0 ? read(raw, 'role', 'Role') : roles ?? read(raw, 'role', 'Role');
+  const entries = Array.isArray(value) ? value : value == null ? [] : [value];
+  return entries
+    .map((item) => typeof item === 'string' ? item : read(item, 'name', 'Name', 'roleName', 'RoleName'))
+    .filter((item) => typeof item === 'string' && item.trim())
+    .map((item) => item.trim());
+}
+
+function toUser(response, fallbackEmail) {
+  const raw = unwrapPayload(response);
+  if (!raw) return null;
+
+  const roles = normalizeRoles(raw);
+  const firstName = read(raw, 'firstName', 'FirstName', 'givenName', 'GivenName') || '';
+  const lastName = read(raw, 'lastName', 'LastName', 'surname', 'Surname') || '';
+  const email = read(raw, 'email', 'Email', 'workEmail', 'WorkEmail') || fallbackEmail || '';
+  const fullName = read(raw, 'fullName', 'FullName', 'name', 'Name');
+  const company = read(raw, 'company', 'Company');
+
   return {
-    id: read(raw, 'id', 'Id'),
-    name: `${firstName} ${lastName}`.trim() || read(raw, 'email', 'Email') || 'Workspace member',
+    id: read(raw, 'id', 'Id', 'employeeId', 'EmployeeId', 'employeeID', 'EmployeeID', 'userId', 'UserId', 'userID', 'UserID') ?? null,
+    name: fullName || `${firstName} ${lastName}`.trim() || email.split('@')[0] || 'Workspace member',
     firstName,
     lastName,
-    email: read(raw, 'email', 'Email'),
-    phoneNumber: read(raw, 'phoneNumber', 'PhoneNumber'),
-    role: roleNames[0] || 'Workspace member',
-    roles: roleNames,
-    companyId: read(raw, 'companyId', 'CompanyId'),
+    email,
+    phoneNumber: read(raw, 'phoneNumber', 'PhoneNumber', 'mobileNumber', 'MobileNumber'),
+    role: roles[0] || 'Workspace member',
+    roles,
+    // Company is optional for sign-in. Workspace access is authorized by the API,
+    // and this field is not required by the frontend auth gate.
+    companyId: read(raw, 'companyId', 'CompanyId') ?? read(company, 'id', 'Id', 'companyId', 'CompanyId') ?? null,
   };
 }
 
-async function getCurrentUser() {
-  const raw = await request(ENDPOINTS.me);
-  const user = toUser(raw);
-  if (!user?.id || !user.companyId) throw new Error('The current employee endpoint returned an incomplete profile.');
+async function getCurrentUser(fallbackEmail) {
+  const response = await request(ENDPOINTS.me);
+  const user = toUser(response, fallbackEmail);
+  if (!user) throw new Error('The current employee endpoint returned an empty profile.');
   return user;
 }
 
 const realAuth = {
   async login(email, password) {
     try {
-      const tokens = await request(ENDPOINTS.login, {
+      const response = await request(ENDPOINTS.login, {
         method: 'POST', auth: false,
         body: { request: { email, password } },
       });
-      if (!tokens?.accessToken || !tokens?.refreshToken) throw new Error('The login endpoint did not return both tokens.');
-      tokenStore.setPair(tokens);
-      try { return await getCurrentUser(); }
+      const tokens = unwrapPayload(response);
+      const accessToken = read(tokens, 'accessToken', 'AccessToken');
+      const refreshToken = read(tokens, 'refreshToken', 'RefreshToken');
+      if (!accessToken || !refreshToken) throw new Error('The login endpoint did not return both tokens.');
+      tokenStore.setPair({ accessToken, refreshToken });
+      try { return await getCurrentUser(email); }
       catch (error) { tokenStore.clear(); throw error; }
     } catch (error) { throw mapError(error); }
   },
