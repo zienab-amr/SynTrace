@@ -1,11 +1,11 @@
 import unittest
 from unittest.mock import patch
 
-import answer_generator as agent
+from syntrace_ai.assistant import answer_generator as agent
 
 import os
 from fastapi.testclient import TestClient
-import ai_service
+from syntrace_ai.api import ai_service
 
 
 class Recorder:
@@ -43,7 +43,7 @@ class MixedAssistantQuestionTests(unittest.TestCase):
         count = "كام bug مفتوحة في SYNT؟"
         missing = {"status": "not_found", "answer": "Ticket unavailable", "links": []}
         counted = {"status": "ok", "answer": "3 open bugs", "links": []}
-        with patch("intent.route", return_value=None), \
+        with patch("syntrace_ai.assistant.intent.route", return_value=None), \
              patch.object(agent, "answer_key_question", return_value=[{"type": "no_key_found"}]) as lookup, \
              patch.object(agent, "_keyless_question_result", side_effect=[missing, counted]) as answer:
             result = agent._generate_answer_result(f"{ticket}\n{count}", object())
@@ -56,7 +56,7 @@ class MixedAssistantQuestionTests(unittest.TestCase):
     def test_single_ticket_question_keeps_ticket_lookup(self):
         question = "Who closed SYNT-5?"
         context = object()
-        with patch("intent.route", return_value=None), \
+        with patch("syntrace_ai.assistant.intent.route", return_value=None), \
              patch.object(agent, "answer_key_question", return_value=[]) as lookup:
             agent._generate_answer_result(question, context)
         lookup.assert_called_once_with(question, context)
@@ -81,7 +81,7 @@ class AssistantFollowupTests(unittest.TestCase):
         self.assertEqual(recorder.prompts, [])
 
     def test_commits_after_one_ticket_keeps_its_key(self):
-        import conversation
+        from syntrace_ai.assistant import conversation
 
         turns = conversation.from_history([
             ("Show SYNTECH-18", "It is an open ticket."),
@@ -91,7 +91,7 @@ class AssistantFollowupTests(unittest.TestCase):
                          "commits? (SYNTECH-18)")
 
     def test_lowercase_sprint_project_correction_keeps_the_intent(self):
-        import conversation
+        from syntrace_ai.assistant import conversation
 
         turns = conversation.from_history([
             ("summarize the current sprint in syntrace", "SYNDATA Sprint 5"),
@@ -122,14 +122,14 @@ class AssistantFollowupTests(unittest.TestCase):
         self.assertEqual(recorder.prompts, [])
 
     def test_product_overview_does_not_consume_ticket_or_sprint_questions(self):
-        from general import product_overview
+        from syntrace_ai.assistant.general import product_overview
 
         self.assertIsNone(product_overview("Tell me about SynTrace sprint 4"))
         self.assertIsNone(product_overview("Tell me about SYNT-103"))
 
 
     def test_followup_paraphrases_for_commits_and_corrections(self):
-        import conversation
+        from syntrace_ai.assistant import conversation
 
         tickets = conversation.from_history([("Show my tickets", "SYNT-18 and SYNT-42")])
         for question in ("Any commits for those?", "ابعتلي الكوميتس بتاعتهم", "وريني الكوميتات بتاعتهم"):

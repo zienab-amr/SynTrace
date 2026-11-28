@@ -6,8 +6,14 @@ import MessageThread from './components/MessageThread.jsx';
 import ChatComposer from './components/ChatComposer.jsx';
 import ContextPanel from './components/ContextPanel.jsx';
 import { listConversations, getConversationMessages, askAssistant } from '../../services/workspaceService.js';
+import { getMeetingPermissions } from '../../services/meetingAIService.js';
 import { suggestedPrompts } from './data/chatDemoData.js';
 import './chat.css';
+
+function localDateValue() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
 
 function initialsFor(user) {
   const value = user?.name || user?.email?.split('@')[0] || 'ST';
@@ -129,6 +135,8 @@ function mapServerMessages(items) {
     const links = mapLinks(read(raw, 'links', 'Links'), id);
     links.forEach((source) => { sourceMap[source.id] = source; });
     messages.push({ id: `${id}-question`, role: 'user', text: question, time: formatTime(createdAt) });
+    const meeting = read(raw, 'meeting', 'Meeting') || null;
+    const choices = read(raw, 'choices', 'Choices') || read(meeting, 'choices', 'Choices') || [];
     messages.push({
       id,
       role: 'assistant',
@@ -136,6 +144,8 @@ function mapServerMessages(items) {
       text: answer || (status === 'failed' ? 'This answer could not be generated. You can send the question again.' : 'The request is still being processed.'),
       status,
       sourceIds: links.map((source) => source.id),
+      choices: Array.isArray(choices) ? choices : [],
+      meeting,
       time: formatTime(createdAt),
     });
   });
@@ -153,6 +163,12 @@ export default function ChatPage({ currentUser }) {
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
+  const [meetingMode, setMeetingMode] = useState(false);
+  const [meetingTranscript, setMeetingTranscript] = useState('');
+  const [meetingDate, setMeetingDate] = useState(localDateValue);
+  const [meetingPermissions, setMeetingPermissions] = useState([]);
+  const [meetingPermissionLoading, setMeetingPermissionLoading] = useState(true);
+  const [meetingPermissionError, setMeetingPermissionError] = useState('');
   const [loadError, setLoadError] = useState('');
   const threadRef = useRef(null);
   const activeConversation = conversations.find((item) => item.id === activeId) || null;
@@ -165,6 +181,28 @@ export default function ChatPage({ currentUser }) {
   const visibleSources = useMemo(() => sourceIds.map((id) => sourceMap[id]).filter(Boolean), [sourceIds, sourceMap]);
   const userInitials = initialsFor(currentUser);
   const projectName = 'Accessible workspace';
+  const canUseMeetingAgent = meetingPermissions.includes('Meetings.UseAgent');
+
+  // Do not send transcript data to older assistant APIs that silently ignore the meeting contract.
+  // Normal chat remains available even when the optional Meeting AI contract is not deployed.
+  useEffect(() => {
+    let alive = true;
+    getMeetingPermissions()
+      .then((result) => {
+        if (!alive) return;
+        setMeetingPermissions(Array.isArray(result?.permissions) ? result.permissions : []);
+        setMeetingPermissionError('');
+      })
+      .catch((error) => {
+        if (!alive) return;
+        setMeetingPermissions([]);
+        setMeetingPermissionError(error?.status === 403
+          ? 'Your role does not have Meetings.UseAgent.'
+          : 'The Meeting AI API is not available. Transcript context is disabled until the backend contract is enabled.');
+      })
+      .finally(() => { if (alive) setMeetingPermissionLoading(false); });
+    return () => { alive = false; };
+  }, []);
 
   const refreshHistory = async () => {
     const raw = await listConversations();
@@ -243,6 +281,7 @@ export default function ChatPage({ currentUser }) {
   }, [visibleSources, selectedSourceId]);
 
   const selectConversation = (id) => {
+    setMeetingTranscript(''); setMeetingMode(false);
     setActiveId(id);
     setHistoryOpen(false);
     setContextOpen(false);
@@ -250,6 +289,7 @@ export default function ChatPage({ currentUser }) {
   };
 
   const createConversation = () => {
+    setMeetingTranscript(''); setMeetingMode(false);
     const draft = newDraft();
     setConversations((items) => [draft, ...items]);
     setActiveId(draft.id);
@@ -261,6 +301,11 @@ export default function ChatPage({ currentUser }) {
   const sendMessage = async (text) => {
     const question = text.trim();
     if (!question || sending) return;
+    const transcriptPart = meetingMode ? meetingTranscript.trim() : '';
+    if (transcriptPart && !canUseMeetingAgent) {
+      setLoadError(meetingPermissionError || 'Your role does not have Meetings.UseAgent. The transcript was not sent.');
+      return;
+    }
 
     let conversation = activeConversation;
     if (!conversation || !conversation.isDraft) {
@@ -291,6 +336,8 @@ export default function ChatPage({ currentUser }) {
         question,
         conversationId: conversation.isDraft ? undefined : conversation.id,
         clientMessageId,
+        transcript: transcriptPart || null,
+        meetingDate: transcriptPart ? meetingDate : null,
       });
       const result = unwrapPayload(rawResult);
       const nestedConversation = read(result, 'conversation', 'Conversation');
@@ -300,6 +347,8 @@ export default function ChatPage({ currentUser }) {
       const links = mapLinks(read(result, 'links', 'Links') || read(result, 'sources', 'Sources'), messageId);
       const answer = read(result, 'answer', 'Answer') || read(result, 'response', 'Response') || read(result, 'content', 'Content') || 'The assistant returned an empty answer.';
       const status = String(read(result, 'status', 'Status') || 'answered').toLowerCase();
+      const meeting = read(result, 'meeting', 'Meeting') || null;
+      const choices = read(result, 'choices', 'Choices') || read(meeting, 'choices', 'Choices') || [];
       const assistantMessage = {
         id: messageId,
         role: 'assistant',
@@ -307,6 +356,8 @@ export default function ChatPage({ currentUser }) {
         text: status === 'pending' ? (answer === 'The assistant returned an empty answer.' ? 'The assistant is still processing this request…' : answer) : answer,
         status,
         sourceIds: links.map((source) => source.id),
+        choices: Array.isArray(choices) ? choices : [],
+        meeting,
       };
       setSourceMap((current) => ({ ...current, ...Object.fromEntries(links.map((source) => [source.id, source])) }));
       setConversations((items) => {
@@ -329,6 +380,7 @@ export default function ChatPage({ currentUser }) {
       });
       if (serverId) setActiveId(serverId);
       setSelectedSourceId(links[0]?.id || '');
+      if (transcriptPart) setMeetingTranscript('');
       try { await refreshHistory(); } catch { /* The completed turn remains visible even if history refresh fails. */ }
     } catch (error) {
       const message = errorText(error);
@@ -391,7 +443,7 @@ export default function ChatPage({ currentUser }) {
           {loadingHistory || loadingMessages ? (
             <div className="st-chat-loading"><span className="st-chat-loading__spinner"/><span>{loadingMessages ? 'Loading conversation…' : 'Loading your conversations…'}</span></div>
           ) : activeConversation?.messages?.length ? (
-            <MessageThread messages={activeConversation.messages} sourceMap={sourceMap} onSourceSelect={openSource} userInitials={userInitials}/>
+            <MessageThread messages={activeConversation.messages} sourceMap={sourceMap} onSourceSelect={openSource} onChoice={sendMessage} userInitials={userInitials}/>
           ) : (
             <div className="st-chat-welcome">
               <div className="st-chat-welcome__orb"><span><SynTraceMark size={38}/></span></div>
@@ -413,6 +465,21 @@ export default function ChatPage({ currentUser }) {
         </div>
 
         <div className="st-chat-main__composer">
+          <div className={`st-chat-meeting-context ${meetingMode ? 'is-open' : ''}`}>
+            <button type="button" className="st-chat-meeting-toggle" onClick={() => setMeetingMode((value) => !value)} aria-expanded={meetingMode} disabled={meetingPermissionLoading || !canUseMeetingAgent} title={!canUseMeetingAgent ? (meetingPermissionError || 'Meeting AI is unavailable for this account.') : 'Attach incremental meeting transcript context'}>
+              <ChatIcon name="calendar" size={14}/><span>{meetingPermissionLoading ? 'Checking meeting access…' : meetingMode ? 'Meeting context attached' : 'Add live meeting context'}</span><b>{meetingMode ? '−' : '+'}</b>
+            </button>
+            {!meetingPermissionLoading && !canUseMeetingAgent && <small className="st-chat-meeting-unavailable" role="status">{meetingPermissionError || 'Your role needs Meetings.UseAgent. No transcript will be sent from this chat.'}</small>}
+            {meetingMode && canUseMeetingAgent && <div className="st-chat-meeting-fields">
+              <label>Meeting date<input type="date" value={meetingDate} onChange={(event) => setMeetingDate(event.target.value)}/></label>
+              <label className="st-chat-meeting-transcript">New transcript segment only<textarea rows={3} maxLength={400000} value={meetingTranscript} onChange={(event) => setMeetingTranscript(event.target.value)} placeholder="Paste only the new transcript lines since your last message. The same chat keeps the selected project and meeting context."/></label>
+              <small>Start by saying “This is a meeting” and name the project. If more than one project is available, the assistant will ask you to choose. Send each new transcript segment once; the backend retains context for this chat.</small>
+              <div className="st-chat-meeting-actions">
+                <button type="button" onClick={() => sendMessage('Review this new meeting transcript segment. Identify missing details, contradictions, risks and questions to ask the client.')} disabled={sending || !meetingTranscript.trim()}>Send transcript segment</button>
+                <button type="button" onClick={() => sendMessage('The meeting is finished. Please wrap it up, submit the transcript for review, and list any questions to carry into the next meeting.')} disabled={sending || !meetingTranscript.trim()} title={!meetingTranscript.trim() ? 'Add the meeting transcript before finishing.' : 'Finish the meeting and submit the current transcript.'}>Finish meeting</button>
+              </div>
+            </div>}
+          </div>
           <ChatComposer onSend={sendMessage} disabled={sending} scope={projectName}/>
           <div className="st-chat-service-note"><span className="st-chat-status-dot"/> Company-scoped context <i/> Answers use the access granted by your backend role</div>
         </div>

@@ -11,4 +11,7 @@ public sealed record AskAssistantCommand(
     string? EditedMessageId = null,
     string? AppendToMessageId = null,
     string? ClientMessageId = null,
-    IReadOnlyList<string>? QuotedExcerpts = null) : IRequest<AssistantAskResponseDTO>;
+    IReadOnlyList<string>? QuotedExcerpts = null,
+    // A part of a meeting transcript pasted in the chat during the meeting (live help).
+    string? Transcript = null,
+    string? MeetingDate = null) : IRequest<AssistantAskResponseDTO>;

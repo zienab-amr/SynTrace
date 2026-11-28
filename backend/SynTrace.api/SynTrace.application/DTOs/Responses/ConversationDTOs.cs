@@ -14,4 +14,5 @@ public sealed record AssistantAskResponseDTO(
     IReadOnlyList<AssistantLink> Links, string CorrelationId)
 {
     public IReadOnlyList<string> Choices { get; init; } = [];
+    public System.Text.Json.JsonElement? Meeting { get; init; }
 }

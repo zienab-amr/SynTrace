@@ -66,10 +66,18 @@ export function refreshSession() {
       method: 'POST',
       auth: false,
       body: { refreshToken },
-    }).then((data) => {
-      if (!data?.accessToken || !data?.refreshToken) throw new Error('The refresh endpoint returned an incomplete token response.');
-      tokenStore.setPair(data);
-      return data;
+    }).then((response) => {
+      let data = response;
+      for (let depth = 0; depth < 5 && data && typeof data === 'object' && !Array.isArray(data); depth += 1) {
+        const nested = data.data ?? data.Data ?? data.result ?? data.Result ?? data.value ?? data.Value;
+        if (!nested || typeof nested !== 'object') break;
+        data = nested;
+      }
+      const accessToken = data?.accessToken ?? data?.AccessToken;
+      const nextRefreshToken = data?.refreshToken ?? data?.RefreshToken;
+      if (!accessToken || !nextRefreshToken) throw new Error('The refresh endpoint returned an incomplete token response.');
+      tokenStore.setPair({ accessToken, refreshToken: nextRefreshToken });
+      return { accessToken, refreshToken: nextRefreshToken };
     }).finally(() => { refreshing = null; });
   }
   return refreshing;

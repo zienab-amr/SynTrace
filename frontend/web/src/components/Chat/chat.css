@@ -501,3 +501,21 @@
   .st-chat-main__composer { padding: 9px 12px 8px; }
   .st-chat-service-note { font-size: 9px; }
 }
+
+/* Live meeting context is an optional, incremental transcript attachment to the same chat. */
+.st-chat-meeting-context{width:min(100%,790px);margin:0 auto 8px;border:1px solid var(--chat-line);border-radius:10px;background:var(--chat-panel)}
+.st-chat-meeting-toggle{display:flex;width:100%;align-items:center;gap:8px;padding:9px 11px;border:0;background:transparent;color:var(--chat-muted);font:inherit;font-size:10px;font-weight:650;text-align:left;cursor:pointer}
+.st-chat-meeting-toggle svg{color:var(--chat-blue)}.st-chat-meeting-toggle b{margin-left:auto;color:var(--chat-blue);font-size:15px}.st-chat-meeting-toggle:disabled{opacity:.55;cursor:not-allowed}
+.st-chat-meeting-context.is-open{border-color:color-mix(in srgb,var(--chat-blue) 35%,var(--chat-line))}
+.st-chat-meeting-unavailable{display:block;padding:0 11px 10px;color:var(--chat-subtle);font-size:9px;line-height:1.5}.st-chat-meeting-fields{display:grid;grid-template-columns:160px minmax(0,1fr);gap:9px;padding:0 11px 11px}
+.st-chat-meeting-fields label{display:grid;align-content:start;gap:5px;color:var(--chat-subtle);font-size:9px;font-weight:650}
+.st-chat-meeting-fields input,.st-chat-meeting-fields textarea{width:100%;min-width:0;border:1px solid var(--chat-line);border-radius:7px;background:var(--chat-bg);color:var(--chat-text);padding:8px;font:inherit;font-size:10px;outline:none}
+.st-chat-meeting-fields textarea{resize:vertical;line-height:1.5}.st-chat-meeting-fields input:focus,.st-chat-meeting-fields textarea:focus{border-color:var(--chat-blue)}
+.st-chat-meeting-transcript{grid-column:2}.st-chat-meeting-fields>small{grid-column:1/-1;color:var(--chat-subtle);font-size:9px;line-height:1.5}
+.st-chat-choices{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding-top:3px}.st-chat-choices>strong{width:100%;color:var(--chat-subtle);font-size:9px}.st-chat-choices button{border:1px solid var(--chat-line);border-radius:7px;background:var(--chat-panel);color:var(--chat-blue);padding:7px 9px;font:inherit;font-size:10px;cursor:pointer}.st-chat-choices button:hover{border-color:var(--chat-blue);background:color-mix(in srgb,var(--chat-blue) 8%,var(--chat-panel))}
+.st-chat-meeting-meta{display:flex;align-items:center;gap:7px;padding:7px 9px;border:1px solid var(--chat-line);border-radius:8px;color:var(--chat-muted);font-size:9px}.st-chat-meeting-meta svg{color:var(--chat-mint);flex:0 0 auto}
+@media(max-width:680px){.st-chat-meeting-fields{grid-template-columns:1fr}.st-chat-meeting-transcript{grid-column:1}}
+
+.st-chat-meeting-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.st-chat-meeting-actions button{border:1px solid var(--st-chat-border, var(--st-ws-line));border-radius:7px;background:var(--st-ws-panel-raised);color:var(--st-ws-text);padding:8px 10px;font:inherit;font-size:10px;font-weight:650;cursor:pointer}
+.st-chat-meeting-actions button:disabled{opacity:.45;cursor:not-allowed}

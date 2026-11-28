@@ -13,12 +13,11 @@ This folder is the standalone React/Vite web client for SynTrace. It consumes th
 From this folder (`frontend/web`):
 
 ```powershell
-Copy-Item .env.example .env.local
 npm ci
 npm run dev
 ```
 
-Open `http://localhost:5173`. The default `VITE_API_URL` is `http://localhost:8081`. Change it in `.env.local` only when the backend is hosted elsewhere. Restart Vite after changing Vite environment variables.
+Open `http://localhost:5173`. The included `.env.development.local` keeps browser requests same-origin and proxies `/api` to the team's current remote ngrok backend (`https://jackeline-cibarious-supergallantly.ngrok-free.dev`). When that ngrok hostname changes, update `VITE_API_PROXY_TARGET` in `.env.development.local` and restart Vite. To use a local backend instead, set the proxy target to `http://localhost:8081`.
 
 ## Start the backend
 
@@ -124,10 +123,9 @@ The React app supports both a root mount and a sub-path mount without changing i
 - Local development: `VITE_BASE_PATH=/` (the default), e.g. `http://localhost:5173/`.
 - Shared-domain deployment: build with `VITE_BASE_PATH=/web/`, then serve the generated `dist/` directory at `/web/`.
 
-For the shared gateway, copy `.env.production.example` to `.env.production` before building. Keep
-`VITE_API_URL` empty: the API client then requests root-relative `/api/...` URLs on the same domain,
-not `/web/api/...`. If the API is on another origin, set `VITE_API_URL` to that origin only (for
-example `https://api.example.com`), while endpoint paths remain `/api/...`.
+The included `.env.production` builds React at `/web/` and points API requests to the team's current ngrok gateway origin. `VITE_API_URL` must be the origin only; the client appends `/api/...` itself. Do not paste a Scalar documentation URL such as `/scalar/v1#tag/...`. When the ngrok hostname changes, update `.env.production`.
+
+When building with the repository-root Docker Compose file, the root `.env` variable `SYNTRACE_REACT_API_URL` (passed as the `VITE_API_URL` build argument) takes priority when non-empty. When it is empty, the Dockerfile unsets the empty argument so Vite reads the included `.env.production` fallback. `SYNTRACE_REACT_BASE_PATH=/web/` continues to control the React mount path.
 
 Vite applies the configured base to generated JS/CSS and public files. The custom history router
 adds `/web` to in-app links and navigation and removes it before matching React routes, so route
@@ -148,4 +146,8 @@ npm ci
 npm run build
 ```
 
-For local work, keep `.env.local` with `VITE_BASE_PATH=/` and `VITE_API_URL=http://localhost:8081`.
+For local work, `.env.development.local` defaults to the remote ngrok API through the Vite proxy. To use the local Docker backend, change `VITE_API_PROXY_TARGET` there to `http://localhost:8081`.
+
+## Local development and API connection
+
+See `FRONTEND-BACKEND-INTEGRATION.md` for the API wiring and environment settings.
