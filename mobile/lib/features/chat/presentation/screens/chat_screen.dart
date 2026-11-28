@@ -11,6 +11,8 @@ import 'package:syntrace/features/chat/presentation/widgets/chat_input.dart';
 import 'package:syntrace/features/chat/presentation/widgets/message_bubble.dart';
 import 'package:syntrace/features/chat/presentation/widgets/typing_indicator.dart';
 
+import 'package:syntrace/features/meetings/data/repositories/meeting_contract_repository.dart';
+
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
 
@@ -184,6 +186,36 @@ class _ChatScreenState extends State<ChatScreen> {
             onDismiss: () => context.read<ChatCubit>().dismissError(),
           ),
         Expanded(child: _buildMessages(context, state)),
+        if (MeetingContractRepository.enabled &&
+            state.messages.any((m) => m.meeting?['sessionId'] != null))
+          Builder(
+            builder: (context) {
+              final meeting = state.messages
+                  .lastWhere((m) => m.meeting?['sessionId'] != null)
+                  .meeting!;
+              if (meeting['ended'] == true) return const SizedBox.shrink();
+              return Wrap(
+                spacing: 8,
+                children: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.notes),
+                    label: const Text('Add transcript'),
+                    onPressed: state.isBusy
+                        ? null
+                        : () => _addTranscript(context),
+                  ),
+                  TextButton(
+                    onPressed: state.isBusy
+                        ? null
+                        : () => context.read<ChatCubit>().sendMessage(
+                            'End the meeting',
+                          ),
+                    child: const Text('Finish meeting'),
+                  ),
+                ],
+              );
+            },
+          ),
         Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 800),
@@ -200,6 +232,48 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _addTranscript(BuildContext context) async {
+    String text = '';
+    final cubit = context.read<ChatCubit>();
+    final session = (cubit.state as ChatLoaded).currentSessionId;
+    final part = await showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, update) => AlertDialog(
+          title: const Text('Add meeting transcript'),
+          content: SingleChildScrollView(
+            child: TextField(
+              autofocus: true,
+              minLines: 3,
+              maxLines: 8,
+              maxLength: 400000,
+              decoration: const InputDecoration(
+                labelText: 'Latest transcript excerpt',
+              ),
+              onChanged: (value) => update(() => text = value.trim()),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: text.isEmpty
+                  ? null
+                  : () => Navigator.pop(context, text),
+              child: const Text('Get meeting help'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!context.mounted || part == null || cubit.state is! ChatLoaded) return;
+    final current = cubit.state as ChatLoaded;
+    if (current.isBusy || current.currentSessionId != session) return;
+    await cubit.sendMessage('Review this meeting excerpt', transcript: part);
   }
 
   Widget _buildMessages(BuildContext context, ChatLoaded state) {
@@ -235,6 +309,14 @@ class _ChatScreenState extends State<ChatScreen> {
               message: message,
               onRetry: null,
               onDelete: null,
+              onChoice: !state.isBusy && index == state.messages.length - 1
+                  ? (choice) {
+                      context.read<ChatCubit>().selectChoice(
+                        message.id,
+                        choice,
+                      );
+                    }
+                  : null,
               onEdit:
                   !state.isBusy &&
                       message.role == ChatRole.user &&
@@ -316,7 +398,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildEmptyState(BuildContext context) {
     final theme = Theme.of(context);
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -371,6 +453,11 @@ class _ChatScreenState extends State<ChatScreen> {
                     'Summarize open blockers',
                     'Show recent bugs',
                     'What changed recently?',
+                    if (MeetingContractRepository.enabled) ...[
+                      'Start a meeting',
+                      'Which requirements have changed?',
+                      'Which questions are still open on my project?',
+                    ],
                   ].map((s) {
                     return _Suggestion(
                       text: s,
