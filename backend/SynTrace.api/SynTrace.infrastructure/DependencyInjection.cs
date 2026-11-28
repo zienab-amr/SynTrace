@@ -135,6 +135,12 @@ namespace SynTrace.Infrastructure
                 KnowledgeCompanyRepository>();
             services.AddScoped<IEmployeeIdentityLookupRepository, EmployeeIdentityLookupRepository>();
             services.AddScoped<IAssistantAccessContextProvider, AssistantAccessContextProvider>();
+            services.AddScoped<SynTrace.Application.Contracts.Meetings.IMeetingPermissionService,
+                SynTrace.Infrastructure.Services.Meetings.MeetingPermissionService>();
+            services.AddScoped<SynTrace.Application.Contracts.Meetings.IMeetingGateway,
+                SynTrace.Infrastructure.Services.Meetings.MeetingGateway>();
+            services.AddScoped<SynTrace.Application.Contracts.Meetings.IMeetingDraftPublisher,
+                SynTrace.Infrastructure.Services.Meetings.MeetingDraftPublisher>();
 
             //Http Client
             services.AddHttpClient();

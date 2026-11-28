@@ -1,10 +1,29 @@
-// API requests intentionally target the domain root (/api), not the React base path (/web).
-// In production, an empty VITE_API_URL uses same-origin absolute API paths. Locally, keep the
-// Docker-exposed backend default unless VITE_API_URL explicitly overrides it.
-const configuredApiUrl = (import.meta.env.VITE_API_URL || '').trim();
-export const API_BASE_URL = configuredApiUrl
-  ? configuredApiUrl.replace(/\/+$/, '')
-  : (import.meta.env.PROD ? '' : 'http://localhost:8081');
+// API requests target the domain root (/api), independently of the React mount path (/web).
+// VITE_API_URL is an origin only. A mistakenly pasted Scalar URL (/scalar/v1#...) or /api suffix
+// is normalized back to the origin so endpoint paths remain /api/... exactly once.
+function normalizeApiOrigin(value) {
+  const configured = String(value ?? '').trim(); // trims regular and non-breaking trailing spaces
+  if (!configured) return '';
+
+  let url;
+  try {
+    url = new URL(configured);
+  } catch {
+    throw new Error('VITE_API_URL must be an absolute backend origin, for example https://api.example.com.');
+  }
+
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+    throw new Error('VITE_API_URL must use HTTP(S) and must not contain credentials.');
+  }
+
+  if (url.pathname !== '/' || url.search || url.hash) {
+    console.warn('VITE_API_URL should contain only the backend origin. The URL path, query and fragment were ignored.');
+  }
+
+  return url.origin;
+}
+
+export const API_BASE_URL = normalizeApiOrigin(import.meta.env.VITE_API_URL);
 
 // Mocks are opt-in for isolated UI work only. Real backend is the default.
 export const USE_MOCK_AUTH = !import.meta.env.PROD && import.meta.env.VITE_USE_MOCK_AUTH === 'true';

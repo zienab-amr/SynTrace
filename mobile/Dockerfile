@@ -45,12 +45,16 @@ COPY . .
 
 # Same-origin backend configuration
 ARG API_BASE_URL=/api
+# The meeting screens (Meeting AI, requirements, open questions, live help) stay hidden until the
+# backend's meeting contract is enabled too (SYNTRACE_ENABLE_MEETING_CONTRACT).
+ARG ENABLE_MEETING_CONTRACT=false
 
 # Build production web application
 RUN flutter build web \
     --release \
     --no-pub \
-    --dart-define=API_BASE_URL=${API_BASE_URL}
+    --dart-define=API_BASE_URL=${API_BASE_URL} \
+    --dart-define=ENABLE_MEETING_CONTRACT=${ENABLE_MEETING_CONTRACT}
 
 # ==============================
 # Stage 2: Serve Flutter Web

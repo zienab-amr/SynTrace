@@ -5,11 +5,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using SynTrace.Application.Contracts;
 using SynTrace.Application.Contracts.Auth;
+using SynTrace.Application.Contracts.Meetings;
 using SynTrace.Application.DTOs.Requests;
 using SynTrace.Application.Exceptions;
 using SynTrace.Domain.Entities;
 using SynTrace.Domain.Interfaces;
 using SynTrace.Infrastructure.Identity;
+using SynTrace.Infrastructure.Services.Meetings;
 using SynTrace.Infrastructure.Integrations.GitHub;
 using SynTrace.Infrastructure.Persistence.Context;
 using SynTrace.Infrastructure.Repositories;
@@ -72,6 +74,27 @@ internal static class IdentityChecks
             new IdentityUserRole<string> { UserId = adminB.Id, RoleId = roleB.Id },
             new IdentityUserRole<string> { UserId = member.Id, RoleId = memberRole.Id });
         await db.SaveChangesAsync();
+
+        // Meeting permissions are opt-in, stored per role and scoped to the current company.
+        var meetingPermissions = new MeetingPermissionService(db, new TestTenant(), new TestActor(),
+            new ProjectIntegrationAccess(db));
+        Check((await meetingPermissions.GetForEmployeeAsync("a", member.Id, default)).Count == 0,
+            "Meeting permissions must default to deny.");
+        await AssertStatusAsync(404, () => meetingPermissions.ReplaceForRoleAsync(roleB.Id,
+            [MeetingPermission.Approve], default));
+        await AssertStatusAsync(400, () => meetingPermissions.ReplaceForRoleAsync(memberRole.Id,
+            ["Meetings.Unknown"], default));
+        await meetingPermissions.ReplaceForRoleAsync(memberRole.Id, [MeetingPermission.UseAgent], default);
+        var meetingGrants = await meetingPermissions.GetForEmployeeAsync("a", member.Id, default);
+        var aiPermissions = MeetingAssistantPermissions.From(meetingGrants);
+        Check(aiPermissions.CanUseMeetingAgent && !aiPermissions.CanApproveMeeting &&
+            !aiPermissions.CanReadApprovedMeetings && !aiPermissions.CanPublishJiraTasks,
+            "The AI permissions must reflect only explicit grants.");
+        Check((await meetingPermissions.GetForEmployeeAsync("b", member.Id, default)).Count == 0,
+            "Meeting permissions must never cross company boundaries.");
+        await meetingPermissions.ReplaceForRoleAsync(memberRole.Id, [], default);
+        Check((await meetingPermissions.GetForEmployeeAsync("a", member.Id, default)).Count == 0,
+            "Revoking a role claim must take effect on the next permission lookup.");
 
         var directory = scope.ServiceProvider.GetRequiredService<EmployeeRepository>();
         var companyAdmins = await directory.GetEmployeesByRoleAsync("Admin");

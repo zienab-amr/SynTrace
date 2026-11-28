@@ -22,10 +22,15 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const base = normalizeBasePath(env.VITE_BASE_PATH || '/');
 
+  const apiProxyTarget = (env.VITE_API_PROXY_TARGET || 'http://localhost:8081').trim();
+  const proxy = !env.VITE_API_URL?.trim() && apiProxyTarget
+    ? { '/api': { target: apiProxyTarget, changeOrigin: true, secure: true } }
+    : undefined;
+
   return {
     base,
     plugins: [react()],
-    server: { headers: securityHeaders },
-    preview: { headers: securityHeaders },
+    server: { headers: securityHeaders, ...(proxy ? { proxy } : {}) },
+    preview: { headers: securityHeaders, ...(proxy ? { proxy } : {}) },
   };
 });

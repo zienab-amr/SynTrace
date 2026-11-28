@@ -35,6 +35,7 @@ x-ai-env: &ai-env
   OPENROUTER_MODEL: ${OPENROUTER_MODEL:-baidu/ernie-5.5-flash-preview:free}
   MEETING_READS: ${MEETING_READS:-2}
   MEETING_EXTRACT_PROVIDER: ${MEETING_EXTRACT_PROVIDER:-openrouter}
+  CONVERSATION_TURNS: ${SYNTRACE_AI_CONVERSATION_TURNS:-3}
   SEMANTIC_K: ${SEMANTIC_K:-5}
   SEMANTIC_MIN_SCORE: ${SEMANTIC_MIN_SCORE:-0.5}
   AI_API_KEY: ${AI_API_KEY:-}
@@ -93,6 +94,8 @@ services:
       AiService__ApiKey: ${AI_API_KEY:-}
       AiService__TimeoutSeconds: "90"
       AiService__EnableSynTraceProjectScope: "true"
+      AiService__EnableMeetingContract: ${SYNTRACE_ENABLE_MEETING_CONTRACT:-false}
+      AiService__MeetingHistoryCount: ${SYNTRACE_MEETING_HISTORY_COUNT:-20}
       GithubOAuth__AppId: ${SYNTRACE_GITHUB_APP_ID:-0}
       GithubOAuth__AppSlug: ${SYNTRACE_GITHUB_APP_SLUG:-}
       GithubOAuth__ClientId: ${SYNTRACE_GITHUB_CLIENT_ID:-}
@@ -303,6 +306,7 @@ services:
       dockerfile: Dockerfile
       args:
         API_BASE_URL: ${SYNTRACE_FLUTTER_API_URL:-/api}
+        ENABLE_MEETING_CONTRACT: ${SYNTRACE_ENABLE_MEETING_CONTRACT:-false}
     image: syntrace-flutter-web
     expose:
       - "80"
