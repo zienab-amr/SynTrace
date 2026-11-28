@@ -48,3 +48,5 @@ htmlcov/
 
 # Evaluation artifacts
 eval_results.csv
+# Unit tests run outside the runtime image
+tests/

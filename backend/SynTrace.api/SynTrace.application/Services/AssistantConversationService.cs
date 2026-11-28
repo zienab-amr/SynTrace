@@ -303,7 +303,10 @@ public sealed class AssistantConversationService(
                 pending.LastTouchedUtc = now;
                 pendingTurns.Discard(pending);
                 return new AssistantAskResponseDTO(chat.Id, root.ConversationMessageId,
-                    result.Answer.Status, result.Answer.Answer, result.Answer.Links ?? [], correlation);
+                    result.Answer.Status, result.Answer.Answer, result.Answer.Links ?? [], correlation)
+                {
+                    Choices = result.Answer.Choices ?? []
+                };
             }
             finally { pending!.Gate.Release(); }
         }

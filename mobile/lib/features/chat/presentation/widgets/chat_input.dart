@@ -5,14 +5,8 @@ import 'package:syntrace/core/theme/app_colors.dart';
 class ChatInput extends StatefulWidget {
   final Future<bool> Function(String, List<String>) onSend;
   final bool enabled;
-  final bool isLoading;
 
-  const ChatInput({
-    super.key,
-    required this.onSend,
-    this.enabled = true,
-    this.isLoading = false,
-  });
+  const ChatInput({super.key, required this.onSend, this.enabled = true});
 
   @override
   State<ChatInput> createState() => ChatInputState();
@@ -47,12 +41,25 @@ class ChatInputState extends State<ChatInput> {
   }
 
   void addQuote(String text) {
-    if (text.trim().isEmpty) return;
-    setState(() {
-      if (!_quotedTexts.contains(text)) {
-        _quotedTexts.add(text);
-      }
-    });
+    final quote = text.trim().characters.take(1000).join();
+    if (quote.isEmpty || _quotedTexts.contains(quote)) return;
+    final total = _quotedTexts.fold<int>(0, (sum, item) => sum + item.length);
+    final remaining = (4000 - total).clamp(0, 1000).toInt();
+    if (_quotedTexts.length >= 5 || remaining == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Remove an excerpt before adding another.'),
+        ),
+      );
+      return;
+    }
+    var length = 0;
+    final excerpt = quote.characters.takeWhile((character) {
+      length += character.length;
+      return length <= remaining;
+    }).join();
+    if (excerpt.isEmpty || _quotedTexts.contains(excerpt)) return;
+    setState(() => _quotedTexts.add(excerpt));
     _focusNode.requestFocus();
   }
 
@@ -97,7 +104,11 @@ class ChatInputState extends State<ChatInput> {
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
     if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.enter) {
-      if (!HardwareKeyboard.instance.isShiftPressed) {
+      if (!HardwareKeyboard.instance.isShiftPressed &&
+          widget.enabled &&
+          !_submitting &&
+          _hasText &&
+          !_controller.value.isComposingRangeValid) {
         _handleSend();
         return KeyEventResult.handled;
       }
@@ -199,7 +210,6 @@ class ChatInputState extends State<ChatInput> {
                       child: TextField(
                         controller: _controller,
                         focusNode: _focusNode,
-                        enabled: widget.enabled,
                         maxLines: null,
                         minLines: 1,
                         keyboardType: TextInputType.multiline,
@@ -209,9 +219,7 @@ class ChatInputState extends State<ChatInput> {
                           fontSize: 14,
                         ),
                         decoration: InputDecoration(
-                          hintText: widget.enabled
-                              ? 'Ask about your engineering data...'
-                              : 'Connecting...',
+                          hintText: 'Ask about your engineering data...',
                           hintStyle: TextStyle(
                             color: theme.colorScheme.onSurface.withValues(
                               alpha: 0.4,

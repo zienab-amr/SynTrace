@@ -64,6 +64,7 @@ class AskRequest(CamelModel):
     question: str = Field(min_length=1, max_length=2000)
     company_id: str = Field(min_length=1, max_length=200)
     employee_id: str = Field(min_length=1, max_length=200)
+    employee_display_name: Optional[str] = Field(default=None, max_length=300)
     allowed_projects: List[str] = Field(default_factory=list, max_length=5000)
     # SynTrace project ids the backend allows (AiService:EnableSynTraceProjectScope): the only scope for
     # approved knowledge sources. Without them no knowledge source is searched.
@@ -107,6 +108,7 @@ class AskResponse(CamelModel):
     links: List[Link]
     correlation_id: str
     source: Optional[str] = None
+    choices: List[str] = Field(default_factory=list)
 
 
 CACHE_SECONDS = int(os.getenv("ASK_CACHE_SECONDS", "3600"))
@@ -192,8 +194,30 @@ def ask(request: AskRequest, x_internal_api_key: Optional[str] = Header(default=
     started = cancel.start(correlation, ASK_DEADLINE)
     try:
         cancel.check()   # cancelled before it started
+        import general
+        if not (request.quoted_excerpts or request.added_to):
+            identity = general.profile_answer(question, request.employee_display_name)
+            if identity:
+                timing.end(timer)
+                return AskResponse(status="ok", answer=identity, links=[], correlation_id=correlation, source="identity")
+        overview = general.product_overview(question) if not (request.quoted_excerpts or request.added_to) else None
+        if overview:
+            timing.end(timer)
+            return AskResponse(status="ok", answer=overview, links=[], correlation_id=correlation, source="general")
         if request.quoted_excerpts:   # what the user replied to is the newest context
             turns = turns + conversation.quoted(request.quoted_excerpts)
+        commit_keys = conversation.commit_followup_keys(question, turns) if not request.added_to else []
+        if len(commit_keys) > 1:
+            timing.end(timer)
+            return AskResponse(
+                status="ok",
+                answer=("تقصد كوميتات أنهي تذكرة؟" if _is_arabic(question)
+                        else "Which ticket's commits do you want?"),
+                links=[],
+                correlation_id=correlation,
+                source="clarification",
+                choices=[f"Commits for {key}" for key in commit_keys[:4]],
+            )
         if request.added_to:
             asked = conversation.merge([m[:2000] for m in request.added_to] + [question], turns)
         else:

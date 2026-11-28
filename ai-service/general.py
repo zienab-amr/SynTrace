@@ -77,3 +77,41 @@ def general_result(question, plan, ctx, arabic):
         return None
     answer = answer[:MAX_ANSWER_CHARS] + (NOTE_AR if arabic else NOTE_EN)
     return {"status": "ok", "answer": answer, "links": [], "source": "general"}
+
+
+def product_overview(question):
+    """Answer a direct question about SynTrace itself without searching Jira."""
+    text = " ".join(question.casefold().split()).rstrip("?؟.! ")
+    if not re.fullmatch(
+        r"(?:(?:(?:can|could) you )?(?:tell me about|explain|describe) syntrace|"
+        r"(?:what is syntrace|what does syntrace do|give me an overview of syntrace)|"
+        r"(?:(?:يعني|هو) (?:إيه|ايه)|عرفني على|كلمني عن|(?:ممكن )?تشرحلي) (?:syntrace|سين تريس))",
+        text,
+    ):
+        return None
+    if re.search(r"[\u0600-\u06ff]", text):
+        return (
+            "SynTrace بيساعد فرق البرمجة تتابع شغل المشاريع. بيربط تذاكر Jira "
+            "بنشاط GitHub، وبيستخدم المعرفة دي عشان يجاوب على أسئلة الفريق. "
+            "وفيه مسار لتحليل الاجتماعات ومراجعة المتطلبات والقرارات."
+        )
+    return (
+        "SynTrace helps software teams understand their project work. It connects Jira tickets "
+        "with GitHub activity and uses that project data to answer team questions. It also supports "
+        "analyzing meetings and reviewing the requirements and decisions captured in them."
+    )
+
+
+def profile_answer(question, display_name):
+    """Answer direct identity questions from the authenticated backend profile."""
+    text = " ".join(question.casefold().split()).rstrip("?؟.! ")
+    if not re.fullmatch(
+        r"(?:(?:do you|u|you) know (?:my name|who i am)|who am i|what(?: is|'s) my name|"
+        r"[أا]نا مين|(?:إ|ا)سمي (?:إ|ا)يه|(?:عارف|تعرف) (?:إ|ا)سمي)",
+        text,
+    ):
+        return None
+    name = " ".join((display_name or "").split())
+    if re.search(r"[\u0600-\u06ff]", text):
+        return f"اسمك في بروفايل SynTrace هو {name}." if name else "اسم البروفايل مش متاح لي في الشات ده."
+    return f"Your SynTrace profile name is {name}." if name else "Your profile name is unavailable in this chat."

@@ -11,4 +11,7 @@ public sealed record ConversationMessageDTO(
 
 public sealed record AssistantAskResponseDTO(
     string ConversationId, string MessageId, string Status, string Answer,
-    IReadOnlyList<AssistantLink> Links, string CorrelationId);
+    IReadOnlyList<AssistantLink> Links, string CorrelationId)
+{
+    public IReadOnlyList<string> Choices { get; init; } = [];
+}
