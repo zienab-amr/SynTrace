@@ -9,5 +9,6 @@ public sealed class AskAssistantCommandHandler(IAssistantConversationService ass
 {
     public Task<AssistantAskResponseDTO> Handle(AskAssistantCommand request, CancellationToken ct)
         => assistant.AskAsync(request.Question ?? "", request.ConversationId, request.EditedMessageId,
-            request.AppendToMessageId, request.ClientMessageId, request.QuotedExcerpts, ct);
+            request.AppendToMessageId, request.ClientMessageId, request.QuotedExcerpts, ct,
+            request.Transcript, request.MeetingDate);
 }

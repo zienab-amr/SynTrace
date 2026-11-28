@@ -139,6 +139,8 @@ namespace SynTrace.Infrastructure
                 SynTrace.Infrastructure.Services.Meetings.MeetingPermissionService>();
             services.AddScoped<SynTrace.Application.Contracts.Meetings.IMeetingGateway,
                 SynTrace.Infrastructure.Services.Meetings.MeetingGateway>();
+            services.AddScoped<SynTrace.Application.Contracts.Meetings.IMeetingDraftPublisher,
+                SynTrace.Infrastructure.Services.Meetings.MeetingDraftPublisher>();
 
             //Http Client
             services.AddHttpClient();

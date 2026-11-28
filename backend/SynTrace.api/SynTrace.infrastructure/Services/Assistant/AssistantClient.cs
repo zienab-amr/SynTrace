@@ -38,7 +38,9 @@ public sealed class AssistantClient : IAssistantClient
         IReadOnlyList<string> addedTo,
         IReadOnlyList<string> quotedExcerpts,
         bool clearAiMemory,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? transcript = null,
+        string? meetingDate = null)
     {
         if (string.IsNullOrWhiteSpace(_options.BaseUrl) || string.IsNullOrWhiteSpace(_options.ApiKey))
         {
@@ -63,6 +65,12 @@ public sealed class AssistantClient : IAssistantClient
         // When history is empty after an edit, AI's in-process memory must be cleared.
         // In the currently deployed AI implementation, [] falls back to process memory.
         if (clearAiMemory) payload["editedTurns"] = 50;
+        // A transcript part pasted in the chat during a meeting: live help, under the meeting contract only.
+        if (_options.EnableMeetingContract && !string.IsNullOrWhiteSpace(transcript))
+        {
+            payload["transcript"] = transcript;
+            if (!string.IsNullOrWhiteSpace(meetingDate)) payload["meetingDate"] = meetingDate;
+        }
         if (_options.EnableMeetingContract)
             payload["permissions"] = scope.MeetingPermissions ??
                 new SynTrace.Application.Contracts.Meetings.MeetingAssistantPermissions(false, false, false, false);

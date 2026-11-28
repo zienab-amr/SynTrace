@@ -40,6 +40,64 @@ public sealed class MeetingsController(IMeetingGateway meetings) : ControllerBas
     public async Task<IActionResult> GetPdf(string id, CancellationToken ct) =>
         ToAction(await meetings.GetPdfAsync(id, ct));
 
+    [HttpPost("{id}/retry")]
+    public async Task<IActionResult> Retry(string id, CancellationToken ct) =>
+        ToAction(await meetings.RetryAsync(id, ct));
+
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> Delete(string id, CancellationToken ct) =>
+        ToAction(await meetings.DeleteAsync(id, ct));
+
+    [HttpGet]
+    public async Task<IActionResult> List([FromQuery] string projectKey, [FromQuery] string? status, CancellationToken ct) =>
+        ToAction(await meetings.ListAsync(projectKey, status, ct));
+
+    [HttpGet("projects/{projectKey}/requirements")]
+    public async Task<IActionResult> GetRequirements(string projectKey, [FromQuery] string? q, CancellationToken ct) =>
+        ToAction(await meetings.GetRequirementsAsync(projectKey, q, ct));
+
+    [HttpPatch("requirements/{requirementId}")]
+    public async Task<IActionResult> EditRequirement(string requirementId, EditRequirementRequest request,
+        CancellationToken ct) =>
+        ToAction(await meetings.EditRequirementAsync(requirementId, request, ct));
+
+    [HttpGet("projects/{projectKey}/open-questions")]
+    public async Task<IActionResult> GetOpenQuestions(string projectKey, CancellationToken ct) =>
+        ToAction(await meetings.GetOpenQuestionsAsync(projectKey, ct));
+
+    [HttpPost("live")]
+    [RequestSizeLimit(1_000_000)]
+    public async Task<IActionResult> StartLive(StartLiveSessionRequest request, CancellationToken ct) =>
+        ToAction(await meetings.StartLiveSessionAsync(request, ct));
+
+    [HttpGet("live/{sessionId}")]
+    public async Task<IActionResult> GetLive(string sessionId, CancellationToken ct) =>
+        ToAction(await meetings.GetLiveSessionAsync(sessionId, ct));
+
+    [HttpPost("live/{sessionId}/assist")]
+    [RequestSizeLimit(2_000_000)]
+    public async Task<IActionResult> AssistLive(string sessionId, LiveAssistRequest request, CancellationToken ct) =>
+        ToAction(await meetings.AssistLiveSessionAsync(sessionId, request, ct));
+
+    [HttpPost("live/{sessionId}/wrap-up")]
+    [RequestSizeLimit(2_000_000)]
+    public async Task<IActionResult> WrapUpLive(string sessionId, LiveWrapUpRequest request, CancellationToken ct) =>
+        ToAction(await meetings.WrapUpLiveSessionAsync(sessionId, request, ct));
+
+    [HttpPost("live/{sessionId}/end")]
+    [RequestSizeLimit(2_000_000)]
+    public async Task<IActionResult> EndLive(string sessionId, LiveEndRequest request, CancellationToken ct) =>
+        ToAction(await meetings.EndLiveSessionAsync(sessionId, request, ct));
+
+    [HttpDelete("live/{sessionId}")]
+    public async Task<IActionResult> DeleteLive(string sessionId, CancellationToken ct) =>
+        ToAction(await meetings.DeleteLiveSessionAsync(sessionId, ct));
+
+    [HttpPost("{id}/drafts/{draftId}/publish")]
+    public async Task<IActionResult> PublishDraft(string id, string draftId,
+        [FromServices] IMeetingDraftPublisher publisher, CancellationToken ct) =>
+        Ok(await publisher.PublishAsync(id, draftId, ct));
+
     [HttpGet("permissions")]
     public async Task<IActionResult> GetPermissions([FromServices] IMeetingPermissionService permissionService,
         [FromServices] ICurrentTenant tenant, [FromServices] ICurrentEmployee employee, CancellationToken ct)

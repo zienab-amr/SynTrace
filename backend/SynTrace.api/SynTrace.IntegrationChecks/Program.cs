@@ -20,3 +20,6 @@ Console.WriteLine("Pending AI turn registry checks passed.");
 
 await InternalEmployeeIdentityChecks.RunAsync();
 Console.WriteLine("Internal employee identity mapping checks passed.");
+
+await MeetingContractChecks.RunAsync();
+Console.WriteLine("Meeting contract checks passed.");

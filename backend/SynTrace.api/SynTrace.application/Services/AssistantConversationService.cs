@@ -26,12 +26,19 @@ public sealed class AssistantConversationService(
     private const int MaxQuotedExcerpts = 5;
     private const int MaxQuotedExcerptLength = 1000;
     private const int MaxTotalQuotedCharacters = 4000;
+    private const int MaxTranscriptLength = 400_000;
 
     public async Task<AssistantAskResponseDTO> AskAsync(
         string question, string? conversationId, string? editedMessageId,
         string? appendToMessageId, string? clientMessageId,
-        IReadOnlyList<string>? quotedExcerpts, CancellationToken ct)
+        IReadOnlyList<string>? quotedExcerpts, CancellationToken ct,
+        string? transcript = null, string? meetingDate = null)
     {
+        transcript = string.IsNullOrWhiteSpace(transcript) ? null : transcript;
+        if (transcript?.Length > MaxTranscriptLength)
+            throw new RequestFailureException(400, "The meeting transcript is too long.");
+        if (meetingDate is not null && (meetingDate.Length > 40 || transcript is null))
+            throw new RequestFailureException(400, "meetingDate is only sent with a transcript.");
         question = question?.Trim() ?? string.Empty;
         if (question.Length is < 1 or > MaxQuestionLength)
             throw new RequestFailureException(400, "Question must contain 1-2000 characters.");
@@ -266,7 +273,8 @@ public sealed class AssistantConversationService(
 
             var result = await assistant.AskAsync(questions[^1], companyId, employeeId, access.Scope,
                 correlation, access.JiraAccountId, chat.Id, turns, questions.Take(questions.Count - 1).ToArray(),
-                quotes, clearAiMemory: turns.Length == 0, cancellationToken: linked.Token);
+                quotes, clearAiMemory: turns.Length == 0, cancellationToken: linked.Token,
+                transcript: transcript, meetingDate: meetingDate);
 
             linked.Token.ThrowIfCancellationRequested();
             if (result.Failure != AssistantFailure.None || result.Answer is null)
@@ -302,7 +310,12 @@ public sealed class AssistantConversationService(
                 pending.LastTouchedUtc = now;
                 pendingTurns.Discard(pending);
                 return new AssistantAskResponseDTO(chat.Id, root.ConversationMessageId,
-                    result.Answer.Status, result.Answer.Answer, result.Answer.Links ?? [], correlation);
+                    result.Answer.Status, result.Answer.Answer, result.Answer.Links ?? [], correlation)
+                {
+                    Choices = result.Answer.Choices ?? [],
+                    Meeting = result.Answer.Meeting is { ValueKind: System.Text.Json.JsonValueKind.Object } meeting
+                        ? meeting : null
+                };
             }
             finally { pending!.Gate.Release(); }
         }

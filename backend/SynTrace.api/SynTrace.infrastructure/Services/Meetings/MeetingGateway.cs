@@ -18,9 +18,15 @@ public sealed class MeetingGateway(
 {
     private sealed record Context(string CompanyId, string EmployeeId, string[] Projects,
         string[] JiraKeys, IReadOnlySet<string> Grants);
-    private sealed record Source(MeetingGatewayResult Result, string Status);
+    private sealed record Source(MeetingGatewayResult Result, string Status, string ProjectKey);
     private const int MaxText = 400_000;
     private const int MaxPdfBase64 = 14_000_000;
+    // The AI's own limits, so the user gets a clear message instead of a generic rejection.
+    private const int MaxDocument = 40_000;
+    private const int MaxInstruction = 500;
+    private const int MaxPart = 8_000;
+    private const int MaxRequirement = 400;
+    private const int MaxLiveQuestion = 400;
 
     public async Task<MeetingGatewayResult> CreateAsync(CreateMeetingRequest input, CancellationToken ct)
     {
@@ -42,6 +48,18 @@ public sealed class MeetingGateway(
             throw new RequestFailureException(400, "A text source requires text only.");
         if (input.Glossary is { } glossary && glossary.GetRawText().Length > 20_000)
             throw new RequestFailureException(400, "Glossary is too long.");
+        string? linked = null;
+        if (!string.IsNullOrWhiteSpace(input.LinkedSourceId))
+        {
+            // A correction belongs to an approved meeting of the same project.
+            Path(input.LinkedSourceId);
+            var original = await ReadSourceAsync(ctx, input.LinkedSourceId, ct);
+            if (original.Status != "approved")
+                throw new RequestFailureException(409, "A correction can only be added to an approved meeting.");
+            if (!string.Equals(original.ProjectKey, project, StringComparison.OrdinalIgnoreCase))
+                throw new RequestFailureException(400, "A correction must be in the same project as its meeting.");
+            linked = input.LinkedSourceId;
+        }
 
         return await SendAsync(HttpMethod.Post, "/meetings", new
         {
@@ -49,8 +67,162 @@ public sealed class MeetingGateway(
             sourceId = Guid.NewGuid().ToString("D"), projectKey = project,
             sourceType = input.SourceType, title = input.Title, meetingDate = input.MeetingDate,
             text = input.Text, pdfBase64 = input.PdfBase64, createdBy = ctx.EmployeeId,
-            glossary = input.Glossary
+            glossary = input.Glossary, linkedSourceId = linked
         }, ct);
+    }
+
+    public async Task<MeetingGatewayResult> RetryAsync(string id, CancellationToken ct)
+    {
+        var ctx = await GetContextAsync(ct);
+        Require(ctx, MeetingPermission.Create);
+        Require(ctx, MeetingPermission.ReadPending);
+        if ((await ReadSourceAsync(ctx, id, ct)).Status != "failed")
+            throw new RequestFailureException(409, "Only a meeting whose analysis failed can be retried.");
+        return await SendAsync(HttpMethod.Post, Path(id) + "/retry", new
+        {
+            companyId = ctx.CompanyId, allowedProjects = ctx.Projects
+        }, ct);
+    }
+
+    public async Task<MeetingGatewayResult> DeleteAsync(string id, CancellationToken ct)
+    {
+        var ctx = await GetContextAsync(ct);
+        Require(ctx, MeetingPermission.Delete);
+        var source = await ReadSourceAsync(ctx, id, ct);
+        RequireRead(ctx, source.Status);
+        return await SendAsync(HttpMethod.Delete, Path(id) + Query(ctx), null, ct);
+    }
+
+    public async Task<MeetingGatewayResult> ListAsync(string projectKey, string? status, CancellationToken ct)
+    {
+        var ctx = await GetContextAsync(ct);
+        RequireReadPermission(ctx);
+        var project = RequireProject(ctx, projectKey);
+        if (status is not (null or "processing" or "pending_review" or "approved" or "failed"))
+            throw new RequestFailureException(400, "Invalid meeting status.");
+        // Without ReadPending only approved meetings are listed.
+        if (!ctx.Grants.Contains(MeetingPermission.ReadPending))
+        {
+            if (status is not (null or "approved"))
+                throw new RequestFailureException(403, "Meeting permission is required.");
+            status = "approved";
+        }
+        var path = ProjectPath(project, "/meetings") + Query(ctx) +
+            (status is null ? "" : "&status=" + Uri.EscapeDataString(status));
+        return await SendAsync(HttpMethod.Get, path, null, ct);
+    }
+
+    public async Task<MeetingGatewayResult> GetRequirementsAsync(string projectKey, string? query, CancellationToken ct)
+    {
+        var ctx = await GetContextAsync(ct);
+        Require(ctx, MeetingPermission.ReadApproved);
+        var project = RequireProject(ctx, projectKey);
+        if (query?.Length > 300) throw new RequestFailureException(400, "The search text is too long.");
+        var path = ProjectPath(project, "/requirements") + Query(ctx) +
+            (string.IsNullOrWhiteSpace(query) ? "" : "&q=" + Uri.EscapeDataString(query.Trim()));
+        return await SendAsync(HttpMethod.Get, path, null, ct);
+    }
+
+    public async Task<MeetingGatewayResult> EditRequirementAsync(string requirementId, EditRequirementRequest input,
+        CancellationToken ct)
+    {
+        var ctx = await GetContextAsync(ct);
+        Require(ctx, MeetingPermission.ReadApproved);
+        Require(ctx, MeetingPermission.Edit);
+        var text = input.Text?.Trim();
+        if (string.IsNullOrEmpty(text) || text.Length > MaxRequirement)
+            throw new RequestFailureException(400, $"A requirement must contain 1-{MaxRequirement} characters.");
+        return await SendAsync(HttpMethod.Patch, "/requirements/" + SafeId(requirementId, "requirement"), new
+        {
+            companyId = ctx.CompanyId, allowedProjects = ctx.Projects, text, editedBy = ctx.EmployeeId
+        }, ct);
+    }
+
+    public async Task<MeetingGatewayResult> GetOpenQuestionsAsync(string projectKey, CancellationToken ct)
+    {
+        var ctx = await GetContextAsync(ct);
+        Require(ctx, MeetingPermission.ReadApproved);
+        var project = RequireProject(ctx, projectKey);
+        return await SendAsync(HttpMethod.Get, ProjectPath(project, "/open-questions") + Query(ctx), null, ct);
+    }
+
+    public async Task<MeetingGatewayResult> StartLiveSessionAsync(StartLiveSessionRequest input, CancellationToken ct)
+    {
+        var ctx = await GetContextAsync(ct);
+        Require(ctx, MeetingPermission.ManageLiveSessions);
+        var project = RequireProject(ctx, input.ProjectKey);
+        if (input.Title?.Length > 300) throw new RequestFailureException(400, "The title is too long.");
+        // The session id is the backend's, so a client cannot reopen another team's session by guessing.
+        var id = Guid.NewGuid().ToString("D");
+        return await SendAsync(HttpMethod.Put, LivePath(id), new
+        {
+            companyId = ctx.CompanyId, allowedProjects = ctx.Projects, projectKey = project,
+            title = input.Title, startedBy = ctx.EmployeeId
+        }, ct);
+    }
+
+    public async Task<MeetingGatewayResult> GetLiveSessionAsync(string sessionId, CancellationToken ct)
+    {
+        var ctx = await GetContextAsync(ct);
+        Require(ctx, MeetingPermission.ManageLiveSessions);
+        return await SendAsync(HttpMethod.Get, LivePath(sessionId) + Query(ctx), null, ct);
+    }
+
+    public async Task<MeetingGatewayResult> AssistLiveSessionAsync(string sessionId, LiveAssistRequest input,
+        CancellationToken ct)
+    {
+        var ctx = await GetContextAsync(ct);
+        Require(ctx, MeetingPermission.ManageLiveSessions);
+        var dismiss = input.Dismiss ?? [];
+        if (input.Transcript?.Length > MaxText || input.Question?.Length > MaxLiveQuestion ||
+            dismiss.Count > 100 || dismiss.Any(InvalidItemId))
+            throw new RequestFailureException(400, "Invalid live meeting request.");
+        return await SendAsync(HttpMethod.Post, LivePath(sessionId) + "/assist", new
+        {
+            companyId = ctx.CompanyId, allowedProjects = ctx.Projects,
+            transcript = input.Transcript ?? "", question = input.Question, dismiss
+        }, ct);
+    }
+
+    public async Task<MeetingGatewayResult> WrapUpLiveSessionAsync(string sessionId, LiveWrapUpRequest input,
+        CancellationToken ct)
+    {
+        var ctx = await GetContextAsync(ct);
+        Require(ctx, MeetingPermission.ManageLiveSessions);
+        if (string.IsNullOrWhiteSpace(input.Transcript) || input.Transcript.Length > MaxText)
+            throw new RequestFailureException(400, "The transcript is required for the wrap-up.");
+        return await SendAsync(HttpMethod.Post, LivePath(sessionId) + "/wrap-up", new
+        {
+            companyId = ctx.CompanyId, allowedProjects = ctx.Projects, transcript = input.Transcript
+        }, ct);
+    }
+
+    public async Task<MeetingGatewayResult> EndLiveSessionAsync(string sessionId, LiveEndRequest input,
+        CancellationToken ct)
+    {
+        var ctx = await GetContextAsync(ct);
+        Require(ctx, MeetingPermission.ManageLiveSessions);
+        var transcript = string.IsNullOrWhiteSpace(input.Transcript) ? null : input.Transcript;
+        if (transcript is not null)
+        {
+            // The transcript becomes a meeting waiting for review, like an upload.
+            Require(ctx, MeetingPermission.Create);
+            Require(ctx, MeetingPermission.ReadPending);
+            if (transcript.Length > MaxText) throw new RequestFailureException(400, "The transcript is too long.");
+        }
+        if (input.MeetingDate?.Length > 40) throw new RequestFailureException(400, "Invalid meeting date.");
+        return await SendAsync(HttpMethod.Post, LivePath(sessionId) + "/end", new
+        {
+            companyId = ctx.CompanyId, allowedProjects = ctx.Projects, transcript,
+            meetingDate = input.MeetingDate, createdBy = ctx.EmployeeId
+        }, ct);
+    }
+
+    public async Task<MeetingGatewayResult> DeleteLiveSessionAsync(string sessionId, CancellationToken ct)
+    {
+        var ctx = await GetContextAsync(ct);
+        Require(ctx, MeetingPermission.ManageLiveSessions);
+        return await SendAsync(HttpMethod.Delete, LivePath(sessionId) + Query(ctx), null, ct);
     }
 
     public async Task<MeetingGatewayResult> GetAsync(string id, CancellationToken ct)
@@ -90,8 +262,8 @@ public sealed class MeetingGateway(
         var ctx = await GetContextAsync(ct);
         Require(ctx, MeetingPermission.Edit);
         Require(ctx, MeetingPermission.ReadPending);
-        if (input.Text is null || input.Text.Length > MaxText)
-            throw new RequestFailureException(400, "Invalid document length.");
+        if (string.IsNullOrWhiteSpace(input.Text) || input.Text.Length > MaxDocument)
+            throw new RequestFailureException(400, $"The meeting document must contain 1-{MaxDocument} characters.");
         await RequirePendingAsync(ctx, id, ct);
         return await SendAsync(HttpMethod.Put, Path(id) + "/document", new
         {
@@ -105,14 +277,22 @@ public sealed class MeetingGateway(
         Require(ctx, MeetingPermission.Edit);
         Require(ctx, MeetingPermission.ReadPending);
         Require(ctx, MeetingPermission.UseAgent);
-        if (string.IsNullOrWhiteSpace(input.Instruction) || input.Instruction.Length > 2_000 ||
-            (input.Part is { } part && part.GetRawText().Length > MaxText))
-            throw new RequestFailureException(400, "Invalid rewrite instruction or part.");
+        string? part = null;
+        if (input.Part is { } selected && selected.ValueKind != JsonValueKind.Null)
+        {
+            if (selected.ValueKind != JsonValueKind.String)
+                throw new RequestFailureException(400, "The selected part must be text.");
+            part = selected.GetString();
+        }
+        if (string.IsNullOrWhiteSpace(input.Instruction) || input.Instruction.Length > MaxInstruction ||
+            part?.Length > MaxPart)
+            throw new RequestFailureException(400,
+                $"The instruction must contain 1-{MaxInstruction} characters and the selected part at most {MaxPart}.");
         await RequirePendingAsync(ctx, id, ct);
         return await SendAsync(HttpMethod.Post, Path(id) + "/document/rewrite", new
         {
             companyId = ctx.CompanyId, allowedProjects = ctx.Projects,
-            instruction = input.Instruction, part = input.Part
+            instruction = input.Instruction, part = string.IsNullOrWhiteSpace(part) ? null : part
         }, ct);
     }
 
@@ -201,7 +381,7 @@ public sealed class MeetingGateway(
             if (!root.TryGetProperty("status", out var status) || status.ValueKind != JsonValueKind.String ||
                 status.GetString() is not ("processing" or "pending_review" or "approved" or "failed"))
                 throw new RequestFailureException(503, "Invalid meeting state from AI service.");
-            return new Source(result, status.GetString()!);
+            return new Source(result, status.GetString()!, project.GetString()!);
         }
         catch (JsonException)
         {
@@ -225,6 +405,23 @@ public sealed class MeetingGateway(
             !Regex.IsMatch(id, @"\A[A-Za-z0-9_.:-]+\z", RegexOptions.CultureInvariant))
             throw new RequestFailureException(400, "Invalid meeting id.");
         return "/meetings/" + Uri.EscapeDataString(id);
+    }
+
+    private static string RequireProject(Context ctx, string? projectKey) =>
+        ctx.Projects.FirstOrDefault(p => string.Equals(p, projectKey?.Trim(), StringComparison.OrdinalIgnoreCase))
+        ?? throw new RequestFailureException(403, "Project is not accessible.");
+
+    private static string ProjectPath(string project, string suffix) =>
+        "/projects/" + Uri.EscapeDataString(project) + suffix;
+
+    private static string LivePath(string sessionId) => "/live-sessions/" + SafeId(sessionId, "live session");
+
+    private static string SafeId(string? id, string what)
+    {
+        if (string.IsNullOrWhiteSpace(id) || id.Length > 200 || id is "." or ".." ||
+            !Regex.IsMatch(id, @"\A[A-Za-z0-9_.:-]+\z", RegexOptions.CultureInvariant))
+            throw new RequestFailureException(400, $"Invalid {what} id.");
+        return Uri.EscapeDataString(id);
     }
 
     private static string Query(Context ctx) =>
