@@ -45,6 +45,7 @@ void main() {
           home: MeetingContractScreen(
             initialMeetingId: 'abc',
             repository: repository,
+            loadProjects: () async => [],
           ),
         ),
       );
@@ -55,10 +56,13 @@ void main() {
       expect(find.text('This meeting has no Jira drafts.'), findsOneWidget);
       final approve = find.text('Approve meeting without items');
       await tester.ensureVisible(approve);
+      await tester.pumpAndSettle();
       await tester.tap(approve);
       await tester.pumpAndSettle();
       expect(repository.approved, isTrue);
-      expect(find.text('Approved'), findsOneWidget);
+      // the status line, beside the project meetings filter chip of the same name
+      expect(find.text('Approved'), findsWidgets);
+      expect(find.text('Pending review'), findsOneWidget);
       expect(approve, findsNothing);
     },
   );

@@ -13,16 +13,22 @@ import 'package:syntrace/features/projects/data/projects_repository.dart';
 import '../../data/repositories/meeting_contract_repository.dart';
 import '../../data/repositories/meeting_notes_repository.dart';
 import '../widgets/details/meeting_analysis_details.dart';
+import '../widgets/shared/text_edit_dialog.dart';
+import 'live_meeting_screen.dart';
 import 'meeting_document_screen.dart';
+import 'open_questions_screen.dart';
+import 'project_requirements_screen.dart';
 
 class MeetingContractScreen extends StatefulWidget {
   const MeetingContractScreen({
     super.key,
     this.initialMeetingId,
     this.repository,
+    this.loadProjects,
   });
   final String? initialMeetingId;
   final MeetingContractRepository? repository;
+  final Future<List<ProjectApiModel>> Function()? loadProjects;
 
   @override
   State<MeetingContractScreen> createState() => _MeetingContractScreenState();
@@ -52,10 +58,21 @@ class _MeetingContractScreenState extends State<MeetingContractScreen> {
   bool _busy = false;
   String _section = 'Overview';
   final _recent = <String, String>{};
+  String? _listProject;
+  String? _listStatus;
+  List<Map<String, dynamic>>? _meetings;
 
   bool get _canCreate =>
       _permissions?.containsAll({'Meetings.Create', 'Meetings.ReadPending'}) ??
       false;
+
+  bool _can(String permission) => _permissions?.contains(permission) ?? false;
+
+  bool get _canRead =>
+      _can('Meetings.ReadApproved') || _can('Meetings.ReadPending');
+
+  String _projectName(String key) =>
+      _projects.where((p) => p.id == key).firstOrNull?.name ?? key;
 
   @override
   void initState() {
@@ -75,10 +92,21 @@ class _MeetingContractScreenState extends State<MeetingContractScreen> {
 
   Future<void> _load() => _perform(() async {
     final permissions = await _api.permissions();
-    final projects =
-        permissions.containsAll({'Meetings.Create', 'Meetings.ReadPending'})
-        ? await ProjectsRepository().getProjects()
-        : <ProjectApiModel>[];
+    final needsProjects = {
+      'Meetings.Create',
+      'Meetings.ReadPending',
+      'Meetings.ReadApproved',
+      'Meetings.ManageLiveSessions',
+    }.any(permissions.contains);
+    var projects = <ProjectApiModel>[];
+    if (needsProjects) {
+      try {
+        projects = await (widget.loadProjects ??
+            () => ProjectsRepository().getProjects())();
+      } catch (_) {
+        // A meeting opened from the chat still shows without the project list.
+      }
+    }
     if (!mounted) return;
     setState(() {
       _permissions = permissions;
@@ -285,16 +313,38 @@ class _MeetingContractScreenState extends State<MeetingContractScreen> {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => context.push(AppRoutes.chat),
               ),
+            if (_can('Meetings.ManageLiveSessions'))
+              ListTile(
+                leading: const Icon(Icons.mic_none_outlined),
+                title: const Text('Live meeting assistant'),
+                subtitle: const Text(
+                  'Questions to ask and gaps while the meeting is going on',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _busy ? null : _openLive,
+              ),
+            if (_can('Meetings.ReadApproved')) ...[
+              ListTile(
+                leading: const Icon(Icons.history_edu_outlined),
+                title: const Text('Project requirements'),
+                subtitle: const Text('Every requirement and how it changed'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _busy ? null : () => _openProjectScreen(requirements: true),
+              ),
+              ListTile(
+                leading: const Icon(Icons.help_outline),
+                title: const Text('Open questions'),
+                subtitle: const Text('What to ask in the next meeting'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _busy ? null : () => _openProjectScreen(requirements: false),
+              ),
+            ],
             const SizedBox(height: 24),
+            if (_canRead) _meetingsList(context),
             ExpansionTile(
-              title: const Text('Find a meeting'),
+              title: const Text('Find a meeting by ID'),
               leading: const Icon(Icons.search),
               children: [
-                const ListTile(
-                  subtitle: Text(
-                    'Open a meeting by its ID. Meetings opened here are listed for this session.',
-                  ),
-                ),
                 if (_recent.isNotEmpty) ...[
                   const ListTile(title: Text('Opened this session')),
                   for (final entry in _recent.entries.toList().reversed)
@@ -320,6 +370,240 @@ class _MeetingContractScreenState extends State<MeetingContractScreen> {
       ),
     );
   }
+
+  Future<String?> _pickProject(String title) async {
+    if (_projects.length == 1) return _projects.single.id;
+    return showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text(title),
+        children: [
+          if (_projects.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('No projects are available.'),
+            ),
+          for (final project in _projects)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, project.id),
+              child: Text(project.name),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openProjectScreen({required bool requirements}) async {
+    final project = await _pickProject(
+      requirements ? 'Requirements of which project?' : 'Open questions of which project?',
+    );
+    if (project == null || !mounted) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => requirements
+            ? ProjectRequirementsScreen(
+                repository: _api,
+                projectKey: project,
+                projectName: _projectName(project),
+                canEdit: _can('Meetings.Edit'),
+              )
+            : OpenQuestionsScreen(
+                repository: _api,
+                projectKey: project,
+                projectName: _projectName(project),
+              ),
+      ),
+    );
+  }
+
+  Future<void> _openLive() async {
+    final sourceId = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LiveMeetingScreen(
+          repository: _api,
+          projects: [
+            for (final p in _projects) (key: p.id, name: p.name),
+          ],
+          canSendForReview: _canCreate,
+        ),
+      ),
+    );
+    if (sourceId != null && mounted) _open(sourceId);
+  }
+
+  void _loadMeetings() {
+    final project = _listProject;
+    if (project == null) return;
+    unawaited(
+      _perform(() async {
+        final found = await _api.list(project, status: _listStatus);
+        if (mounted) setState(() => _meetings = found);
+      }),
+    );
+  }
+
+  Widget _meetingsList(BuildContext context) => ExpansionTile(
+    key: const PageStorageKey('meeting-list'),
+    initiallyExpanded: true,
+    leading: const Icon(Icons.event_note_outlined),
+    title: const Text('Project meetings'),
+    children: [
+      DropdownButtonFormField<String>(
+        initialValue: _listProject,
+        decoration: const InputDecoration(labelText: 'Project'),
+        items: [
+          for (final project in _projects)
+            DropdownMenuItem(value: project.id, child: Text(project.name)),
+        ],
+        onChanged: _busy
+            ? null
+            : (value) {
+                setState(() {
+                  _listProject = value;
+                  _meetings = null;
+                });
+                _loadMeetings();
+              },
+      ),
+      Wrap(
+        spacing: 8,
+        children: [
+          for (final (value, label) in [
+            (null, 'All'),
+            if (_can('Meetings.ReadPending')) ('pending_review', 'Pending review'),
+            ('approved', 'Approved'),
+            if (_can('Meetings.ReadPending')) ('failed', 'Failed'),
+          ])
+            ChoiceChip(
+              label: Text(label),
+              selected: _listStatus == value,
+              onSelected: _busy || _listProject == null
+                  ? null
+                  : (_) {
+                      setState(() => _listStatus = value);
+                      _loadMeetings();
+                    },
+            ),
+        ],
+      ),
+      if (_meetings case final meetings?) ...[
+        if (meetings.isEmpty) const ListTile(title: Text('No meetings yet.')),
+        for (final m in meetings)
+          ListTile(
+            leading: Icon(switch (m['status']) {
+              'approved' => Icons.check_circle_outline,
+              'pending_review' => Icons.rate_review_outlined,
+              'failed' => Icons.error_outline,
+              _ => Icons.hourglass_empty,
+            }),
+            title: Text(m['title']?.toString() ?? m['sourceId'].toString()),
+            subtitle: Text(
+              [
+                _statusLabel(m['status']?.toString() ?? ''),
+                if (m['meetingDate'] case final date?) '$date',
+                '${m['items'] ?? 0} items',
+                if ((m['toReview'] as num? ?? 0) > 0) '${m['toReview']} to review',
+                if (m['linkedSourceId'] != null) 'correction',
+              ].join(' · '),
+            ),
+            onTap: _busy ? null : () => _open(m['sourceId'] as String),
+          ),
+      ],
+    ],
+  );
+
+  static String _statusLabel(String status) => switch (status) {
+    'processing' => 'Processing',
+    'pending_review' => 'Pending review',
+    'approved' => 'Approved',
+    'failed' => 'Failed',
+    _ => status,
+  };
+
+  void _retry(String id) => unawaited(
+    _perform(() async => _show(await _api.retry(id), reset: true)),
+  );
+
+  Future<void> _addCorrection(Map<String, dynamic> meeting) async {
+    final text = await TextEditDialog.show(
+      context,
+      const TextEditDialog(
+        title: 'Add a correction',
+        label: 'What changed or was wrong',
+        helperText: 'It is analyzed as a note linked to this meeting.',
+        action: 'Analyze correction',
+        maxLength: 40000,
+        minLines: 3,
+        maxLines: 8,
+      ),
+    );
+    if (text == null || text.isEmpty || !mounted) return;
+    final original = meeting['sourceId'] as String;
+    await _perform(() async {
+      _show(
+        await _api.create(
+          projectId: meeting['projectKey'] as String,
+          sourceType: 'note',
+          title: 'Correction: ${meeting['title'] ?? original}',
+          date: DateTime.now(),
+          text: text,
+          linkedSourceId: original,
+        ),
+        reset: true,
+      );
+    });
+  }
+
+  Future<void> _delete(String id) async {
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete this meeting?'),
+        content: const Text(
+          'Its items, drafts and project history are removed. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (sure != true || !mounted) return;
+    await _perform(() async {
+      await _api.delete(id);
+      if (!mounted) return;
+      setState(() {
+        _meeting = null;
+        _recent.remove(id);
+        _meetings = _meetings?.where((m) => m['sourceId'] != id).toList();
+      });
+    });
+  }
+
+  void _publish(String meetingId, Map<String, dynamic> draft) => unawaited(
+    _perform(() async {
+      final result = await _api.publishDraft(meetingId, draft['id'] as String);
+      if (!mounted) return;
+      final failed = (result['failedSubtasks'] as List? ?? const []).length;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Created ${result['jiraKey']}'
+            '${failed > 0 ? '; $failed subtask(s) could not be created' : ''}.',
+          ),
+        ),
+      );
+      _show(await _api.get(meetingId), reset: false);
+    }),
+  );
 
   Widget _createForm(BuildContext context) => Form(
     key: _form,
@@ -470,19 +754,37 @@ class _MeetingContractScreenState extends State<MeetingContractScreen> {
             onPressed: _busy ? null : () => _open(originalId),
           ),
         if (status == 'approved' && _canCreate)
-          const ListTile(
-            leading: Icon(Icons.note_alt_outlined),
-            title: Text('Linked corrections'),
-            subtitle: Text(
-              'Creating a correction linked to this approved meeting requires server support.',
+          ListTile(
+            leading: const Icon(Icons.note_alt_outlined),
+            title: const Text('Add a correction'),
+            subtitle: const Text(
+              'Something changed or was wrong? It is analyzed as a note linked to this meeting.',
             ),
+            onTap: _busy ? null : () => _addCorrection(meeting),
           ),
         if (status == 'failed')
-          const ListTile(
-            leading: Icon(Icons.info_outline),
-            title: Text('Analysis failed'),
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('Analysis failed'),
             subtitle: Text(
-              'You can submit the source as a new analysis. Retrying the original meeting requires server support.',
+              _canCreate
+                  ? 'Retry reads the same text again; nothing needs to be uploaded.'
+                  : 'Ask someone who can create meetings to retry it.',
+            ),
+            trailing: _canCreate
+                ? FilledButton(
+                    onPressed: _busy ? null : () => _retry(id),
+                    child: const Text('Retry analysis'),
+                  )
+                : null,
+          ),
+        if (_can('Meetings.Delete') && status != 'processing')
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('Delete meeting'),
+              onPressed: _busy ? null : () => _delete(id),
             ),
           ),
         if (status == 'pending_review' || status == 'approved')
@@ -572,14 +874,24 @@ class _MeetingContractScreenState extends State<MeetingContractScreen> {
                 style: Theme.of(context).textTheme.titleSmall,
               ),
               MeetingItemDrafts(item: item),
+              for (final draft in meetingObjects(item['drafts']))
+                if (draft['jiraKey'] == null && status == 'approved')
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: draft['status'] == 'approved' &&
+                            _can('Meetings.PublishJiraTasks')
+                        ? FilledButton.icon(
+                            icon: const Icon(Icons.upload_outlined),
+                            label: Text('Publish "${draft['title']}" to Jira'),
+                            onPressed: _busy ? null : () => _publish(id, draft),
+                          )
+                        : Text(
+                            draft['status'] == 'approved'
+                                ? 'Publishing to Jira needs the Publish Jira tasks permission.'
+                                : 'Approve this draft in the review to publish it.',
+                          ),
+                  ),
             ],
-            if (draftItems.any(
-              (i) =>
-                  meetingObjects(i['drafts']).any((d) => d['jiraKey'] == null),
-            ))
-              const Text(
-                'Creating Jira issues from drafts requires server support.',
-              ),
           ],
         ],
         if (canReview &&
