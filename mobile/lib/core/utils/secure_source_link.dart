@@ -25,8 +25,7 @@ class SecureSourceLink {
   static Uri? githubUri(String? value) {
     final uri = parseHttps(value);
 
-    if (uri == null ||
-        uri.host.toLowerCase() != 'github.com') {
+    if (uri == null || uri.host.toLowerCase() != 'github.com') {
       return null;
     }
 
@@ -63,10 +62,7 @@ class SecureSourceLink {
     if (uri == null) return false;
 
     try {
-      return await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      );
+      return await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
       return false;
     }

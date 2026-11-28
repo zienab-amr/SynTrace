@@ -44,7 +44,11 @@ class GitHubSyncCoverageSection extends StatelessWidget {
 
           const SizedBox(height: 20),
 
-          GitHubCoverageStatus(status: integration.syncStatus, coverage: coverage, isRefreshing: isRefreshing),
+          GitHubCoverageStatus(
+            status: integration.syncStatus,
+            coverage: coverage,
+            isRefreshing: isRefreshing,
+          ),
 
           if (coverage != null) ...[
             const SizedBox(height: 20),
@@ -53,7 +57,10 @@ class GitHubSyncCoverageSection extends StatelessWidget {
 
             const SizedBox(height: 16),
 
-            GitHubCoverageDetails(coverage: coverage!, lastSuccessAtUtc: integration.lastSuccessAtUtc),
+            GitHubCoverageDetails(
+              coverage: coverage!,
+              lastSuccessAtUtc: integration.lastSuccessAtUtc,
+            ),
           ],
 
           if (coverageError?.isNotEmpty ?? false) ...[

@@ -1,3 +1,4 @@
+import { assetUrl } from '../../lib/assetUrl.js';
 import { useEffect, useRef, useState } from 'react';
 import ThemeToggle from '../common/ThemeToggle.jsx';
 import { Link } from '../../router/router.jsx';
@@ -165,7 +166,7 @@ export default function OtpVerification({ form, onChangeEmail }) {
       <section className="login__stage register__stage" aria-hidden="true"><VaultStage filled={otp.length} state={state} /></section>
       <section className="login__panel register__panel">
         <header className="login__brand">
-          <img src="/assets/syntrace-mark.webp" alt="" height="56" />
+          <img src={assetUrl('assets/syntrace-mark.webp')} alt="" height="56" />
           <span className="login__wordmark">SynTrace</span>
           <p>Connect. Understand. Trace.</p>
         </header>

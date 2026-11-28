@@ -225,6 +225,16 @@ class KnowledgeEvidenceModel extends Equatable {
   final String quote;
   final int quoteOffset;
   final KnowledgeEvidenceDecision decision;
+  final bool? needsReview;
+
+  // Retain the server's text. Older responses may only carry the prefix.
+  bool get isProposal =>
+      needsReview == true || text.trimLeft().startsWith('Proposed:');
+
+  bool get isProposalPending =>
+      isProposal &&
+      (decision == KnowledgeEvidenceDecision.pending ||
+          decision == KnowledgeEvidenceDecision.unknown);
 
   const KnowledgeEvidenceModel({
     required this.id,
@@ -233,6 +243,7 @@ class KnowledgeEvidenceModel extends Equatable {
     required this.quote,
     required this.quoteOffset,
     required this.decision,
+    this.needsReview,
   });
 
   factory KnowledgeEvidenceModel.fromJson(Map<String, dynamic> json) {
@@ -243,11 +254,24 @@ class KnowledgeEvidenceModel extends Equatable {
       quote: json['quote'] as String,
       quoteOffset: (json['quoteOffset'] as num).toInt(),
       decision: KnowledgeEvidenceDecision.fromJson(json['decision']),
+      needsReview: (json['needs_review'] is bool)
+          ? json['needs_review'] as bool
+          : (json['needsReview'] is bool)
+          ? json['needsReview'] as bool
+          : null,
     );
   }
 
   @override
-  List<Object?> get props => [id, kind, text, quote, quoteOffset, decision];
+  List<Object?> get props => [
+    id,
+    kind,
+    text,
+    quote,
+    quoteOffset,
+    decision,
+    needsReview,
+  ];
 }
 
 // ═══════════════════════════════════════════

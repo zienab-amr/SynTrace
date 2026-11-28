@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:syntrace/core/router/routes.dart';
-import 'package:syntrace/features/settings/presentation/cubit/integrations_cubit.dart';
-import 'package:syntrace/features/settings/presentation/cubit/integrations_state.dart';
+import 'package:syntrace/core/cache/cache_scope.dart';
+import 'package:syntrace/core/cache/cache_session_guard.dart';
+import 'package:syntrace/features/settings/presentation/cubit/jira/jira_cubit.dart';
+import 'package:syntrace/features/settings/presentation/cubit/jira/jira_state.dart';
 
 class JiraCallbackScreen extends StatefulWidget {
   final String status;
@@ -23,7 +25,8 @@ class _JiraCallbackScreenState extends State<JiraCallbackScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final cubit = context.read<IntegrationsCubit>();
+      if (!mounted) return;
+      final cubit = context.read<JiraCubit>();
       await cubit.handleJiraCallback(widget.status, widget.pendingId);
     });
   }
@@ -34,28 +37,42 @@ class _JiraCallbackScreenState extends State<JiraCallbackScreen> {
     context.go(AppRoutes.settings);
   }
 
-  String _siteName(Map<String, dynamic> s) => (s['name'] ??
-          s['siteName'] ??
-          s['displayName'] ??
-          s['url'] ??
-          s['siteUrl'] ??
-          'Jira Site')
-      .toString();
+  String _siteName(Map<String, dynamic> s) =>
+      (s['name'] ??
+              s['siteName'] ??
+              s['displayName'] ??
+              s['url'] ??
+              s['siteUrl'] ??
+              'Jira Site')
+          .toString();
 
   String _siteId(Map<String, dynamic> s) =>
       (s['id'] ?? s['cloudId'] ?? s['siteId'] ?? s['value'] ?? '').toString();
 
-  void _showSitesDialog(IntegrationsSiteSelectionRequired state) {
+  void _showSitesDialog(JiraSiteSelectionRequired state) {
     if (_dialogOpen) return;
+    final scope = CacheScope.fromCurrentUser();
+    if (scope == null) return;
+    final guard = CacheSessionGuard.capture(scope);
     _dialogOpen = true;
 
-    final cubit = context.read<IntegrationsCubit>();
+    final cubit = context.read<JiraCubit>();
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
         return AlertDialog(
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                _dialogOpen = false;
+                _goToSettings();
+              },
+              child: const Text('Cancel'),
+            ),
+          ],
           title: const Text('Select Jira Site'),
           content: SizedBox(
             width: double.maxFinite,
@@ -72,10 +89,8 @@ class _JiraCallbackScreenState extends State<JiraCallbackScreen> {
                   onTap: () {
                     Navigator.pop(dialogContext);
                     _dialogOpen = false;
-                    cubit.completeJiraConnection(
-                      state.pendingId,
-                      siteId,
-                    );
+                    if (!mounted || !guard.isValid || cubit.isClosed) return;
+                    cubit.completeJiraConnection(state.pendingId, siteId);
                   },
                 );
               },
@@ -83,27 +98,30 @@ class _JiraCallbackScreenState extends State<JiraCallbackScreen> {
           ),
         );
       },
-    );
+    ).whenComplete(() {
+      if (_dialogOpen && mounted) {
+        _dialogOpen = false;
+        _goToSettings();
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return BlocListener<IntegrationsCubit, IntegrationsState>(
+    return BlocListener<JiraCubit, JiraState>(
       listener: (context, state) {
-        if (state is IntegrationsSiteSelectionRequired) {
+        if (state is JiraSiteSelectionRequired) {
           _showSitesDialog(state);
-        } else if (state is IntegrationsLoaded) {
+        } else if (state is JiraLoaded) {
           _goToSettings();
-        } else if (state is IntegrationsError) {
+        } else if (state is JiraError) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(state.message), backgroundColor: Colors.red),
           );
           _goToSettings();
         }
       },
-      child: const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      ),
+      child: const Scaffold(body: Center(child: CircularProgressIndicator())),
     );
   }
 }

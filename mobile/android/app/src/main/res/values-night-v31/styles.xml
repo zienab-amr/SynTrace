@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="LaunchTheme"
+        parent="@android:style/Theme.Black.NoTitleBar">
+
+        <item name="android:windowBackground">#1E1E2C</item>
+
+        <item name="android:windowSplashScreenBackground">#1E1E2C</item>
+
+        <item name="android:windowSplashScreenAnimatedIcon">
+            @drawable/splash_transparent
+        </item>
+
+    </style>
+
+</resources>

@@ -11,7 +11,11 @@ void main() {
     });
 
     test('isActive returns true for active status', () {
-      const project = ProjectModel(id: '1', name: 'Test', status: ProjectStatus.active);
+      const project = ProjectModel(
+        id: '1',
+        name: 'Test',
+        status: ProjectStatus.active,
+      );
       expect(project.isActive, isTrue);
     });
   });

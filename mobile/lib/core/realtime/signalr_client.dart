@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:signalr_netcore/signalr_client.dart';
 import 'package:signalr_netcore/ihub_protocol.dart';
 import 'package:syntrace/core/services/secure_storage_service.dart';
+import 'package:syntrace/core/services/current_user_service.dart';
+import 'package:syntrace/core/cache/cache_scope.dart';
+import 'package:syntrace/core/cache/cache_session_guard.dart';
 
 import 'signalr_config.dart';
 import 'signalr_connection_state.dart';
@@ -22,6 +25,7 @@ class SignalRClient {
         .build();
 
     _registerCallbacks();
+    CurrentUserService.instance.userNotifier.addListener(_onSessionChanged);
   }
 
   late final HubConnection _connection;
@@ -34,6 +38,7 @@ class SignalRClient {
   Future<void>? _stopOperation;
   Future<void>? _disposeOperation;
 
+  CacheSessionGuard? _guard;
   bool _disposed = false;
   bool _stopping = false;
   bool _disposing = false;
@@ -42,10 +47,37 @@ class SignalRClient {
 
   Stream<SignalRConnectionState> get states => _stateController.stream;
 
-  bool get isConnected => _connection.state == HubConnectionState.Connected;
+  bool get isConnected =>
+      !_disposed &&
+      !_disposing &&
+      !_stopping &&
+      _guard?.isValid == true &&
+      _connection.state == HubConnectionState.Connected;
+
+  void _onSessionChanged() {
+    if (_guard == null || _guard!.isValid || _disposed || _disposing) return;
+    unawaited(_disconnectInvalidSession());
+  }
+
+  Future<void> _disconnectInvalidSession() async {
+    try {
+      await disconnect();
+    } catch (_) {
+      // Invalid sessions cannot reconnect or provide another user's token.
+    }
+  }
 
   Future<String> _getAccessToken() async {
+    final guard = _guard;
+    if (guard == null || _disposing || _disposed || _stopping) {
+      throw StateError('Authentication is required.');
+    }
+    guard.ensureValid();
     final token = await SecureStorageService.instance.getToken();
+    guard.ensureValid();
+    if (_disposing || _disposed || _stopping) {
+      throw StateError('SignalR connection is closing.');
+    }
 
     if (token == null || token.trim().isEmpty) {
       throw StateError('Authentication is required.');
@@ -64,13 +96,13 @@ class SignalRClient {
     });
 
     _connection.onreconnecting(({error}) {
-      if (!_stopping && !_disposing) {
+      if (!_stopping && !_disposing && _guard?.isValid == true) {
         _emit(SignalRConnectionState.reconnecting);
       }
     });
 
     _connection.onreconnected(({connectionId}) {
-      if (!_stopping && !_disposing) {
+      if (!_stopping && !_disposing && _guard?.isValid == true) {
         _emit(SignalRConnectionState.connected);
       }
     });
@@ -78,6 +110,15 @@ class SignalRClient {
 
   Future<void> connect() async {
     if (_disposed || _disposing || _stopping) return;
+
+    // A client instance is bound to its first authenticated session.
+    // Do not recapture after logout, even if the same user logs in again.
+    if (_guard == null) {
+      final scope = CacheScope.fromCurrentUser();
+      if (scope == null) throw StateError('Authentication is required.');
+      _guard = CacheSessionGuard.capture(scope);
+    }
+    _guard!.ensureValid();
 
     final existing = _startOperation;
 
@@ -106,11 +147,11 @@ class SignalRClient {
     try {
       await _connection.start();
 
-      if (!_stopping && !_disposing && !_disposed) {
+      if (!_stopping && !_disposing && !_disposed && _guard?.isValid == true) {
         _emit(SignalRConnectionState.connected);
       }
     } catch (_) {
-      if (!_stopping && !_disposing) {
+      if (!_stopping && !_disposing && _guard?.isValid == true) {
         _emit(SignalRConnectionState.failed);
       }
 
@@ -138,7 +179,11 @@ class SignalRClient {
       throw StateError('SignalR is not connected.');
     }
 
-    return _connection.invoke(method, args: arguments);
+    final guard = _guard!;
+    guard.ensureValid();
+    final result = await _connection.invoke(method, args: arguments);
+    guard.ensureValid();
+    return result;
   }
 
   Future<void> disconnect() async {
@@ -205,6 +250,7 @@ class SignalRClient {
     if (_disposed) return;
 
     _disposing = true;
+    CurrentUserService.instance.userNotifier.removeListener(_onSessionChanged);
 
     try {
       await disconnect();

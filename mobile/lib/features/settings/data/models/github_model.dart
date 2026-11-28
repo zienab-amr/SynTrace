@@ -298,3 +298,54 @@ class GitHubSyncCoverage {
     }
   }
 }
+
+extension GitHubCompanyStatusSerialization on GitHubCompanyStatus {
+  Map<String, dynamic> toJson() {
+    return {
+      'connected': connected,
+      'installationId': installationId,
+      'accountLogin': accountLogin,
+      'suspended': suspended,
+    };
+  }
+}
+
+extension GitHubEmployeeStatusSerialization on GitHubEmployeeStatus {
+  Map<String, dynamic> toJson() {
+    return {
+      'connected': connected,
+      'githubUserId': githubUserId,
+      'githubLogin': githubLogin,
+    };
+  }
+}
+
+extension GitHubProjectStatusSerialization on GitHubProjectStatus {
+  Map<String, dynamic> toJson() {
+    return {
+      'projectId': projectId,
+      'bindingId': bindingId,
+      'repositoryId': repositoryId,
+      'fullName': fullName,
+      'defaultBranch': defaultBranch,
+      'syncStatus': syncStatus.value,
+      'lastSuccessAtUtc': lastSuccessAtUtc?.toUtc().toIso8601String(),
+    };
+  }
+}
+
+extension GitHubSyncCoverageSerialization on GitHubSyncCoverage {
+  Map<String, dynamic> toJson() {
+    return {
+      'id': bindingId,
+      'repositoryId': repositoryId,
+      'fullName': fullName,
+      'requestedVersion': requestedVersion,
+      'completedVersion': completedVersion,
+      'phase': phase,
+      'lastSuccessAtUtc': lastSuccessAtUtc?.toUtc().toIso8601String(),
+      'lastFailure': null,
+      'lastIndexedHeadSha': lastIndexedHeadSha,
+    };
+  }
+}

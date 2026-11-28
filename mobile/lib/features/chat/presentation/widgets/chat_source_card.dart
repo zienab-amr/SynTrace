@@ -6,10 +6,7 @@ import '../../data/models/chat_source_model.dart';
 class ChatSourceCard extends StatelessWidget {
   final ChatSourceModel source;
 
-  const ChatSourceCard({
-    super.key,
-    required this.source,
-  });
+  const ChatSourceCard({super.key, required this.source});
 
   IconData get _icon {
     switch (source.type) {
@@ -41,10 +38,7 @@ class ChatSourceCard extends StatelessWidget {
     bool opened = false;
 
     try {
-      opened = await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      );
+      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
       opened = false;
     }
@@ -53,7 +47,9 @@ class ChatSourceCard extends StatelessWidget {
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Unable to open this source. Check the link and your access.'),
+        content: Text(
+          'Unable to open this source. Check the link and your access.',
+        ),
       ),
     );
   }
@@ -70,32 +66,23 @@ class ChatSourceCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.dividerColor.withValues(
-            alpha: 0.4,
-          ),
-        ),
+        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.4)),
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: available
-              ? () => _openSource(context)
-              : null,
+          onTap: available ? () => _openSource(context) : null,
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Row(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildIcon(context),
 
                 const SizedBox(width: 12),
 
-                Expanded(
-                  child: _buildContent(context),
-                ),
+                Expanded(child: _buildContent(context)),
 
                 const SizedBox(width: 8),
 
@@ -127,9 +114,7 @@ class ChatSourceCard extends StatelessWidget {
       child: Icon(
         _icon,
         size: 19,
-        color: source.isAvailable
-            ? colors.primary
-            : colors.onSurfaceVariant,
+        color: source.isAvailable ? colors.primary : colors.onSurfaceVariant,
       ),
     );
   }
@@ -159,8 +144,7 @@ class ChatSourceCard extends StatelessWidget {
         ),
 
         if (source.repository != null &&
-            source.type !=
-                ChatSourceType.githubRepository) ...[
+            source.type != ChatSourceType.githubRepository) ...[
           const SizedBox(height: 4),
 
           Text(
@@ -177,8 +161,7 @@ class ChatSourceCard extends StatelessWidget {
           _buildLineReference(context),
         ],
 
-        if (source.type ==
-                ChatSourceType.githubFile &&
+        if (source.type == ChatSourceType.githubFile &&
             !source.isPreciseCodeReference) ...[
           const SizedBox(height: 6),
 
@@ -213,14 +196,9 @@ class ChatSourceCard extends StatelessWidget {
         : 'Lines ${source.startLine}–${source.endLine}';
 
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 8,
-        vertical: 4,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: theme.colorScheme.primary.withValues(
-          alpha: 0.08,
-        ),
+        color: theme.colorScheme.primary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(

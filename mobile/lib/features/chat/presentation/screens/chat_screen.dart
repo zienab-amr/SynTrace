@@ -11,6 +11,8 @@ import 'package:syntrace/features/chat/presentation/widgets/chat_input.dart';
 import 'package:syntrace/features/chat/presentation/widgets/message_bubble.dart';
 import 'package:syntrace/features/chat/presentation/widgets/typing_indicator.dart';
 
+import 'package:syntrace/features/meetings/data/repositories/meeting_contract_repository.dart';
+
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
 
@@ -39,7 +41,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _scrollToBottom({bool instant = false}) {
     Future.delayed(const Duration(milliseconds: 50), () {
-      if (!_scrollController.hasClients) return;
+      if (!mounted || !_scrollController.hasClients) return;
       if (instant) {
         _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
       } else {
@@ -103,14 +105,20 @@ class _ChatScreenState extends State<ChatScreen> {
                         sessions: sessions,
                         selectedId: selectedId,
                         onNewChat: () => context.read<ChatCubit>().newChat(),
-                        onSessionTap: (session) => context.read<ChatCubit>().openSession(session),
+                        onSessionTap: (session) =>
+                            context.read<ChatCubit>().openSession(session),
                       )
                     : const SizedBox.shrink(),
               ),
             ),
           ),
           Expanded(
-            child: _buildChatArea(context, state, isMobile: false, showSidebarToggle: true),
+            child: _buildChatArea(
+              context,
+              state,
+              isMobile: false,
+              showSidebarToggle: true,
+            ),
           ),
         ],
       ),
@@ -139,13 +147,25 @@ class _ChatScreenState extends State<ChatScreen> {
           },
         ),
       ),
-      body: _buildChatArea(context, state, isMobile: true, showSidebarToggle: false),
+      body: _buildChatArea(
+        context,
+        state,
+        isMobile: true,
+        showSidebarToggle: false,
+      ),
     );
   }
 
-  Widget _buildChatArea(BuildContext context, ChatState state, {required bool isMobile, required bool showSidebarToggle}) {
+  Widget _buildChatArea(
+    BuildContext context,
+    ChatState state, {
+    required bool isMobile,
+    required bool showSidebarToggle,
+  }) {
     if (state is ChatLoading) {
-      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      );
     }
 
     if (state is ChatErrorState) {
@@ -166,19 +186,94 @@ class _ChatScreenState extends State<ChatScreen> {
             onDismiss: () => context.read<ChatCubit>().dismissError(),
           ),
         Expanded(child: _buildMessages(context, state)),
+        if (MeetingContractRepository.enabled &&
+            state.messages.any((m) => m.meeting?['sessionId'] != null))
+          Builder(
+            builder: (context) {
+              final meeting = state.messages
+                  .lastWhere((m) => m.meeting?['sessionId'] != null)
+                  .meeting!;
+              if (meeting['ended'] == true) return const SizedBox.shrink();
+              return Wrap(
+                spacing: 8,
+                children: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.notes),
+                    label: const Text('Add transcript'),
+                    onPressed: state.isBusy
+                        ? null
+                        : () => _addTranscript(context),
+                  ),
+                  TextButton(
+                    onPressed: state.isBusy
+                        ? null
+                        : () => context.read<ChatCubit>().sendMessage(
+                            'End the meeting',
+                          ),
+                    child: const Text('Finish meeting'),
+                  ),
+                ],
+              );
+            },
+          ),
         Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 800),
             child: ChatInput(
               key: _chatInputKey,
-              onSend: (text, quotes) => context.read<ChatCubit>().sendMessage(text, quotedExcerpts: quotes),
-              enabled: true,
-              isLoading: false,
+              onSend: (text, quotes) => context.read<ChatCubit>().sendMessage(
+                text,
+                quotedExcerpts: quotes,
+              ),
+              enabled: context.read<ChatCubit>().canSend,
+              isLoading: state.isStreaming,
             ),
           ),
         ),
       ],
     );
+  }
+
+  Future<void> _addTranscript(BuildContext context) async {
+    String text = '';
+    final cubit = context.read<ChatCubit>();
+    final session = (cubit.state as ChatLoaded).currentSessionId;
+    final part = await showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, update) => AlertDialog(
+          title: const Text('Add meeting transcript'),
+          content: SingleChildScrollView(
+            child: TextField(
+              autofocus: true,
+              minLines: 3,
+              maxLines: 8,
+              maxLength: 400000,
+              decoration: const InputDecoration(
+                labelText: 'Latest transcript excerpt',
+              ),
+              onChanged: (value) => update(() => text = value.trim()),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: text.isEmpty
+                  ? null
+                  : () => Navigator.pop(context, text),
+              child: const Text('Get meeting help'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!context.mounted || part == null || cubit.state is! ChatLoaded) return;
+    final current = cubit.state as ChatLoaded;
+    if (current.isBusy || current.currentSessionId != session) return;
+    await cubit.sendMessage('Review this meeting excerpt', transcript: part);
   }
 
   Widget _buildMessages(BuildContext context, ChatLoaded state) {
@@ -187,7 +282,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     final lastMessage = state.messages.isNotEmpty ? state.messages.last : null;
-    final showTyping = state.isSending &&
+    final showTyping =
+        state.isSending &&
         (lastMessage == null || lastMessage.role == ChatRole.user);
 
     return ListView.builder(
@@ -211,10 +307,24 @@ class _ChatScreenState extends State<ChatScreen> {
             constraints: const BoxConstraints(maxWidth: 800),
             child: MessageBubble(
               message: message,
-              onRetry: () => context.read<ChatCubit>().retryLastMessage(),
-              onDelete: () => context.read<ChatCubit>().deleteFailedMessage(),
-              onEdit: message.role == ChatRole.user
-                  ? (newText) => context.read<ChatCubit>().editMessage(message.id, newText)
+              onRetry: null,
+              onDelete: null,
+              onChoice: !state.isBusy && index == state.messages.length - 1
+                  ? (choice) {
+                      context.read<ChatCubit>().selectChoice(
+                        message.id,
+                        choice,
+                      );
+                    }
+                  : null,
+              onEdit:
+                  !state.isBusy &&
+                      message.role == ChatRole.user &&
+                      state.messages.any((m) => m.id == 'ai-${message.id}')
+                  ? (newText) => context.read<ChatCubit>().editMessage(
+                      message.id,
+                      newText,
+                    )
                   : null,
               onReply: (quotedText) {
                 _chatInputKey.currentState?.addQuote(quotedText);
@@ -226,7 +336,12 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildChatHeader(BuildContext context, ChatLoaded state, bool isMobile, bool showSidebarToggle) {
+  Widget _buildChatHeader(
+    BuildContext context,
+    ChatLoaded state,
+    bool isMobile,
+    bool showSidebarToggle,
+  ) {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -235,24 +350,43 @@ class _ChatScreenState extends State<ChatScreen> {
           if (isMobile)
             IconButton(
               onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-              icon: Icon(Icons.menu, color: theme.colorScheme.onSurface, size: 22),
+              icon: Icon(
+                Icons.menu,
+                color: theme.colorScheme.onSurface,
+                size: 22,
+              ),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
             ),
           if (showSidebarToggle)
             IconButton(
               onPressed: () => setState(() => _isSidebarOpen = !_isSidebarOpen),
-              icon: Icon(_isSidebarOpen ? Icons.menu_open : Icons.menu, color: theme.colorScheme.onSurface.withOpacity(0.7), size: 22),
+              icon: Icon(
+                _isSidebarOpen ? Icons.menu_open : Icons.menu,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                size: 22,
+              ),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
             ),
           if (isMobile || showSidebarToggle) const SizedBox(width: 12),
-          Text('AI Assistant', style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 15, fontWeight: FontWeight.w600)),
+          Text(
+            'AI Assistant',
+            style: TextStyle(
+              color: theme.colorScheme.onSurface,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const Spacer(),
           if (state.messages.isNotEmpty)
             IconButton(
               onPressed: () => context.read<ChatCubit>().clearChat(),
-              icon: Icon(Icons.refresh, color: theme.colorScheme.onSurface.withOpacity(0.6), size: 20),
+              icon: Icon(
+                Icons.refresh,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                size: 20,
+              ),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
             ),
@@ -264,7 +398,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildEmptyState(BuildContext context) {
     final theme = Theme.of(context);
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -274,26 +408,62 @@ class _ChatScreenState extends State<ChatScreen> {
               height: 80,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: LinearGradient(colors: [AppColors.primary.withOpacity(0.15), AppColors.secondary.withOpacity(0.15)]),
+                gradient: LinearGradient(
+                  colors: [
+                    AppColors.primary.withValues(alpha: 0.15),
+                    AppColors.secondary.withValues(alpha: 0.15),
+                  ],
+                ),
               ),
-              child: const Center(child: Icon(Icons.auto_awesome, color: AppColors.primary, size: 36)),
+              child: const Center(
+                child: Icon(
+                  Icons.auto_awesome,
+                  color: AppColors.primary,
+                  size: 36,
+                ),
+              ),
             ),
             const SizedBox(height: 24),
-            Text('How can I help you?', style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 20, fontWeight: FontWeight.bold)),
+            Text(
+              'How can I help you?',
+              style: TextStyle(
+                color: theme.colorScheme.onSurface,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             const SizedBox(height: 8),
             Text(
               'Ask me anything about your projects,\ncommits, bugs, or team.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5), fontSize: 13, height: 1.5),
+              style: TextStyle(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                fontSize: 13,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 32),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               alignment: WrapAlignment.center,
-              children: ['Show me the dependency chain for Task #1847', 'Why is Sprint 14 delayed?', 'Show recent bugs', 'Who worked on auth?'].map((s) {
-                return _Suggestion(text: s, onTap: () => context.read<ChatCubit>().sendMessage(s));
-              }).toList(),
+              children:
+                  [
+                    'Show recent project activity',
+                    'Summarize open blockers',
+                    'Show recent bugs',
+                    'What changed recently?',
+                    if (MeetingContractRepository.enabled) ...[
+                      'Start a meeting',
+                      'Which requirements have changed?',
+                      'Which questions are still open on my project?',
+                    ],
+                  ].map((s) {
+                    return _Suggestion(
+                      text: s,
+                      onTap: () => context.read<ChatCubit>().sendMessage(s),
+                    );
+                  }).toList(),
             ),
           ],
         ),
@@ -311,11 +481,19 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             const Icon(Icons.error_outline, color: AppColors.error, size: 48),
             const SizedBox(height: 16),
-            Text(message, textAlign: TextAlign.center, style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.7))),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
+            ),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: () => context.read<ChatCubit>().loadChat(),
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+              ),
               child: const Text('Retry'),
             ),
           ],
@@ -344,9 +522,17 @@ class _Suggestion extends StatelessWidget {
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: theme.dividerColor.withOpacity(0.5)),
+            border: Border.all(
+              color: theme.dividerColor.withValues(alpha: 0.5),
+            ),
           ),
-          child: Text(text, style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.8), fontSize: 12)),
+          child: Text(
+            text,
+            style: TextStyle(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+              fontSize: 12,
+            ),
+          ),
         ),
       ),
     );

@@ -1,0 +1,50 @@
+# Python cache
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+**/.venv/
+
+# Git
+.git/
+**/.git/
+
+# Environment files
+**/.env
+**/.env.*
+!**/.env.example
+
+# Private keys and credentials
+**/*.pem
+**/*.key
+**/*.pfx
+**/*.p12
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+**/*.log
+
+# OS files
+**/.DS_Store
+**/Thumbs.db
+
+# Build artifacts
+build/
+dist/
+**/*.egg-info/
+htmlcov/
+.coverage
+
+# Evaluation artifacts
+eval_results.csv

@@ -8,7 +8,7 @@ class ChatLocalStorageService {
   static final ChatLocalStorageService instance = ChatLocalStorageService._();
 
   static const _keySessions = 'cached_chat_sessions';
-  
+
   String _messagesKey(String sessionId) => 'cached_chat_messages_$sessionId';
 
   Future<void> saveSessions(List<ChatSession> sessions) async {
@@ -29,7 +29,10 @@ class ChatLocalStorageService {
     }
   }
 
-  Future<void> saveMessages(String sessionId, List<ChatMessage> messages) async {
+  Future<void> saveMessages(
+    String sessionId,
+    List<ChatMessage> messages,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     final jsonList = messages.map((m) => m.toJson()).toList();
     await prefs.setString(_messagesKey(sessionId), jsonEncode(jsonList));

@@ -1,7 +1,8 @@
 import { useMemo, useSyncExternalStore } from 'react';
 
-// Tiny history router (no dependency). When the app grows, swap it for react-router-dom:
-// the same three things exist there: <Link>, navigate(), useLocation().
+// Tiny history router (no dependency). Routes are always expressed without the deployment
+// prefix (for example '/login'); this adapter adds/removes Vite's configured base path.
+const BASE_PATH = import.meta.env.BASE_URL.replace(/\/$/, '');
 const listeners = new Set();
 const notify = () => listeners.forEach((listener) => listener());
 
@@ -14,10 +15,24 @@ function subscribe(listener) {
   };
 }
 
+function withBasePath(to) {
+  if (typeof to !== 'string' || !to.startsWith('/') || !BASE_PATH) return to;
+  if (to === BASE_PATH || to.startsWith(`${BASE_PATH}/`) || to.startsWith(`${BASE_PATH}?`) || to.startsWith(`${BASE_PATH}#`)) return to;
+  return `${BASE_PATH}${to}`;
+}
+
+function withoutBasePath(pathname) {
+  if (!BASE_PATH) return pathname;
+  if (pathname === BASE_PATH || pathname === `${BASE_PATH}/`) return '/';
+  if (pathname.startsWith(`${BASE_PATH}/`)) return pathname.slice(BASE_PATH.length) || '/';
+  return pathname;
+}
+
 const snapshot = () => window.location.pathname + window.location.search;
 
 export function navigate(to, { replace = false } = {}) {
-  const url = new URL(to, window.location.origin);
+  const destination = withBasePath(to);
+  const url = new URL(destination, window.location.origin);
   if (url.origin !== window.location.origin) return; // in-app navigation only
   const next = url.pathname + url.search + url.hash;
   const current = window.location.pathname + window.location.search + window.location.hash;
@@ -31,7 +46,7 @@ export function useLocation() {
   return useMemo(() => {
     const url = new URL(raw, window.location.origin);
     return {
-      pathname: url.pathname.replace(/\/+$/, '') || '/',
+      pathname: withoutBasePath(url.pathname).replace(/\/+$/, '') || '/',
       search: url.search,
       params: new URLSearchParams(url.search),
     };
@@ -39,6 +54,7 @@ export function useLocation() {
 }
 
 export function Link({ to, replace = false, onClick, children, ...rest }) {
+  const href = withBasePath(to);
   const handleClick = (event) => {
     onClick?.(event);
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -46,7 +62,7 @@ export function Link({ to, replace = false, onClick, children, ...rest }) {
     navigate(to, { replace });
   };
   return (
-    <a href={to} onClick={handleClick} {...rest}>
+    <a href={href} onClick={handleClick} {...rest}>
       {children}
     </a>
   );

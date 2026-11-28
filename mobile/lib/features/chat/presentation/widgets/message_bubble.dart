@@ -6,6 +6,8 @@ import 'package:syntrace/features/chat/presentation/widgets/ai_progress_steps.da
 import 'package:syntrace/features/chat/presentation/widgets/jira_cards_list.dart';
 
 import 'chat_sources_list.dart';
+import 'package:syntrace/features/meetings/data/repositories/meeting_contract_repository.dart';
+import 'package:syntrace/features/meetings/presentation/screens/meeting_contract_screen.dart';
 
 class MessageBubble extends StatefulWidget {
   final ChatMessage message;
@@ -13,6 +15,7 @@ class MessageBubble extends StatefulWidget {
   final VoidCallback? onDelete;
   final Function(String newText)? onEdit;
   final Function(String quotedText)? onReply;
+  final ValueChanged<String>? onChoice;
 
   const MessageBubble({
     super.key,
@@ -21,6 +24,7 @@ class MessageBubble extends StatefulWidget {
     this.onDelete,
     this.onEdit,
     this.onReply,
+    this.onChoice,
   });
 
   @override
@@ -93,7 +97,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                     icon: const Icon(Icons.edit_outlined, size: 18),
                     color: Theme.of(
                       context,
-                    ).colorScheme.onSurface.withOpacity(0.5),
+                    ).colorScheme.onSurface.withValues(alpha: 0.5),
                     onPressed: () => _showEditDialog(context),
                   ),
                   const SizedBox(width: 4),
@@ -136,8 +140,9 @@ class _MessageBubbleState extends State<MessageBubble> {
             ElevatedButton(
               onPressed: () {
                 Navigator.pop(dialogContext);
-                if (widget.onEdit != null)
+                if (widget.onEdit != null) {
                   widget.onEdit!(controller.text.trim());
+                }
               },
               child: const Text('Save'),
             ),
@@ -193,7 +198,7 @@ class _MessageBubbleState extends State<MessageBubble> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: widget.message.hasError
-            ? AppColors.error.withOpacity(0.7)
+            ? AppColors.error.withValues(alpha: 0.7)
             : AppColors.primary,
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(18),
@@ -211,7 +216,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.1),
+                  color: Colors.black.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                   border: const Border(
                     left: BorderSide(color: Colors.white70, width: 3),
@@ -251,7 +256,7 @@ class _MessageBubbleState extends State<MessageBubble> {
       return Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: AppColors.error.withOpacity(0.08),
+          color: AppColors.error.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
@@ -273,7 +278,7 @@ class _MessageBubbleState extends State<MessageBubble> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withOpacity(0.5),
+        color: theme.colorScheme.surface.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -296,6 +301,36 @@ class _MessageBubbleState extends State<MessageBubble> {
             const SizedBox(height: 4),
             _BlinkingCursor(color: theme.colorScheme.onSurface),
           ],
+          if (!widget.message.isStreaming &&
+              widget.message.choices.isNotEmpty &&
+              widget.onChoice != null) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final choice in widget.message.choices)
+                  OutlinedButton(
+                    onPressed: () => widget.onChoice!(choice),
+                    child: Text(choice),
+                  ),
+              ],
+            ),
+          ],
+          if (MeetingContractRepository.enabled &&
+              !widget.message.isStreaming &&
+              widget.message.meetingSourceId != null)
+            OutlinedButton.icon(
+              icon: const Icon(Icons.rate_review_outlined),
+              label: const Text('Open meeting review'),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => MeetingContractScreen(
+                    initialMeetingId: widget.message.meetingSourceId,
+                  ),
+                ),
+              ),
+            ),
           if (widget.message.sources.isNotEmpty) ...[
             const SizedBox(height: 12),
             ChatSourcesList(sources: widget.message.sources),
@@ -328,7 +363,7 @@ class _MessageBubbleState extends State<MessageBubble> {
         height: 1.4,
       ),
       p: TextStyle(
-        color: theme.colorScheme.onSurface.withOpacity(0.85),
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
         fontSize: 14,
         height: 1.6,
       ),
@@ -353,7 +388,7 @@ class _MessageBubbleState extends State<MessageBubble> {
         borderRadius: BorderRadius.circular(8),
       ),
       blockquoteDecoration: BoxDecoration(
-        color: AppColors.primary.withOpacity(0.08),
+        color: AppColors.primary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
         border: const Border(
           right: BorderSide(color: AppColors.primary, width: 3),

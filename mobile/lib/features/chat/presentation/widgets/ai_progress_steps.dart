@@ -16,7 +16,7 @@ class AiProgressSteps extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withOpacity(0.3),
+        color: theme.colorScheme.surface.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -33,7 +33,7 @@ class AiProgressSteps extends StatelessWidget {
                     step.label,
                     style: TextStyle(
                       color: step.isDone
-                          ? theme.colorScheme.onSurface.withOpacity(0.6)
+                          ? theme.colorScheme.onSurface.withValues(alpha: 0.6)
                           : theme.colorScheme.onSurface,
                       fontSize: 13,
                       fontWeight: step.isDone
@@ -52,11 +52,7 @@ class AiProgressSteps extends StatelessWidget {
 
   Widget _buildIcon(ProgressStep step) {
     if (step.isDone) {
-      return const Icon(
-        Icons.check,
-        color: AppColors.secondary,
-        size: 14,
-      );
+      return const Icon(Icons.check, color: AppColors.secondary, size: 14);
     }
     return const SizedBox(
       width: 14,

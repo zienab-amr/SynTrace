@@ -125,7 +125,7 @@ class _FilterChip extends StatelessWidget {
           border: Border.all(
             color: isSelected
                 ? color
-                : theme.dividerColor.withOpacity(0.5),
+                : theme.dividerColor.withValues(alpha: 0.5),
           ),
         ),
         child: Text(
@@ -133,7 +133,7 @@ class _FilterChip extends StatelessWidget {
           style: TextStyle(
             color: isSelected
                 ? Colors.white
-                : theme.colorScheme.onSurface.withOpacity(0.7),
+                : theme.colorScheme.onSurface.withValues(alpha: 0.7),
             fontSize: 12,
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
           ),
@@ -155,7 +155,7 @@ class _ClearButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: AppColors.error.withOpacity(0.15),
+          color: AppColors.error.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(20),
         ),
         child: const Row(

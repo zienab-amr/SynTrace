@@ -7,7 +7,7 @@ import 'github_information_message.dart';
 class GitHubActivityMetadata extends StatelessWidget {
   final GitHubActivityItem item;
 
-  const GitHubActivityMetadata({required this.item});
+  const GitHubActivityMetadata({super.key, required this.item});
 
   String? _formatDate(BuildContext context, DateTime? value) {
     if (value == null) return null;
@@ -30,13 +30,21 @@ class GitHubActivityMetadata extends StatelessWidget {
       children: [
         GitHubMetadataRow(label: 'Author', value: item.authorLogin),
 
-        GitHubMetadataRow(label: 'Commit SHA', value: item.sha, selectable: true),
+        GitHubMetadataRow(
+          label: 'Commit SHA',
+          value: item.sha,
+          selectable: true,
+        ),
 
         GitHubMetadataRow(label: 'Head branch', value: item.headRef),
 
         GitHubMetadataRow(label: 'Base branch', value: item.baseRef),
 
-        GitHubMetadataRow(label: 'Head SHA', value: item.headSha, selectable: true),
+        GitHubMetadataRow(
+          label: 'Head SHA',
+          value: item.headSha,
+          selectable: true,
+        ),
 
         GitHubMetadataRow(
           label: 'Merge commit',

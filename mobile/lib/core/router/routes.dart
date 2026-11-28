@@ -4,9 +4,12 @@ class AppRoutes {
   // Auth
   static const String splash = '/';
   static const String login = '/login';
+  static const String forgotPassword = '/forgot-password';
   static const String signup = '/signup';
   static const String verifyOtp = '/verify-otp';
   static const String onboarding = '/onboarding';
+  static const String workspace = '/workspace';
+  static const String intro = '/intro';
 
   // Main
   static const String dashboard = '/dashboard';
@@ -18,11 +21,10 @@ class AppRoutes {
   static const String projects = '/projects';
   static const String tasks = '/tasks';
   static const String meetings = '/meetings';
-  static const String jiraCallback = '/settings/jira-callback';
+  static const String jiraCallback = '/jira/callback';
   static const String githubCallback = '/github/callback';
-    
-  static const String jiraActivity = '/jira-activity';
 
+  static const String jiraActivity = '/jira-activity';
 
   // Roles
   static const String roles = '/roles';
@@ -32,7 +34,7 @@ class AppRoutes {
 
   static String profileDetailsById(String id) => '/profile/$id';
   static String projectDetailsById(String id) => '/projects/$id';
-    static const String createProject = '/projects/create';
+  static const String createProject = '/projects/create';
   static const String team = '/team';
   static const String developers = '/developers';
 }

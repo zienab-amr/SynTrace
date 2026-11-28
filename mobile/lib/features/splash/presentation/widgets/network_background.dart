@@ -11,15 +11,30 @@ class SplashBackground extends StatefulWidget {
 
 class _SplashBackgroundState extends State<SplashBackground>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+  late final AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
+
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 4),
-    )..repeat();
+      duration: const Duration(milliseconds: 2400),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+
+    if (reduceMotion) {
+      _controller.stop();
+      _controller.value = 0.35;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
   }
 
   @override
@@ -31,28 +46,27 @@ class _SplashBackgroundState extends State<SplashBackground>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
     final isDark = theme.brightness == Brightness.dark;
 
-    final glowColor = isDark
-        ? AppColors.primary
-        : AppColors.primaryDark;
+    final glowColor = isDark ? AppColors.primary : AppColors.primaryDark;
 
-    final nodeColor = isDark
-        ? AppColors.secondary
-        : AppColors.secondaryDark;
+    final nodeColor = isDark ? AppColors.secondary : AppColors.secondaryDark;
 
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return CustomPaint(
-          painter: NetworkPainter(
-            glowColor: glowColor,
-            nodeColor: nodeColor,
-            animationValue: _controller.value,
-          ),
-          size: Size.infinite,
-        );
-      },
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return CustomPaint(
+            painter: NetworkPainter(
+              glowColor: glowColor,
+              nodeColor: nodeColor,
+              animationValue: _controller.value,
+            ),
+            size: Size.infinite,
+          );
+        },
+      ),
     );
   }
 }

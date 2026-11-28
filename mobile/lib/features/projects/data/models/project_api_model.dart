@@ -114,13 +114,24 @@ class ProjectApiModel extends Equatable {
       clientId: clientId,
       description: json['description'] as String?,
       jiraProjectId: json['jiraProjectId'] as String?,
-      status: json['status'] == null
+      status: (json['projectStatus'] ?? json['status']) == null
           ? null
-          : ProjectApiStatus.fromJson(json['status']),
+          : ProjectApiStatus.fromJson(json['projectStatus'] ?? json['status']),
     );
   }
 
   bool get hasJiraProject => jiraProjectId?.isNotEmpty ?? false;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'projectId': id,
+      'projectName': name,
+      'clientId': clientId,
+      'description': description,
+      'jiraProjectId': jiraProjectId,
+      'projectStatus': status?.name,
+    };
+  }
 
   @override
   List<Object?> get props => [
@@ -145,10 +156,16 @@ class JiraProjectOption extends Equatable {
   });
 
   factory JiraProjectOption.fromJson(Map<String, dynamic> json) {
+    final id = json['jiraProjectId'] as String?;
+    if (id == null || id.trim().isEmpty) {
+      throw const FormatException('Missing Jira project ID.');
+    }
+    final key = (json['key'] as String?)?.trim() ?? '';
+    final name = (json['name'] as String?)?.trim() ?? '';
     return JiraProjectOption(
-      id: json['jiraProjectId'] as String,
-      key: json['key'] as String,
-      name: json['name'] as String,
+      id: id,
+      key: key,
+      name: name.isNotEmpty ? name : (key.isNotEmpty ? key : id),
     );
   }
 

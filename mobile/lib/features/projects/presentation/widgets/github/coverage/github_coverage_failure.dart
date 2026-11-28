@@ -48,5 +48,4 @@ class GitHubCoverageFailure extends StatelessWidget {
       ),
     );
   }
-
 }

@@ -1,7 +1,59 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 class ApiEndpoints {
   ApiEndpoints._();
 
-  static const String baseUrl = 'https://jackeline-cibarious-supergallantly.ngrok-free.dev/api';
+  // Web defaults to the gateway's same-origin API; native keeps the
+  // existing absolute development URL. Both can be overridden at build time.
+  static const String configuredBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: kIsWeb
+        ? '/api'
+        : 'https://jackeline-cibarious-supergallantly.ngrok-free.dev/api',
+  );
+
+  // Resolve root-relative web URLs before passing them to Dio or SignalR.
+  static final String baseUrl = resolveApiBaseUrl(
+    configuredBaseUrl,
+    isWeb: kIsWeb,
+    browserUri: Uri.base,
+  );
+
+  static String resolveApiBaseUrl(
+    String value, {
+    required bool isWeb,
+    required Uri browserUri,
+  }) {
+    final raw = value.trim();
+    final parsed = Uri.tryParse(raw);
+    if (parsed == null || raw.isEmpty || raw.contains('\\')) {
+      throw const FormatException('Invalid API_BASE_URL.');
+    }
+
+    final Uri uri;
+    if (parsed.hasScheme) {
+      uri = parsed;
+    } else if (isWeb && raw.startsWith('/') && !raw.startsWith('//')) {
+      uri = browserUri.resolveUri(parsed);
+    } else {
+      throw const FormatException(
+        'Use an absolute API URL on mobile or a root-relative URL on web.',
+      );
+    }
+
+    final path = uri.path.replaceFirst(RegExp(r'/+$'), '');
+    if ((uri.scheme != 'https' && uri.scheme != 'http') ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty ||
+        uri.hasQuery ||
+        uri.hasFragment ||
+        !path.endsWith('/api')) {
+      throw const FormatException(
+        'API_BASE_URL must be an HTTP(S) URL ending in /api.',
+      );
+    }
+    return uri.replace(path: path).toString();
+  }
 
   static const String login = '/Auth/login';
   static const String register = '/Auth/register';
@@ -84,9 +136,9 @@ class ApiEndpoints {
       '/integrations/github/projects/$projectId/repository';
   static String githubProjectSync(String projectId) =>
       '/integrations/github/projects/$projectId/sync';
-  // ═══════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // Knowledge Sources & Meeting Notes
-  // ═══════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   static const String clients = '/Client';
 
@@ -104,4 +156,39 @@ class ApiEndpoints {
 
   static String knowledgeSourceRetry(String id, int version) =>
       '/knowledge/sources/$id/versions/$version/retry';
+
+  static String projectMembers(String projectId) =>
+      '$projects/${Uri.encodeComponent(projectId)}/members';
+
+  // Current employee profile
+  static const String myProfile = '/Employee/me';
+
+  // Integration identities
+  static const String myIntegrationIdentities = '/integrations/identities/me';
+
+  // Security audit
+  static const String auditLogs = '/audit';
+
+  // Clients
+  static String clientById(String id) => '$clients/${Uri.encodeComponent(id)}';
+
+  // Knowledge source operations
+  static String knowledgeSourceReview(String id, int version) =>
+      '${knowledgeSourceById(id)}/versions/$version/review';
+
+  static String knowledgeSourceExtraction(String id, int version) =>
+      '${knowledgeSourceById(id)}/versions/$version/extraction';
+
+  static String knowledgeSourceProject(String id) =>
+      '${knowledgeSourceById(id)}/project';
+
+  static String signalRBaseFor(String absoluteApiUrl) {
+    final uri = Uri.parse(absoluteApiUrl);
+    final path = uri.path.replaceFirst(RegExp(r'/api/?$'), '');
+    return uri.replace(path: path).toString().replaceFirst(RegExp(r'/$'), '');
+  }
+
+  static String get signalRBaseUrl => signalRBaseFor(baseUrl);
+
+  static String get projectStatusHub => '$signalRBaseUrl/hubs/project-status';
 }

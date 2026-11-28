@@ -45,10 +45,10 @@ class ApiClient {
       ),
     );
     _dio.interceptors.addAll([
-      AuthInterceptor(),
+      AuthInterceptor(dio: _dio),
       LoggerInterceptor(),
-      ErrorInterceptor(),
       RetryInterceptor(dio: _dio),
+      ErrorInterceptor(),
     ]);
 
     _isInitialized = true;
@@ -62,7 +62,7 @@ class ApiClient {
   // ═══════════════════════════════════════════════════════
   // Helper: GET
   // ═══════════════════════════════════════════════════════
-   Future<Response> get(
+  Future<Response> get(
     String path, {
     Map<String, dynamic>? queryParameters,
     Options? options,

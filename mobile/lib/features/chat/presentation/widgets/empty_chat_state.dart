@@ -31,8 +31,8 @@ class EmptyChatState extends StatelessWidget {
                 shape: BoxShape.circle,
                 gradient: LinearGradient(
                   colors: [
-                    AppColors.primary.withOpacity(0.15),
-                    AppColors.secondary.withOpacity(0.15),
+                    AppColors.primary.withValues(alpha: 0.15),
+                    AppColors.secondary.withValues(alpha: 0.15),
                   ],
                 ),
               ),
@@ -62,7 +62,7 @@ class EmptyChatState extends StatelessWidget {
               'Ask me anything about your projects,\ncommits, bugs, or team.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: theme.colorScheme.onSurface.withOpacity(0.5),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                 fontSize: 13,
                 height: 1.5,
               ),
@@ -109,13 +109,13 @@ class _SuggestionChip extends StatelessWidget {
             color: theme.colorScheme.surface,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: theme.dividerColor.withOpacity(0.5),
+              color: theme.dividerColor.withValues(alpha: 0.5),
             ),
           ),
           child: Text(
             text,
             style: TextStyle(
-              color: theme.colorScheme.onSurface.withOpacity(0.8),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
               fontSize: 12,
             ),
           ),

@@ -9,7 +9,7 @@ class OnboardingInitial extends OnboardingState {
   const OnboardingInitial();
 }
 
-// ═══ ضفنا اللودينج هنا ═══
+// Onboarding loading state
 class OnboardingLoading extends OnboardingState {
   const OnboardingLoading();
 }

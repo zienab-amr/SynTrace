@@ -1,8 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:syntrace/core/models/user_model.dart';
 
-class UserProfileModel extends Equatable
-{
+class UserProfileModel extends Equatable {
   final String id;
   final String fullName;
   final String email;
@@ -68,8 +67,7 @@ class UserProfileModel extends Equatable
   }
 
   @override
-  List<Object?> get props => 
-  [
+  List<Object?> get props => [
     id,
     fullName,
     email,

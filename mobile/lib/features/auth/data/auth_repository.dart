@@ -31,7 +31,10 @@ class AuthRepository {
         statusCode: statusCode,
       );
     } on DioException catch (error) {
-      return ApiResponse.failure(message: _extractError(error));
+      return ApiResponse.failure(
+        message: _extractError(error),
+        statusCode: error.response?.statusCode,
+      );
     } catch (error) {
       return ApiResponse.failure(message: 'Unexpected login error: $error');
     }
@@ -62,18 +65,26 @@ class AuthRepository {
         statusCode: statusCode,
       );
     } on DioException catch (error) {
-      return ApiResponse.failure(message: _extractError(error));
+      return ApiResponse.failure(
+        message: _extractError(error),
+        statusCode: error.response?.statusCode,
+      );
     } catch (error) {
-      return ApiResponse.failure(message: 'Unexpected registration error: $error');
+      return ApiResponse.failure(
+        message: 'Unexpected registration error: $error',
+      );
     }
   }
 
-  Future<ApiResponse<bool>> sendOtp(String email) async {
+  Future<ApiResponse<bool>> sendOtp(
+    String email, {
+    OtpPurpose purpose = OtpPurpose.registration,
+  }) async {
     try {
       final response = await ApiClient.instance.post(
         ApiEndpoints.sendOtp,
         data: {
-          'request': {'email': email},
+          'request': {'email': email, 'purpose': purpose.name},
         },
       );
       final statusCode = response.statusCode;
@@ -83,18 +94,22 @@ class AuthRepository {
       return ApiResponse.failure(
         message: _messageFromData(
           response.data,
-          fallback: 'Could not send the verification code${statusCode == null ? '' : ' (HTTP $statusCode)'}.',
+          fallback:
+              'Could not send the verification code${statusCode == null ? '' : ' (HTTP $statusCode)'}.',
         ),
         statusCode: statusCode,
       );
     } on DioException catch (error) {
-      return ApiResponse.failure(message: _extractError(error));
+      return ApiResponse.failure(
+        message: _extractError(error),
+        statusCode: error.response?.statusCode,
+      );
     } catch (error) {
       return ApiResponse.failure(message: 'Unexpected OTP error: $error');
     }
   }
 
-  Future<ApiResponse<bool>> verifyOtp({
+  Future<ApiResponse<OtpVerificationResult>> verifyOtp({
     required String email,
     required String otp,
   }) async {
@@ -107,25 +122,31 @@ class AuthRepository {
       );
       final statusCode = response.statusCode;
       final data = response.data;
-      final valid = data == true ||
-          (data is Map &&
-              (data['isValid'] == true ||
-                  data['valid'] == true ||
-                  data['data'] == true));
-      if (_isSuccessStatus(statusCode) && valid) {
-        return ApiResponse.success(data: true, statusCode: statusCode);
+      if (_isSuccessStatus(statusCode) && data is Map) {
+        final result = OtpVerificationResult.fromJson(
+          Map<String, dynamic>.from(data),
+        );
+        if (result.verified) {
+          return ApiResponse.success(data: result, statusCode: statusCode);
+        }
       }
       final fallback = _isSuccessStatus(statusCode)
           ? 'The verification code is incorrect or expired.'
-          : 'Could not verify the code${statusCode == null ? '' : ' (HTTP $statusCode)'}.'.toString();
+          : 'Could not verify the code${statusCode == null ? '' : ' (HTTP $statusCode)'}.'
+                .toString();
       return ApiResponse.failure(
         message: _messageFromData(data, fallback: fallback),
         statusCode: statusCode,
       );
     } on DioException catch (error) {
-      return ApiResponse.failure(message: _extractError(error));
+      return ApiResponse.failure(
+        message: _extractError(error),
+        statusCode: error.response?.statusCode,
+      );
     } catch (error) {
-      return ApiResponse.failure(message: 'Unexpected verification error: $error');
+      return ApiResponse.failure(
+        message: 'Unable to verify the code. Please request a new code.',
+      );
     }
   }
 
@@ -151,9 +172,36 @@ class AuthRepository {
         statusCode: response.statusCode,
       );
     } on DioException catch (error) {
-      return ApiResponse.failure(message: _extractError(error));
+      return ApiResponse.failure(
+        message: _extractError(error),
+        statusCode: error.response?.statusCode,
+      );
     } catch (error) {
       return ApiResponse.failure(message: 'Unexpected profile error: $error');
+    }
+  }
+
+  Future<ApiResponse<bool>> resetPassword(ResetPasswordRequest request) async {
+    try {
+      final response = await ApiClient.instance.post(
+        ApiEndpoints.resetPassword,
+        data: request.toJson(),
+      );
+      if (_isSuccessStatus(response.statusCode)) {
+        return ApiResponse.success(data: true, statusCode: response.statusCode);
+      }
+      return ApiResponse.failure(
+        message: 'Password reset failed. Check your code and password.',
+        statusCode: response.statusCode,
+      );
+    } on DioException catch (error) {
+      return ApiResponse.failure(
+        message:
+            'Unable to confirm password reset. Check your connection or try signing in.',
+        statusCode: error.response?.statusCode,
+      );
+    } catch (_) {
+      return ApiResponse.failure(message: 'Unable to confirm password reset.');
     }
   }
 
@@ -190,10 +238,13 @@ class AuthRepository {
         for (final entry in errors.entries) {
           final value = entry.value;
           final details = value is List
-              ? value.whereType<String>().where((item) => item.trim().isNotEmpty).toList()
+              ? value
+                    .whereType<String>()
+                    .where((item) => item.trim().isNotEmpty)
+                    .toList()
               : value is String && value.trim().isNotEmpty
-                  ? [value.trim()]
-                  : <String>[];
+              ? [value.trim()]
+              : <String>[];
           if (details.isNotEmpty) {
             messages.add('${entry.key}: ${details.join(' ')}');
           }

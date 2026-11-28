@@ -12,91 +12,73 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ProjectCard(
-            project: project,
-            onTap: onTap,
-          ),
+          body: ProjectCard(project: project, onTap: onTap),
         ),
       ),
     );
   }
 
-  testWidgets(
-    'ProjectCard displays linked Jira status',
-    (tester) async {
-      const project = ProjectApiModel(
-        id: 'p1',
-        name: 'ERP Platform',
-        clientId: 'c1',
-        jiraProjectId: 'jira1',
-        status: ProjectApiStatus.inProgress,
-      );
+  testWidgets('ProjectCard displays linked Jira status', (tester) async {
+    const project = ProjectApiModel(
+      id: 'p1',
+      name: 'ERP Platform',
+      clientId: 'c1',
+      jiraProjectId: 'jira1',
+      status: ProjectApiStatus.inProgress,
+    );
 
-      await pumpProjectCard(tester, project);
+    await pumpProjectCard(tester, project);
 
-      expect(find.text('ERP Platform'), findsOneWidget);
-      expect(find.text('Jira Linked'), findsOneWidget);
-      expect(find.text('In Progress'), findsOneWidget);
-    },
-  );
+    expect(find.text('ERP Platform'), findsOneWidget);
+    expect(find.text('Jira linked'), findsOneWidget);
+    expect(find.text('In Progress'), findsOneWidget);
+  });
 
-  testWidgets(
-    'ProjectCard handles missing description',
-    (tester) async {
-      const project = ProjectApiModel(
-        id: 'p2',
-        name: 'Test Project',
-        clientId: 'c1',
-      );
+  testWidgets('ProjectCard handles missing description', (tester) async {
+    const project = ProjectApiModel(
+      id: 'p2',
+      name: 'Test Project',
+      clientId: 'c1',
+    );
 
-      await pumpProjectCard(tester, project);
+    await pumpProjectCard(tester, project);
 
-      expect(
-        find.text('No description provided.'),
-        findsOneWidget,
-      );
+    expect(find.text('No description provided.'), findsOneWidget);
+    expect(find.text('Status unavailable'), findsOneWidget);
 
-      expect(find.text('Jira Not Linked'), findsOneWidget);
-    },
-  );
+    expect(find.text('Jira not linked'), findsOneWidget);
+  });
 
-  testWidgets(
-    'ProjectCard hides unknown project status',
-    (tester) async {
-      const project = ProjectApiModel(
-        id: 'p3',
-        name: 'Test Project',
-        clientId: 'c1',
-        status: ProjectApiStatus.unknown,
-      );
+  testWidgets('ProjectCard displays an explicit unknown status', (
+    tester,
+  ) async {
+    const project = ProjectApiModel(
+      id: 'p3',
+      name: 'Test Project',
+      clientId: 'c1',
+      status: ProjectApiStatus.unknown,
+    );
 
-      await pumpProjectCard(tester, project);
+    await pumpProjectCard(tester, project);
 
-      expect(find.text('Not Available'), findsNothing);
-    },
-  );
+    expect(find.text('Not Available'), findsOneWidget);
+    expect(find.text('In Progress'), findsNothing);
+  });
 
-  testWidgets(
-    'ProjectCard triggers onTap callback',
-    (tester) async {
-      bool tapped = false;
+  testWidgets('ProjectCard triggers onTap callback', (tester) async {
+    bool tapped = false;
 
-      const project = ProjectApiModel(
-        id: 'p4',
-        name: 'Clickable Project',
-        clientId: 'c1',
-      );
+    const project = ProjectApiModel(
+      id: 'p4',
+      name: 'Clickable Project',
+      clientId: 'c1',
+    );
 
-      await pumpProjectCard(
-        tester,
-        project,
-        onTap: () => tapped = true,
-      );
+    await pumpProjectCard(tester, project, onTap: () => tapped = true);
 
-      await tester.tap(find.byType(ProjectCard));
-      await tester.pump();
+    await tester.tap(find.byType(ProjectCard));
+    await tester.pump();
 
-      expect(tapped, isTrue);
-    },
-  );
+    expect(tapped, isTrue);
+  });
 }

@@ -28,8 +28,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await authService.logout();
-    setState({ status: 'anonymous', user: null });
+    try { await authService.logout(); }
+    finally { setState({ status: 'anonymous', user: null }); }
   }, []);
 
   const value = useMemo(() => ({ ...state, login, logout }), [state, login, logout]);

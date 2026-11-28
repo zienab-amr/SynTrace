@@ -8,7 +8,7 @@ import 'github_activity_link_feedback.dart';
 class GitHubJiraEvidenceSection extends StatelessWidget {
   final GitHubActivityItem item;
 
-  const GitHubJiraEvidenceSection({required this.item});
+  const GitHubJiraEvidenceSection({super.key, required this.item});
 
   @override
   Widget build(BuildContext context) {

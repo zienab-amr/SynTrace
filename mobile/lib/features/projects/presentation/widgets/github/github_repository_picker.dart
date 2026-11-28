@@ -108,7 +108,11 @@ class _GitHubRepositoryPickerState extends State<GitHubRepositoryPicker> {
 
                 const SizedBox(height: 20),
 
-                GitHubPickerSearch(controller: _searchController, query: _query, onChanged: (value) => setState(() => _query = value)),
+                GitHubPickerSearch(
+                  controller: _searchController,
+                  query: _query,
+                  onChanged: (value) => setState(() => _query = value),
+                ),
 
                 const SizedBox(height: 16),
 
@@ -134,7 +138,10 @@ class _GitHubRepositoryPickerState extends State<GitHubRepositoryPicker> {
     }
 
     if (state.repositoriesStatus == ProjectGitHubRequestStatus.failure) {
-      return GitHubPickerError(message: state.repositoriesError ?? 'Please try again.', onRetry: () => context.read<ProjectGitHubCubit>().loadRepositories());
+      return GitHubPickerError(
+        message: state.repositoriesError ?? 'Please try again.',
+        onRetry: () => context.read<ProjectGitHubCubit>().loadRepositories(),
+      );
     }
 
     if (state.repositories.isEmpty) {
@@ -157,6 +164,11 @@ class _GitHubRepositoryPickerState extends State<GitHubRepositoryPicker> {
       );
     }
 
-    return GitHubRepositoryList(repositories: repositories, total: state.repositories.length, onRefresh: () => context.read<ProjectGitHubCubit>().loadRepositories(), onSelected: (repository) => Navigator.pop(context, repository));
+    return GitHubRepositoryList(
+      repositories: repositories,
+      total: state.repositories.length,
+      onRefresh: () => context.read<ProjectGitHubCubit>().loadRepositories(),
+      onSelected: (repository) => Navigator.pop(context, repository),
+    );
   }
 }

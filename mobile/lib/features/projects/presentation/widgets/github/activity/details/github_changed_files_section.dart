@@ -7,7 +7,7 @@ import 'github_information_message.dart';
 class GitHubChangedFilesSection extends StatelessWidget {
   final GitHubActivityItem item;
 
-  const GitHubChangedFilesSection({required this.item});
+  const GitHubChangedFilesSection({super.key, required this.item});
 
   @override
   Widget build(BuildContext context) {

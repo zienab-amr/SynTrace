@@ -45,8 +45,9 @@ class ChatLoaded extends ChatState {
     return ChatLoaded(
       sessions: sessions ?? this.sessions,
       messages: messages ?? this.messages,
-      currentSessionId:
-          clearSession ? null : (currentSessionId ?? this.currentSessionId),
+      currentSessionId: clearSession
+          ? null
+          : (currentSessionId ?? this.currentSessionId),
       isSending: isSending ?? this.isSending,
       isStreaming: isStreaming ?? this.isStreaming,
       error: clearError ? null : (error ?? this.error),
@@ -59,13 +60,13 @@ class ChatLoaded extends ChatState {
 
   @override
   List<Object?> get props => [
-        sessions,
-        messages,
-        currentSessionId,
-        isSending,
-        isStreaming,
-        error,
-      ];
+    sessions,
+    messages,
+    currentSessionId,
+    isSending,
+    isStreaming,
+    error,
+  ];
 }
 
 class ChatErrorState extends ChatState {

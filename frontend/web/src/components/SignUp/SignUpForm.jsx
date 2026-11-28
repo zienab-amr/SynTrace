@@ -1,3 +1,4 @@
+import { assetUrl } from '../../lib/assetUrl.js';
 import { useId, useState } from 'react';
 import ThemeToggle from '../common/ThemeToggle.jsx';
 import LoginStage from '../Login/LoginStage.jsx';
@@ -96,7 +97,7 @@ export default function SignUpForm({ form, setField, onContinue }) {
       <section className="login__stage" aria-hidden="true"><LoginStage /></section>
       <section className="login__panel register__panel">
         <header className="login__brand">
-          <img src="/assets/syntrace-mark.webp" alt="" height="56" />
+          <img src={assetUrl('assets/syntrace-mark.webp')} alt="" height="56" />
           <span className="login__wordmark">SynTrace</span>
           <p>Connect. Understand. Trace.</p>
         </header>

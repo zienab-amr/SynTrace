@@ -228,7 +228,7 @@ class _ProjectGitHubIntegrationViewState
               onRefresh: _cubit.refreshIntegration,
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
 
             if (state.isRefreshing)
               const Padding(
@@ -259,7 +259,7 @@ class _ProjectGitHubIntegrationViewState
       }
 
       return const Padding(
-        padding: EdgeInsets.all(32),
+        padding: EdgeInsets.all(16),
         child: Center(child: CircularProgressIndicator()),
       );
     }
@@ -278,7 +278,7 @@ class _ProjectGitHubIntegrationViewState
         if (integration.isMapped) ...[
           GitHubLinkedRepositoryCard(integration: integration),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
 
           GitHubSyncCoverageSection(
             integration: integration,
@@ -288,7 +288,7 @@ class _ProjectGitHubIntegrationViewState
           ),
 
           if (_cubit.canManage) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
 
             GitHubManagementActions(
               state: state,

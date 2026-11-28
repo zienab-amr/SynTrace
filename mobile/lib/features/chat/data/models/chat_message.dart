@@ -38,6 +38,12 @@ class ChatMessage extends Equatable {
   final List<JiraCardModel> jiraCards;
   final List<ChatSourceModel> sources;
   final List<String> quotedExcerpts;
+  final List<String> choices;
+  final Map<String, dynamic>? meeting;
+  String? get meetingSourceId {
+    final value = meeting?['sourceId'];
+    return value is String && value.trim().isNotEmpty ? value : null;
+  }
 
   const ChatMessage({
     required this.id,
@@ -50,7 +56,19 @@ class ChatMessage extends Equatable {
     this.jiraCards = const [],
     this.sources = const [],
     this.quotedExcerpts = const [],
+    this.choices = const [],
+    this.meeting,
   });
+
+  static List<String> parseChoices(Object? value) {
+    if (value is! List) return const [];
+    final choices = <String>{};
+    for (final text in value.whereType<String>()) {
+      final choice = text.trim();
+      if (choice.isNotEmpty) choices.add(choice);
+    }
+    return List.unmodifiable(choices);
+  }
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     return ChatMessage(
@@ -60,16 +78,24 @@ class ChatMessage extends Equatable {
       timestamp: DateTime.parse(json['timestamp'] as String),
       isStreaming: json['isStreaming'] as bool? ?? false,
       hasError: json['hasError'] as bool? ?? false,
-      steps: (json['steps'] as List<dynamic>?)
+      steps:
+          (json['steps'] as List<dynamic>?)
               ?.map((e) => ProgressStep.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
-      jiraCards: (json['jiraCards'] as List<dynamic>?)
+      jiraCards:
+          (json['jiraCards'] as List<dynamic>?)
               ?.map((e) => JiraCardModel.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
       sources: ChatSourceModel.parseList(json['sources']),
-      quotedExcerpts: (json['quotedExcerpts'] as List<dynamic>?)
+      choices: parseChoices(
+        json['choices'] ??
+            (json['meeting'] is Map ? json['meeting']['choices'] : null),
+      ),
+      meeting: json['meeting'] is Map<String, dynamic> ? json['meeting'] : null,
+      quotedExcerpts:
+          (json['quotedExcerpts'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
           [],
@@ -88,6 +114,8 @@ class ChatMessage extends Equatable {
       'jiraCards': jiraCards.map((e) => e.toJson()).toList(),
       'sources': sources.map((e) => e.toJson()).toList(),
       'quotedExcerpts': quotedExcerpts,
+      'choices': choices,
+      if (meeting != null) 'meeting': meeting,
     };
   }
 
@@ -109,10 +137,24 @@ class ChatMessage extends Equatable {
       jiraCards: jiraCards,
       sources: sources,
       quotedExcerpts: quotedExcerpts ?? this.quotedExcerpts,
+      choices: choices,
+      meeting: meeting,
     );
   }
 
   @override
-  List<Object?> get props =>
-      [id, role, content, timestamp, isStreaming, hasError, steps, jiraCards, sources, quotedExcerpts];
+  List<Object?> get props => [
+    id,
+    role,
+    content,
+    timestamp,
+    isStreaming,
+    hasError,
+    steps,
+    jiraCards,
+    sources,
+    quotedExcerpts,
+    choices,
+    meeting,
+  ];
 }

@@ -34,7 +34,9 @@ class OnboardingNavigation extends StatelessWidget {
               icon: const Icon(Icons.arrow_back, size: 18),
               label: const Text('Back'),
               style: TextButton.styleFrom(
-                foregroundColor: theme.colorScheme.onSurface.withOpacity(0.7),
+                foregroundColor: theme.colorScheme.onSurface.withValues(
+                  alpha: 0.7,
+                ),
               ),
             ),
 
@@ -45,7 +47,9 @@ class OnboardingNavigation extends StatelessWidget {
             TextButton(
               onPressed: onSkip,
               style: TextButton.styleFrom(
-                foregroundColor: theme.colorScheme.onSurface.withOpacity(0.5),
+                foregroundColor: theme.colorScheme.onSurface.withValues(
+                  alpha: 0.5,
+                ),
               ),
               child: const Text('Skip'),
             ),

@@ -106,9 +106,19 @@ class RequirementModel extends Equatable {
 
   @override
   List<Object?> get props => [
-        id, title, description, type, status, priority, projectId,
-        createdById, linkedTaskIds, linkedCommitShas, createdAt, updatedAt,
-      ];
+    id,
+    title,
+    description,
+    type,
+    status,
+    priority,
+    projectId,
+    createdById,
+    linkedTaskIds,
+    linkedCommitShas,
+    createdAt,
+    updatedAt,
+  ];
 }
 
 enum RequirementType {

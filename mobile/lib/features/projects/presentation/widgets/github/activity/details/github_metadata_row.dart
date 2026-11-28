@@ -6,6 +6,7 @@ class GitHubMetadataRow extends StatelessWidget {
   final bool selectable;
 
   const GitHubMetadataRow({
+    super.key,
     required this.label,
     required this.value,
     this.selectable = false,

@@ -6,7 +6,7 @@ import 'github_information_message.dart';
 class GitHubCommitReferencesSection extends StatelessWidget {
   final GitHubActivityItem item;
 
-  const GitHubCommitReferencesSection({required this.item});
+  const GitHubCommitReferencesSection({super.key, required this.item});
 
   @override
   Widget build(BuildContext context) {
