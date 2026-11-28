@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:intl/intl.dart' show Bidi;
 import 'package:syntrace/core/theme/app_colors.dart';
 import 'package:syntrace/features/chat/data/models/chat_message.dart';
 import 'package:syntrace/features/chat/presentation/widgets/ai_progress_steps.dart';
 import 'package:syntrace/features/chat/presentation/widgets/jira_cards_list.dart';
 
 import 'chat_sources_list.dart';
+
 import 'package:syntrace/features/meetings/data/repositories/meeting_contract_repository.dart';
 import 'package:syntrace/features/meetings/presentation/screens/meeting_contract_screen.dart';
 
@@ -34,9 +37,22 @@ class MessageBubble extends StatefulWidget {
 class _MessageBubbleState extends State<MessageBubble> {
   String _selectedText = '';
 
-  TextDirection _getDirectionality(String text) {
-    final arabicRegex = RegExp(r'[\u0600-\u06FF]');
-    return arabicRegex.hasMatch(text) ? TextDirection.rtl : TextDirection.ltr;
+  TextDirection _getDirectionality(String text) =>
+      Bidi.startsWithRtl(text) ? TextDirection.rtl : TextDirection.ltr;
+
+  Future<void> _copyMessage() async {
+    try {
+      await Clipboard.setData(ClipboardData(text: widget.message.content));
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Message copied')));
+    } on PlatformException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not copy the message')),
+      );
+    }
   }
 
   @override
@@ -94,6 +110,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                 ],
                 if (isUser && widget.onEdit != null) ...[
                   IconButton(
+                    tooltip: 'Edit message',
                     icon: const Icon(Icons.edit_outlined, size: 18),
                     color: Theme.of(
                       context,
@@ -114,6 +131,24 @@ class _MessageBubbleState extends State<MessageBubble> {
                 ),
               ],
             ),
+            if (widget.message.content.trim().isNotEmpty &&
+                !widget.message.isStreaming)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (widget.onReply != null)
+                    IconButton(
+                      tooltip: 'Reply to message',
+                      icon: const Icon(Icons.reply, size: 18),
+                      onPressed: () => widget.onReply!(widget.message.content),
+                    ),
+                  IconButton(
+                    tooltip: 'Copy message',
+                    icon: const Icon(Icons.copy_outlined, size: 18),
+                    onPressed: _copyMessage,
+                  ),
+                ],
+              ),
           ],
         ),
       ),
@@ -224,6 +259,8 @@ class _MessageBubbleState extends State<MessageBubble> {
                 ),
                 child: Text(
                   q,
+                  textDirection: _getDirectionality(q),
+                  textAlign: TextAlign.start,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -238,6 +275,8 @@ class _MessageBubbleState extends State<MessageBubble> {
           ],
           Text(
             widget.message.content,
+            textDirection: _getDirectionality(widget.message.content),
+            textAlign: TextAlign.start,
             style: const TextStyle(
               color: Colors.white,
               fontSize: 14,

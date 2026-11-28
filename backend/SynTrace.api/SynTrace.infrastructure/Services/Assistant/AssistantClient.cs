@@ -53,6 +53,7 @@ public sealed class AssistantClient : IAssistantClient
             ["question"] = question,
             ["companyId"] = companyId,
             ["employeeId"] = employeeId,
+            ["employeeDisplayName"] = scope.EmployeeDisplayName!,
             ["allowedProjects"] = _options.EnableMeetingContract ? scope.MeetingProjectIds : scope.JiraKeys,
             ["jiraAccountId"] = jiraAccountId!,
             ["conversationId"] = conversationId,

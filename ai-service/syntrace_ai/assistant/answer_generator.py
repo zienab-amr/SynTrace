@@ -886,6 +886,11 @@ def _generate_answer_result(question, ctx):
     wanted = intent.route(question)   # by meaning, before any model call or ticket lookup
     if wanted in ("chat", "thanks"):   # a greeting never reaches the planner or the ticket search
         return general.chat_result(_is_arabic(question), thanks=wanted == "thanks")
+    # An explicit ticket key must not consume a separate project-level question.
+    if KEY_RE.search(question.upper()):
+        questions = [part.strip() for part in re.split(r"(?<=[?؟])\s+", question) if part.strip()]
+        if 1 < len(questions) <= 4 and any(not KEY_RE.search(part.upper()) for part in questions):
+            return _compound_result(questions, ctx)
     results = answer_key_question(question, ctx)
     if results and any(r.get("type") == "found" for r in results):
         agent = _agent_result(question, ctx)

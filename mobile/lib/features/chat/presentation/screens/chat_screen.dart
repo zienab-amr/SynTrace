@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:syntrace/core/theme/app_colors.dart';
 import 'package:syntrace/features/chat/data/models/chat_message.dart';
@@ -226,7 +227,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 quotedExcerpts: quotes,
               ),
               enabled: context.read<ChatCubit>().canSend,
-              isLoading: state.isStreaming,
             ),
           ),
         ),
@@ -306,6 +306,7 @@ class _ChatScreenState extends State<ChatScreen> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 800),
             child: MessageBubble(
+              key: ValueKey(message.id),
               message: message,
               onRetry: null,
               onDelete: null,
@@ -334,6 +335,34 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       },
     );
+  }
+
+  Future<void> _copyConversation(List<ChatMessage> messages) async {
+    final transcript = messages
+        .where((message) => message.content.trim().isNotEmpty)
+        .map((message) {
+          final speaker = message.role == ChatRole.user ? 'You' : 'SynTrace';
+          final quotes = message.quotedExcerpts
+              .map((quote) => '> $quote')
+              .join('\n');
+          return [
+            '$speaker:',
+            if (quotes.isNotEmpty) quotes,
+            message.content,
+          ].join('\n');
+        })
+        .join('\n\n');
+    try {
+      await Clipboard.setData(ClipboardData(text: transcript));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Conversation copied')));
+    } on PlatformException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not copy the conversation')),
+      );
+    }
   }
 
   Widget _buildChatHeader(
@@ -379,6 +408,14 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           const Spacer(),
+          if (state.messages.any(
+            (message) => message.content.trim().isNotEmpty,
+          ))
+            IconButton(
+              tooltip: 'Copy conversation',
+              icon: const Icon(Icons.copy_all_outlined, size: 20),
+              onPressed: () => _copyConversation(state.messages),
+            ),
           if (state.messages.isNotEmpty)
             IconButton(
               onPressed: () => context.read<ChatCubit>().clearChat(),

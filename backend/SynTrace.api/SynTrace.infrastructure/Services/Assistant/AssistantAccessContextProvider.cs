@@ -23,6 +23,17 @@ public sealed class AssistantAccessContextProvider(
             ((options.Value.EnableSynTraceProjectScope || options.Value.EnableMeetingContract) && scope.SynTraceProjectIds.Count > 0);
         if (!canAsk) return new AssistantAccessContext(scope, null, false);
 
+        var employee = await db.Employees.AsNoTracking()
+            .Where(e => e.Id == employeeId && e.CompanyId == companyId)
+            .Select(e => new { e.FirstName, e.LastName })
+            .SingleOrDefaultAsync(ct);
+        if (employee is not null)
+        {
+            var name = string.Join(" ", new[] { employee.FirstName, employee.LastName }
+                .Where(part => !string.IsNullOrWhiteSpace(part))).Trim();
+            scope = scope with { EmployeeDisplayName = name.Length <= 300 ? name : name[..300] };
+        }
+
         var jiraAccountId = await db.JiraConnections.AsNoTracking()
             .Where(c => c.CompanyId == companyId && c.ConnectedByEmployeeId == employeeId &&
                         c.JiraConnectionType == JiraConnectionType.Employee && c.status &&

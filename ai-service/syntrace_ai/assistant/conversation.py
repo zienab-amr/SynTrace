@@ -187,6 +187,25 @@ def _fallback(question, turns):
     return f"{question} ({', '.join(dict.fromkeys(keys))})" if keys else question
 
 
+_COMMIT_FOLLOWUP = re.compile(
+    r"(?:commits?|(?:show me|send me) (?:their|the) commits|"
+    r"any commits(?: for (?:those|them|it))?|"
+    r"(?:ابعت\s*لي|هات|وريني) (?:ال)?كوميت(?:ات|س)(?: بتاعتهم| بتاعتها)?)",
+    re.IGNORECASE,
+)
+
+
+def commit_followup_keys(question, turns):
+    """Use the most recent turn that names tickets for a short commit follow-up."""
+    if not _COMMIT_FOLLOWUP.fullmatch(question.strip().rstrip("?؟.! ")):
+        return []
+    for _, previous_question, answer, keys in reversed(turns):
+        named = ag.KEY_RE.findall(f"{previous_question} {answer}".upper())
+        if named or keys:
+            return list(dict.fromkeys([*named, *keys]))
+    return []
+
+
 _CAPS = re.compile(r"\b[A-Z][A-Z0-9]{2,}\b")
 
 
@@ -195,6 +214,23 @@ def standalone(question, turns, complete=None):
     # A question that names a ticket already says what it is about, and needs no model call.
     if not turns or ag.KEY_RE.search(question.upper()):
         return question
+    correction = re.fullmatch(
+        r"(?:(?:i meant|قصدي)\s+)?([\w-]+)(?:,\s*|\s+)(?:not|مش)\s+([\w-]+)",
+        question.strip().rstrip("?؟.! "),
+        re.IGNORECASE,
+    )
+    previous_question = turns[-1][1]
+    if correction and re.search(r"\bsprint\b|سبرنت", previous_question, re.IGNORECASE):
+        project, rejected = correction.groups()
+        corrected = re.sub(rf"(?<![\w.-]){re.escape(rejected)}(?![\w.-])",
+                           lambda match: project, previous_question, flags=re.IGNORECASE)
+        if corrected != previous_question or re.search(
+            rf"(?<![\w.-]){re.escape(project)}(?![\w.-])", previous_question, re.IGNORECASE
+        ):
+            return corrected
+    commit_keys = commit_followup_keys(question, turns)
+    if len(commit_keys) == 1:
+        return f"{question} ({commit_keys[0]})"
     from syntrace_ai.assistant import intent
     if intent.route(question) in ("chat", "thanks"):   # "شكرا" after a ticket question stays a thank-you
         return question

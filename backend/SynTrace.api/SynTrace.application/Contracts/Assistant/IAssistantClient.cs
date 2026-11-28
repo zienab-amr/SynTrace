@@ -15,6 +15,7 @@ public enum AssistantFailure { None, BadRequest, Misconfigured, Unavailable, Can
 public sealed record AssistantResult(AssistantAnswer? Answer, AssistantFailure Failure);
 public sealed record AssistantProjectScope(IReadOnlyList<string> JiraKeys, IReadOnlyList<string> SynTraceProjectIds)
 {
+    public string? EmployeeDisplayName { get; init; }
     public MeetingAssistantPermissions? MeetingPermissions { get; init; }
     public IReadOnlyList<string> MeetingProjectIds => JiraKeys.Concat(SynTraceProjectIds)
         .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
