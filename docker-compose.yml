@@ -26,6 +26,15 @@ x-ai-env: &ai-env
   EMBED_ON_WEBHOOK: "1"
   GROQ_API_KEY: ${GROQ_API_KEY:-}
   GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-120b}
+  GROQ_FALLBACK_API_KEY: ${GROQ_FALLBACK_API_KEY:-}
+  GROQ_FALLBACK_MODEL: ${GROQ_FALLBACK_MODEL:-}
+  # Meeting transcripts: ERNIE on OpenRouter reads a whole meeting in one call;
+  # without its key, or when it is busy, the meeting is read on Groq in parts.
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  OPENROUTER_FALLBACK_API_KEY: ${OPENROUTER_FALLBACK_API_KEY:-}
+  OPENROUTER_MODEL: ${OPENROUTER_MODEL:-baidu/ernie-5.5-flash-preview:free}
+  MEETING_READS: ${MEETING_READS:-2}
+  MEETING_EXTRACT_PROVIDER: ${MEETING_EXTRACT_PROVIDER:-openrouter}
   CONVERSATION_TURNS: ${SYNTRACE_AI_CONVERSATION_TURNS:-3}
   SEMANTIC_K: ${SEMANTIC_K:-5}
   SEMANTIC_MIN_SCORE: ${SEMANTIC_MIN_SCORE:-0.5}
@@ -219,7 +228,7 @@ services:
   ai-setup:
     <<: *ai
     environment: *ai-env
-    command: ["python", "setup_constraints.py"]
+    command: ["python", "-m", "syntrace_ai.workers.setup_constraints"]
     depends_on:
       neo4j:
         condition: service_healthy
@@ -242,7 +251,7 @@ services:
     environment:
       <<: *ai-env
       GITHUB_CONSUMER: "1"
-    command: ["python", "ai_consumer.py"]
+    command: ["python", "-m", "syntrace_ai.workers.ai_consumer"]
     depends_on:
       ai-setup:
         condition: service_completed_successfully
@@ -257,7 +266,7 @@ services:
     environment:
       <<: *ai-env
       KNOWLEDGE_API_URL: http://backend:8080
-    command: ["python", "knowledge_worker.py"]
+    command: ["python", "-m", "syntrace_ai.workers.knowledge_worker"]
     depends_on:
       ai-setup:
         condition: service_completed_successfully

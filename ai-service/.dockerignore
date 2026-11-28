@@ -48,3 +48,8 @@ htmlcov/
 
 # Evaluation artifacts
 eval_results.csv
+
+# Tests and docs stay in the repository, not in the image
+tests/
+README.md
+field_meta.json
